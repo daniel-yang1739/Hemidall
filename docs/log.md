@@ -1,6 +1,7 @@
 # ⏱️ LLM Wiki Chrono Log
 
-## [2026-08-26] distill-meta-module | 透過 wiki-distiller 完成 04_meta 模組提煉：新增 01_Multi_Agent_Adversarial_Review_Pattern.md 與 02_Obsidian_Vault_Topology_and_Git_Control.md，經 17 位審查官雙輪對抗審查與大檢察官終審簽核，生成審查報告書並清空 01_raw/
+## [2026-08-26] refactor | 重構 04_meta/02_Obsidian_Vault_Topology.md：完整收錄全域 ASCII 檔案結構樹與 High-Level 目錄職責與生命週期表，精簡標題與檔名，並由秘書長正式沉澱入 feedbacks/ 反饋記憶庫
+## [2026-08-26] distill-meta-module | 透過 wiki-distiller 完成 04_meta 模組提煉：新增 01_Multi_Agent_Adversarial_Review_Pattern.md 與 02_Obsidian_Vault_Topology.md，經 17 位審查官雙輪對抗審查與大檢察官終審簽核，生成審查報告書並清空 01_raw/
 ## [2026-08-26] feature | 升級 feedbacks/ 反饋記憶庫：全面標註 🟢 [ACCEPTED] 採納標準 與 🔴 [REJECTED] 駁回警示，並在 SKILL.md 確立「Step 0: Pre-Flight Checklist」強制開局檢閱歷史注意事項
 ## [2026-08-26] distill-deep-audit-report | 升級 docs/reviews/ 審查報告書：全面展開 17 位審查官針對全庫 12 篇卡片的深層思維鏈 (Chain of Thought)、地毯式挑惕清單、Main Agent 駁回辯論與大檢察官終審簽核
 ## [2026-08-26] cleanup-raw | 貫徹「消化即刪除 (Digest & Delete)」鐵律：15 篇已 100% 提煉進 02_wiki/ 的 Raw 檔案已全數安全清理刪除，保持素材池極致乾淨

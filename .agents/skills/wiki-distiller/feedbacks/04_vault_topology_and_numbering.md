@@ -1,7 +1,7 @@
 # 🧠 全域拓撲與認知編號反饋記憶庫 (Vault Topology & Numbering Feedbacks)
 
 > 本檔案由 **秘書長 (Chief Secretary)** 維護。
-> 記錄所有針對「大腦認知演進編號順序、目錄正交性 (MECE)、Raw 素材消化即刪除」的歷史審查建議，明確標註 **🟢 採納 (ACCEPTED)** 與 **🔴 駁回 (REJECTED)**。
+> 記錄所有針對「大腦認知演進編號順序、目錄正交性 (MECE)、Raw 素材消化即刪除、Vault 拓撲檔案樹與目錄職責呈現」的歷史審查建議，明確標註 **🟢 採納 (ACCEPTED)** 與 **🔴 駁回 (REJECTED)**。
 
 ---
 
@@ -13,7 +13,7 @@
 * **適用檔案**：全庫所有目錄與檔案命名
 * **【採納理由】**：確保讀者心智模型層層遞進，讀完 `01` 自然解鎖 `02`。
 * **【強制執行標準】**：
-  * 編號代表依賴關係：`01_theory`（物理基石）$\to$ `02_architecture`（架構落地）$\to$ `03_planning`（全域企劃）。
+  * 編號代表依賴關係：`01_theory`（物理基石）$\to$ `02_architecture`（架構落地）$\to$ `03_planning`（全域企劃）$\to$ `04_meta`（方法論體系）。
 
 ---
 
@@ -22,6 +22,18 @@
 * **首次記錄**：2026-08-26 | **累犯次數**：1 次
 * **適用檔案**：`docs/01_raw/`
 * **【採納理由】**：貫徹 **Digest & Delete** 原則，避免過渡檔案殘留造成版本混亂。
+
+---
+
+### 📌 條目 04-C：Obsidian Vault 拓撲卡片必須完整呈現全域檔案結構樹與 High-Level 目錄職責解說
+* **決策狀態**：🟢 **ACCEPTED (已採納為標準規範)**
+* **首次記錄**：2026-08-26 | **累犯次數**：1 次
+* **適用檔案**：`04_meta/02_Obsidian_Vault_Topology.md`, `docs/index.md`, `02_wiki/index.md`
+* **【採納理由】**：提升讀者初次進入 Vault 時的「全景可視度 (Global Visibility)」，明確定義各資料夾的職責邊界與生命週期。
+* **【強制執行標準】**：
+  * 必須在 `02_Obsidian_Vault_Topology.md` 與主索引中包含完整的 ASCII 檔案結構樹（附帶 Emoji 與簡要標註）；
+  * 必須包含 High-Level 目錄職責表格（定義核心功能、生命週期治理規則與內容範例）；
+  * 標題與檔名統一標準化為 `02_Obsidian_Vault_Topology.md`（無需冗餘的 `Git Control` 字眼）。
 
 ---
 

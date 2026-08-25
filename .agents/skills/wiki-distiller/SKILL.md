@@ -12,11 +12,13 @@ description: >-
 > 2. **嚴禁在 Wiki 筆記內文中出現審查角色的名字**！Wiki 是純粹、客觀、沉穩的世界級技術資產。
 > 3. **每張架構圖/時序圖/流程圖下方，必須配備手把手的「圖表深度精讀指南」**。
 > 4. **🗑️ Raw 素材消化即刪除 (Digest & Delete Policy)**：一旦 `01_raw/` 內的素材被 100% 提煉、核實並整合進 `02_wiki/`，**該 Raw 檔案必須立即刪除**，絕不留存冗餘過渡檔案！
-> 5. **🧬 反饋記憶與自我進化閉環 (Continuous Learning & Feedbacks)**：
+> 5. **🗺️ 全景拓撲與 MOC 呈現標準 (Mandatory MOC Tree & Directory Mandates)**：
+>    * `docs/index.md` 與 `docs/02_wiki/index.md` 必須包含 **全景 ASCII 檔案結構樹** 與 **各 High-Level 目錄/模組的核心職責與生命週期定位表**！
+> 6. **🧬 反饋記憶與自我進化閉環 (Continuous Learning & Feedbacks)**：
 >    * **⚡ 強制第一步 (Step 0)**：每次寫作**開局必須先讀取 `feedbacks/` 中的 ACCEPTED 規範與 REJECTED 警示**，主動避開已知陷阱；
 >    * 審查結束後，**由「秘書長 (Chief Secretary)」執行智能去重、標註 ACCEPTED/REJECTED 與累犯記錄**，沉澱入 `feedbacks/`！
-> 6. **📜 強制輸出全景審查報告書 (Mandatory Audit Report Output)**：每次雙輪審查後，**必須在 `docs/reviews/YYYY-MM-DD_<topic>_audit_report.md` 產出全景審查報告書**。
-> 7. **🔍 代碼真相溯源鐵律 (Codebase Truth-Tracing)**：必須主動 Trace 專案當前的實際代碼（`agent-observer/`）核驗事實。
+> 7. **📜 強制輸出全景審查報告書 (Mandatory Audit Report Output)**：每次雙輪審查後，**必須在 `docs/reviews/YYYY-MM-DD_<topic>_audit_report.md` 產出全景審查報告書**。
+> 8. **🔍 代碼真相溯源鐵律 (Codebase Truth-Tracing)**：必須主動 Trace 專案當前的實際代碼（`agent-observer/`）核驗事實。
 
 ---
 
@@ -46,7 +48,7 @@ flowchart TD
     E --> F{"6. ⚖️ 00_chief_inquisitor (大檢察官終審裁決院)"}
     F -- "❌ 存在代碼矛盾 / 拓撲缺陷" --> G1["🚫 大檢察官行使否決權裁定修正"]
     G1 --> D2
-    F -- "終審通過 ✅" --> G2["7. 標記 completed，更新 docs/index.md 與各層 index"]
+    F -- "終審通過 ✅" --> G2["7. 標記 completed，更新 docs/index.md 與各層 index<br/>(按標準更新 ASCII 檔案樹與 High-Level 目錄職責表)"]
     
     G2 --> H["8. 📜 【強制輸出】生成 docs/reviews/YYYY-MM-DD_audit_report.md"]
     
@@ -55,6 +57,20 @@ flowchart TD
     I --> J["10. 🗑️ 【垃圾清理】刪除已 100% 提煉完畢的 docs/01_raw/ 檔案"]
     J --> K["11. 追加 docs/log.md 變更日誌"]
 ```
+
+---
+
+## 🗺️ 索引與全景拓撲呈現標準 (Global Vault & Wiki Root MOC Standard)
+
+每當提煉新增卡片或調整目錄時，**必須同步維護兩大 MOC 文件，確保以下 3 大標準要素健全**：
+
+1. **🌲 ASCII 檔案結構樹 (Directory & Module Tree)**：
+   * `docs/index.md` 必須包含全庫 `docs/` 的 ASCII 樹，並以 emoji 標註各目錄職責；
+   * `docs/02_wiki/index.md` 必須包含 `02_wiki/` 內部所有子模組與卡片的完整檔案樹。
+2. **🏛️ High-Level 目錄/模組職責定義表 (Mandates & Lifecycles)**：
+   * 明確列出各目錄的**核心功能、生命週期治理規則（如 Digest & Delete）、認知解鎖階梯**。
+3. **📑 雙向鏈接與一行價值摘要 (WikiLinks & Value Propositions)**：
+   * 每個條目必須以 `[[WikiLink]]` 呈現，並附上一行硬核技術摘要。
 
 ---
 
