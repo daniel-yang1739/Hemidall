@@ -10,8 +10,9 @@
 
 ```mermaid
 flowchart LR
-    M1["⚡ 01_theory/<br/>(底層物理與數學模型)<br/>Prefill/Decode / KV Cache / Prompt Caching"] --> M2["🏛️ 02_architecture/<br/>(通用系統與演算法架構)<br/>5維度模型 / LCP演算法 / 狀態機儲存 / 載荷協議"]
+    M1["⚡ 01_theory/<br/>(推論物理與數學模型)<br/>Prefill/Decode / KV Cache / Prompt Caching"] --> M2["🏛️ 02_architecture/<br/>(通用系統與演算法架構)<br/>5維度模型 / LCP演算法 / 狀態機儲存 / 載荷協議"]
     M2 --> M3["🏆 03_planning/<br/>(系列藍圖與規格規劃)<br/>總企劃 / 30天大綱 / 選型權衡"]
+    M3 --> M4["🤖 04_meta/<br/>(方法論與協同工程)<br/>多代理對抗審查 / Obsidian Git 白名單"]
 ```
 
 ---
@@ -32,11 +33,17 @@ flowchart LR
 
 ---
 
-### 3. [[02_wiki/03_planning/index|🏆 03_planning: 系列藍圖與規劃規格 (產品全景)]]
+### 3. [[02_wiki/03_planning/index|🏆 03_planning: 系列藍圖與規格規劃 (產品全景)]]
 * [[01_Master_Plan]]：系列總體企劃書、核心價值主張與四大模組進程圖。
 * [[02_30_Days_Breakdown]]：30 天每日詳細大綱、程式碼交付物與 Wiki 武器庫映射。
 * [[03_Tech_Stack_Tradeoffs]]：Go vs. Python 跨維度客觀選型矩陣與權衡分析。
 * [[04_Phased_Implementation_Roadmap]]：Phase 1 至 Phase 5 循序漸進實作路線圖。
+
+---
+
+### 4. [[02_wiki/04_meta/index|🤖 04_meta: AI 協同工程與知識庫方法論 (元架構與體系)]]
+* [[01_Multi_Agent_Adversarial_Review_Pattern]]：17 位世界前 1% 審查矩陣、雙輪對抗審查、Main Agent 批判性過濾與自我進化閉環。
+* [[02_Obsidian_Vault_Topology_and_Git_Control]]：Wiki 終點論、三權分立拓撲、.obsidian 嚴格 Git 白名單與 AGENTS.md 協同憲法。
 
 ---
 

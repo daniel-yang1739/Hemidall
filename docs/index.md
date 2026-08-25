@@ -27,6 +27,10 @@
 * [[03_Tech_Stack_Tradeoffs]]
 * [[04_Phased_Implementation_Roadmap]]
 
+### 4. [[02_wiki/04_meta/index|🤖 04_meta: AI 協同工程與知識庫方法論 (元架構與體系)]]
+* [[01_Multi_Agent_Adversarial_Review_Pattern]]
+* [[02_Obsidian_Vault_Topology_and_Git_Control]]
+
 ---
 
 ## 📜 二、雙輪審查委員會審查報告 (`docs/reviews/`)
@@ -41,5 +45,5 @@
 
 ---
 
-## 📥 四、原始素材庫與文獻依據
-* **[[01_raw/README|01_raw/ (扁平素材池)]]**：未加工之日誌快照、API Specs、SQLite Dump 與事實依據 (已 100% 提煉進 02_wiki/)。
+## 📥 四、原始素材庫 (Raw Materials Pool)
+* **[[01_raw/README|01_raw/ (扁平素材池)]]**：未加工之臨時素材，遵循 Digest & Delete 原則。
