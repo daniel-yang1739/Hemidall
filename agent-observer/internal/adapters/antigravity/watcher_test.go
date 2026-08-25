@@ -8,7 +8,7 @@ import (
 
 func TestParseLineUserInput(t *testing.T) {
 	watcher := NewWatcher("test.jsonl", "test-session", nil)
-	line := `{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-08-19T01:00:00Z","content":"<USER_REQUEST>你好！請幫我寫 Code</USER_REQUEST>"}`
+	line := `{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-08-19T01:00:00Z","content":"<USER_REQUEST>Hello! Please write code for me</USER_REQUEST>"}`
 
 	event, err := watcher.parseLine(line)
 	if err != nil {
@@ -24,7 +24,7 @@ func TestParseLineUserInput(t *testing.T) {
 	if event.Status != "DONE" {
 		t.Errorf("expected status DONE, got %s", event.Status)
 	}
-	if event.Summary != "👤 User: 你好！請幫我寫 Code" {
+	if event.Summary != "👤 User: Hello! Please write code for me" {
 		t.Errorf("unexpected summary: %s", event.Summary)
 	}
 }

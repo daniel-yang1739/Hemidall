@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// FormatTokenBreakdownTable 將 Token 分佈格式化為精美 ASCII 表格
+// FormatTokenBreakdownTable formats the 5-dimension token distribution into an ASCII table
 func FormatTokenBreakdownTable(e UnifiedAgentEvent) string {
 	t := e.Tokens
 	total := t.TotalTokens

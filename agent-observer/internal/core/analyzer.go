@@ -5,32 +5,32 @@ import (
 	"sync"
 )
 
-// SessionContextState 維護單一 Session 的上下文累積狀態
+// SessionContextState tracks cumulative context tokens and prefix caching benchmarks per session
 type SessionContextState struct {
-	SessionID         string
-	SystemTokens      int
-	ToolsDefTokens    int
-	ToolResultTokens  int
-	HistoryTokens     int
-	TotalTokens       int
-	HasInitialized    bool  // 是否已完成初始快取寫入
-	PrevTotalTokens   int   // 上一輪的總 Context Token 數
+	SessionID        string
+	SystemTokens     int
+	ToolsDefTokens   int
+	ToolResultTokens int
+	HistoryTokens    int
+	TotalTokens      int
+	HasInitialized   bool // Indicates if the initial cache write turn has completed
+	PrevTotalTokens  int  // Previous turn's total context tokens (LCP comparison baseline)
 }
 
-// PayloadAnalyzer 是 Core 核心 Context 分析器
+// PayloadAnalyzer evaluates unified events and updates context state machine
 type PayloadAnalyzer struct {
 	mu       sync.Mutex
 	sessions map[string]*SessionContextState
 }
 
-// NewPayloadAnalyzer 建立分析器實例
+// NewPayloadAnalyzer creates a new analyzer instance
 func NewPayloadAnalyzer() *PayloadAnalyzer {
 	return &PayloadAnalyzer{
 		sessions: make(map[string]*SessionContextState),
 	}
 }
 
-// AnalyzeStep 分析單一事件並注入 Token 拆解與快取指標
+// AnalyzeStep processes a single event and injects 5-dimension token breakdown and cache metrics
 func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -39,18 +39,18 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 	if !exists {
 		state = &SessionContextState{
 			SessionID:      event.SessionID,
-			SystemTokens:   4618, // 基準靜態 System Prompt (包含 identity, rules, skills 宣告)
-			ToolsDefTokens: 3200, // 基準 MCP Tools Schema 總宣告
+			SystemTokens:   4618, // Baseline static system instructions (identity, rules, skills)
+			ToolsDefTokens: 3200, // Baseline MCP Tools JSON Schema definitions
 			HasInitialized: false,
 		}
 		a.sessions[event.SessionID] = state
 	}
 
-	// 1. 計算該 Step 的各維度 Token
+	// 1. Calculate tokens for this step
 	contentTokens := CountTokens(event.RawContent)
 	thinkingTokens := CountTokens(event.Thinking)
 
-	// 計算工具呼叫參數 Tokens
+	// Calculate tool call arguments tokens
 	toolCallArgsTokens := 0
 	for _, tc := range event.ToolCalls {
 		if tc.RawArgs != "" {
@@ -60,7 +60,7 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 		}
 	}
 
-	// 2. 根據 StepType 歸類累加
+	// 2. Accumulate tokens based on StepType
 	switch event.Type {
 	case StepTypeUserInput:
 		event.Tokens.ActiveTurnTokens = contentTokens
@@ -81,7 +81,7 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 		}
 	}
 
-	// 3. 計算當前整個 Context 總量
+	// 3. Compute total context volume
 	currentDelta := event.Tokens.ActiveTurnTokens + event.Tokens.ThinkingTokens
 	totalContext := state.SystemTokens + state.ToolsDefTokens + state.ToolResultTokens + state.HistoryTokens + currentDelta
 
@@ -91,16 +91,16 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 	event.Tokens.HistoryTokens = state.HistoryTokens
 	event.Tokens.TotalTokens = totalContext
 
-	// 4. 前綴快取 (Prefix Caching) 物理命中計算
+	// 4. Prefix Caching LCP (Longest Common Prefix) calculation
 	if !state.HasInitialized {
-		// 第一次寫入 (Cache Write)
+		// Initial turn: Cache Write
 		event.Tokens.CachedTokens = 0
 		event.Tokens.NewTokens = totalContext
 		event.Tokens.CacheHitRate = 0.0
 		event.CacheStatus = "WRITE"
 		state.HasInitialized = true
 	} else {
-		// 前綴快取重用：基底 (System + Tools) + 過去所有已固化歷史均為可重用前綴
+		// Subsequent turns: reuse static prefix + solidified history
 		cachedTokens := state.PrevTotalTokens
 		if cachedTokens > totalContext {
 			cachedTokens = totalContext
@@ -129,7 +129,7 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 		}
 	}
 
-	// 5. 更新狀態
+	// 5. Update state baseline
 	state.PrevTotalTokens = totalContext
 	if event.Type == StepTypeUserInput || event.Type == StepTypeModelResponse {
 		state.HistoryTokens += contentTokens

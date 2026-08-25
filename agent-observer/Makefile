@@ -4,22 +4,22 @@ BINARY_NAME := .tmp_agent_observer
 
 all: build
 
-## build: 編譯 agent-observer 二進制執行檔
+## build: Compile agent-observer binary
 build:
 	@echo "🔨 Compiling agent-observer..."
 	@go build -o $(BINARY_NAME) .
 
-## run: 編譯並運行，結束時 (Ctrl+C) 自動清除臨時二進制檔
+## run: Build and run observer, auto-cleanup binary on exit (Ctrl+C)
 run: build
 	@trap 'echo "\n🧹 Cleaning up temporary binary..."; rm -f $(BINARY_NAME); exit 0' INT TERM EXIT; \
 	./$(BINARY_NAME) $(ARGS)
 
-## test: 執行所有單元測試
+## test: Run all unit tests
 test:
 	@echo "🧪 Running unit tests..."
 	@go test -v ./...
 
-## clean: 清除編譯產出物
+## clean: Remove build artifacts and binaries
 clean:
 	@echo "🧹 Removing binaries..."
 	@rm -f $(BINARY_NAME) agent-observer

@@ -1,28 +1,23 @@
 # ==========================================
-# 💎 Obsidian Vault Configuration (docs/.obsidian)
+# 💎 Obsidian Vault Configuration (Strict Whitelist)
 # ==========================================
-# 忽略個人視窗佈局、游標位置、分頁狀態與動態圖譜縮放 (避免日常操作造成頻繁 Git 衝突)
-docs/.obsidian/workspace.json
-docs/.obsidian/workspace-mobile.json
-docs/.obsidian/graph.json
-docs/.obsidian/cache/
-docs/.obsidian/backups/
+# By default, ignore ALL internal Obsidian files and runtime state
+docs/.obsidian/*
+.obsidian/*
 
-# 忽略第三方主題與社群外掛大檔案 (本質為外部依賴，可由 appearance.json / community-plugins.json 還原)
-docs/.obsidian/themes/
-docs/.obsidian/plugins/
+# Whitelist: ONLY allow explicit core configuration files to be tracked
+!docs/.obsidian/app.json
+!docs/.obsidian/appearance.json
+!docs/.obsidian/core-plugins.json
+!docs/.obsidian/community-plugins.json
 
-# 忽略全域/本地 Obsidian 暫存
-.obsidian/workspace.json
-.obsidian/workspace-mobile.json
-.obsidian/graph.json
-.obsidian/cache/
-.obsidian/backups/
-.obsidian/themes/
-.obsidian/plugins/
+!.obsidian/app.json
+!.obsidian/appearance.json
+!.obsidian/core-plugins.json
+!.obsidian/community-plugins.json
 
 # ==========================================
-# 🐹 Golang Build & Temporary Files
+# 🐹 Golang Build & Temporary Artifacts
 # ==========================================
 *.tmp
 *.tmp_*

@@ -15,7 +15,7 @@ func TestTokenizerCount(t *testing.T) {
 func TestPayloadAnalyzerFiveDimensions(t *testing.T) {
 	analyzer := NewPayloadAnalyzer()
 
-	// 模擬 Step 0: User Input
+	// Simulate Step 0: User Input
 	event0 := UnifiedAgentEvent{
 		SessionID:  "test-session-1",
 		StepIndex:  0,
@@ -37,7 +37,7 @@ func TestPayloadAnalyzerFiveDimensions(t *testing.T) {
 		t.Errorf("expected initial CacheStatus WRITE, got %s", event0.CacheStatus)
 	}
 
-	// 模擬 Step 1: Tool Execution Result
+	// Simulate Step 1: Tool Execution Result
 	event1 := UnifiedAgentEvent{
 		SessionID:  "test-session-1",
 		StepIndex:  1,

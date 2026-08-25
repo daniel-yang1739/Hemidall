@@ -34,7 +34,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 監聽系統的中斷信號 (Ctrl+C)
+	// Handle OS interrupt signals (Ctrl+C)
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
@@ -43,13 +43,13 @@ func main() {
 		cancel()
 	}()
 
-	// 建立核心 Context 分析器
+	// Initialize core payload analyzer
 	analyzer := core.NewPayloadAnalyzer()
 
-	// 建立事件傳輸 Channel
+	// Initialize event channel
 	eventChan := make(chan core.UnifiedAgentEvent, 100)
 
-	// 根據參數挑選 Adapter
+	// Initialize adapter based on CLI flag
 	var adapter adapters.AgentAdapter
 	switch *adapterName {
 	case "antigravity":
@@ -59,17 +59,17 @@ func main() {
 		adapter = antigravity.NewWatcher(*filePath, *sessionID, analyzer)
 	}
 
-	// 啟動背景 HTTP Server
+	// Start background HTTP server
 	go startHTTPServer(*port)
 
-	// 在 Goroutine 啟動 Adapter 監聽
+	// Start adapter event ingestion in background goroutine
 	go func() {
 		if err := adapter.Start(ctx, eventChan); err != nil && err != context.Canceled {
 			fmt.Printf("❌ Adapter error: %v\n", err)
 		}
 	}()
 
-	// 主線程：即時消費事件並於 Console 格式化輸出
+	// Main loop: consume events and format console output in real-time
 	fmt.Println("👀 Watching agent events & analyzing Context in real-time... (Press Ctrl+C to stop)")
 	fmt.Println()
 
@@ -81,13 +81,13 @@ func main() {
 			return
 		case event := <-eventChan:
 			stepCount++
-			// 1. 核心分析：注入 5 維度 Token 與快取指標
+			// 1. Core analysis: inject 5-dimension Token breakdown and cache metrics
 			analyzer.AnalyzeStep(&event)
 
-			// 2. 印出單行摘要
+			// 2. Print single-line event summary
 			printEventLine(event)
 
-			// 3. 若為重要回合或開啟 details，印出 ASCII Token 表格
+			// 3. Print ASCII token breakdown table for key turns or when details flag is active
 			if *showDetails && (event.Type == core.StepTypeUserInput || event.Type == core.StepTypeModelResponse || event.Type == core.StepTypeToolCall || stepCount%5 == 0) {
 				fmt.Print(core.FormatTokenBreakdownTable(event))
 				fmt.Println()

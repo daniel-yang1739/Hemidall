@@ -13,7 +13,7 @@ import (
 	"agent-observer/internal/core"
 )
 
-// RawTranscriptLine 代表 Antigravity transcript.jsonl 的單行原始 JSON
+// RawTranscriptLine represents a single JSON record in transcript_full.jsonl
 type RawTranscriptLine struct {
 	StepIndex int           `json:"step_index"`
 	Source    string        `json:"source"`
@@ -25,12 +25,13 @@ type RawTranscriptLine struct {
 	ToolCalls []RawToolCall `json:"tool_calls,omitempty"`
 }
 
+// RawToolCall represents individual tool call payloads in transcript
 type RawToolCall struct {
 	Name string                 `json:"name"`
 	Args map[string]interface{} `json:"args"`
 }
 
-// Watcher 實作 adapters.AgentAdapter 介面
+// Watcher implements the adapters.AgentAdapter interface for Antigravity CLI logs
 type Watcher struct {
 	filePath    string
 	sessionID   string
@@ -38,7 +39,7 @@ type Watcher struct {
 	analyzer    *core.PayloadAnalyzer
 }
 
-// NewWatcher 建立 Antigravity Transcript Watcher
+// NewWatcher creates an Antigravity Transcript Watcher
 func NewWatcher(filePath string, sessionID string, analyzer *core.PayloadAnalyzer) *Watcher {
 	return &Watcher{
 		filePath:    filePath,
@@ -52,7 +53,7 @@ func (w *Watcher) Name() string {
 	return "antigravity"
 }
 
-// Start 開始監聽 transcript_full.jsonl 並持續推播新事件
+// Start begins tailing transcript_full.jsonl and streams new events
 func (w *Watcher) Start(ctx context.Context, out chan<- core.UnifiedAgentEvent) error {
 	file, err := os.Open(w.filePath)
 	if err != nil {
@@ -62,7 +63,7 @@ func (w *Watcher) Start(ctx context.Context, out chan<- core.UnifiedAgentEvent) 
 
 	reader := bufio.NewReader(file)
 
-	// 1. 啟動靜默歷史預熱 (Silent Warmup: 快速計算歷史 Context 基準，不向外推播洗屏)
+	// 1. Silent Warmup: fast-forward existing history to initialize context token state without flooding output
 	warmupCount := 0
 	for {
 		line, err := reader.ReadString('\n')
@@ -82,7 +83,7 @@ func (w *Watcher) Start(ctx context.Context, out chan<- core.UnifiedAgentEvent) 
 
 	fmt.Printf("✅ History warm-up complete! Pre-loaded %d steps. Watching for LIVE events...\n\n", warmupCount)
 
-	// 2. 啟動定時輪詢 File-Tail (專注推播最新產生的即時事件)
+	// 2. Poll file tail periodically for new live steps
 	ticker := time.NewTicker(300 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -119,7 +120,7 @@ func (w *Watcher) warmupLine(line string) {
 	}
 	w.lastStepIdx = event.StepIndex
 
-	// 在背景默默建立 Token 前綴基準
+	// Quietly initialize context state baseline
 	if w.analyzer != nil {
 		w.analyzer.AnalyzeStep(&event)
 	}
@@ -136,7 +137,7 @@ func (w *Watcher) handleLiveLine(line string, ctx context.Context, out chan<- co
 		return
 	}
 
-	// 去重保護
+	// Deduplication protection
 	if event.StepIndex <= w.lastStepIdx && event.StepIndex != 0 {
 		return
 	}
@@ -148,7 +149,7 @@ func (w *Watcher) handleLiveLine(line string, ctx context.Context, out chan<- co
 	}
 }
 
-// parseLine 將 Antigravity JSON 轉換為 Core UnifiedAgentEvent
+// parseLine converts raw Antigravity JSON into domain UnifiedAgentEvent
 func (w *Watcher) parseLine(line string) (core.UnifiedAgentEvent, error) {
 	var raw RawTranscriptLine
 	if err := json.Unmarshal([]byte(line), &raw); err != nil {
