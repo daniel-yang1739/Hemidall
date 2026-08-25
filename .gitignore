@@ -1,0 +1,50 @@
+# ==========================================
+# 💎 Obsidian Vault Configuration (docs/.obsidian)
+# ==========================================
+# 忽略個人視窗佈局、游標位置與分頁狀態 (避免日常打字造成頻繁 Git 衝突)
+docs/.obsidian/workspace.json
+docs/.obsidian/workspace-mobile.json
+docs/.obsidian/cache/
+docs/.obsidian/backups/
+
+# 忽略全域/本地 Obsidian 暫存
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache/
+.obsidian/backups/
+
+# ==========================================
+# 🐹 Golang Build & Temporary Files
+# ==========================================
+*.tmp
+*.tmp_*
+.tmp_*
+bin/
+dist/
+*.exe
+*.test
+*.out
+
+# ==========================================
+# 🍏 macOS & System Files
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ==========================================
+# ⚙️ IDE & Editor Files
+# ==========================================
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
