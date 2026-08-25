@@ -1,17 +1,25 @@
 # ==========================================
 # 💎 Obsidian Vault Configuration (docs/.obsidian)
 # ==========================================
-# 忽略個人視窗佈局、游標位置與分頁狀態 (避免日常打字造成頻繁 Git 衝突)
+# 忽略個人視窗佈局、游標位置、分頁狀態與動態圖譜縮放 (避免日常操作造成頻繁 Git 衝突)
 docs/.obsidian/workspace.json
 docs/.obsidian/workspace-mobile.json
+docs/.obsidian/graph.json
 docs/.obsidian/cache/
 docs/.obsidian/backups/
+
+# 忽略第三方主題與社群外掛大檔案 (本質為外部依賴，可由 appearance.json / community-plugins.json 還原)
+docs/.obsidian/themes/
+docs/.obsidian/plugins/
 
 # 忽略全域/本地 Obsidian 暫存
 .obsidian/workspace.json
 .obsidian/workspace-mobile.json
+.obsidian/graph.json
 .obsidian/cache/
 .obsidian/backups/
+.obsidian/themes/
+.obsidian/plugins/
 
 # ==========================================
 # 🐹 Golang Build & Temporary Files
