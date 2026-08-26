@@ -41,13 +41,13 @@ func (m Model) renderSessionSwitcherModal() string {
 	var contentLines []string
 
 	// 1. Modal Title
-	titleText := "🔍 Switch Session [Ctrl+P]"
+	titleText := "🔍 SWITCH SESSION [Ctrl+P]"
 	contentLines = append(contentLines, TitleStyle.Render(truncateVisualWidth(titleText, modalInnerWidth)))
 
 	// 2. Search Input Box
 	queryDisplay := m.sessionSearchQuery
 	cursorChar := "█"
-	inputBox := fmt.Sprintf("🔎 Search: [%s%s]", queryDisplay, lipgloss.NewStyle().Foreground(ColorHighlight).Render(cursorChar))
+	inputBox := fmt.Sprintf("🔎 Search: [%s%s] (Type to filter)", queryDisplay, lipgloss.NewStyle().Foreground(ColorHighlight).Render(cursorChar))
 	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(truncateVisualWidth(inputBox, modalInnerWidth)))
 	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", modalInnerWidth)))
 
@@ -65,7 +65,7 @@ func (m Model) renderSessionSwitcherModal() string {
 	sessions := m.filteredSessions
 	if len(sessions) == 0 {
 		contentLines = append(contentLines, "  No matching sessions found.")
-		contentLines = append(contentLines, "  Type a different query or press [Esc] to cancel.")
+		contentLines = append(contentLines, "  Type a different search keyword or press [Esc] to cancel.")
 	} else {
 		// Calculate viewport window for switcher
 		startIdx := m.switcherSelectedIdx - (maxCards / 2)
@@ -124,8 +124,8 @@ func (m Model) renderSessionSwitcherModal() string {
 
 	// 4. Modal Footer / Keybindings
 	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", modalInnerWidth)))
-	footerHints := fmt.Sprintf(" %s Select  %s Switch  %s Close  %s Filter",
-		KeyStyle.Render("[↑/↓]"), KeyStyle.Render("[Enter]"), KeyStyle.Render("[Esc/Ctrl+p]"), KeyStyle.Render("[Type]"))
+	footerHints := fmt.Sprintf(" %s Move  %s Attach  %s Cancel  %s Filter",
+		KeyStyle.Render("[Ctrl+j/k, ↑/↓]"), KeyStyle.Render("[Enter]"), KeyStyle.Render("[Esc/Ctrl+p]"), KeyStyle.Render("[Type]"))
 	contentLines = append(contentLines, lipgloss.NewStyle().MaxWidth(modalInnerWidth).Render(footerHints))
 
 	modalBox := lipgloss.NewStyle().

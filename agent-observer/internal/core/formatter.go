@@ -41,10 +41,10 @@ func FormatTokenBreakdownTable(e UnifiedAgentEvent) string {
 
 	var sb strings.Builder
 
-	// ==================== PANEL 1: GOOGLE OFFICIAL TELEMETRY ====================
+	// ==================== PANEL 1: OFFICIAL TELEMETRY ====================
 	sb.WriteString("┌────────────────────────────────────────────────────────────────────────┐\n")
 	if t.IsOfficialData {
-		sb.WriteString(fmt.Sprintf("│  👑 TRACK 1: Google 官方真實帳單與物理快取 (Official Telemetry)        │\n"))
+		sb.WriteString(fmt.Sprintf("│  👑 TRACK 1: Official Gemini Physics Telemetry (Billing Ground Truth)  │\n"))
 		sb.WriteString("├──────────────────────────┬─────────────────────────────────────────────┤\n")
 		modelName := t.OfficialModel
 		if modelName == "" {
@@ -55,18 +55,20 @@ func FormatTokenBreakdownTable(e UnifiedAgentEvent) string {
 		sb.WriteString(fmt.Sprintf("│    Context Progress Bar  │ [%-25s]           │\n", renderProgressBar(ctxUsagePct, 25)))
 		sb.WriteString(fmt.Sprintf("│ ⚡ Prefix Cache Hit      │ %-7d Tokens (%5.1f%%) %-21s│\n", t.CachedTokens, t.CacheHitRate, cacheBadge))
 		sb.WriteString(fmt.Sprintf("│ 🔥 New Billable Tokens   │ %-7d Tokens (%5.1f%%)                           │\n", t.NewTokens, 100.0-t.CacheHitRate))
+		sb.WriteString(fmt.Sprintf("│ ⏱️ Response Timestamp    │ %-43s │\n", e.Timestamp.Format("2006-01-02 15:04:05")))
 	} else {
-		sb.WriteString(fmt.Sprintf("│  🔍 TRACK 1: 本地 BPE 即時預估 (Awaiting Google API Response...)        │\n"))
+		sb.WriteString(fmt.Sprintf("│  🔍 TRACK 1: Local BPE Estimation (Awaiting Google API Response...)    │\n"))
 		sb.WriteString("├──────────────────────────┬─────────────────────────────────────────────┤\n")
 		sb.WriteString(fmt.Sprintf("│ 📊 Estimated Context     │ %-7d Tokens %-32s│\n", total, cacheBadge))
 		sb.WriteString(fmt.Sprintf("│ ⚡ Estimated Cache Hit   │ %-7d Tokens (%5.1f%%)                           │\n", t.CachedTokens, t.CacheHitRate))
 		sb.WriteString(fmt.Sprintf("│ 🔥 Estimated New Tokens  │ %-7d Tokens (%5.1f%%)                           │\n", t.NewTokens, 100.0-t.CacheHitRate))
+		sb.WriteString(fmt.Sprintf("│ ⏱️ Response Timestamp    │ %-43s │\n", e.Timestamp.Format("2006-01-02 15:04:05")))
 	}
 	sb.WriteString("└──────────────────────────┴─────────────────────────────────────────────┘\n")
 
 	// ==================== PANEL 2: 5-DIMENSION CONTEXT ANATOMY ====================
 	sb.WriteString("┌────────────────────────────────────────────────────────────────────────┐\n")
-	sb.WriteString("│  🔬 TRACK 2: 本地 5 維度 Context 載荷深度解剖 (Context Anatomy)         │\n")
+	sb.WriteString("│  🔬 TRACK 2: Local 5-Dimension Context Anatomy (Payload Analysis)      │\n")
 	sb.WriteString("├───────────────────────┬──────────────┬─────────────┬───────────────────┤\n")
 	sb.WriteString("│ Context Dimension     │ Tokens       │ Share (%)   │ Visual Breakdown  │\n")
 	sb.WriteString("├───────────────────────┼──────────────┼─────────────┼───────────────────┤\n")

@@ -62,11 +62,11 @@ func (m Model) renderDashboardView() string {
 		panelInnerWidth = 40
 	}
 
-	// ==================== PANEL 1: GOOGLE OFFICIAL TELEMETRY ====================
+	// ==================== PANEL 1: OFFICIAL TELEMETRY & CACHE (TRACK 1) ====================
 	var p1 strings.Builder
-	p1Title := "👑 TRACK 1: Google 官方真實物理帳單 (Official Gemini Telemetry)"
+	p1Title := "👑 TRACK 1: Official Gemini Physics Telemetry (Ground Truth Billing)"
 	if isPlayback {
-		p1Title = fmt.Sprintf("👑 TRACK 1: 官方帳單 %s",
+		p1Title = fmt.Sprintf("👑 TRACK 1: Official Telemetry %s",
 			lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("(⏮️ PLAYBACK: Step #%d | %d of %d)", e.StepIndex, m.dashboardIdx+1, len(m.history))))
 	}
 	p1.WriteString(TitleStyle.Render(p1Title) + "\n")
@@ -76,19 +76,27 @@ func (m Model) renderDashboardView() string {
 		modelName = "gemini-3.7-flash-high (Official API)"
 	}
 
+	timeStr := e.Timestamp.Format("2006-01-02 15:04:05")
+	if e.Timestamp.IsZero() {
+		timeStr = "N/A"
+	}
+
+	// 5 Comprehensive Points for Track 1
 	p1.WriteString(fmt.Sprintf("  • 🎯 Backend Model         : %s\n", lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName)))
 	p1.WriteString(fmt.Sprintf("  • 📊 Total Active Context  : %s Tokens (%5.1f%% of %dk Window)\n",
 		lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1000))
 	p1.WriteString(fmt.Sprintf("  • ⚡ Prefix Cache Hit      : %s Tokens (%5.1f%%)  %s\n",
 		BadgeSuccess.Render(fmt.Sprintf("%d", t.CachedTokens)), t.CacheHitRate, cacheBadge))
-	p1.WriteString(fmt.Sprintf("  • 🔥 New Billable Tokens   : %s Tokens (%5.1f%%)",
+	p1.WriteString(fmt.Sprintf("  • 🔥 New Billable Tokens   : %s Tokens (%5.1f%%)\n",
 		lipgloss.NewStyle().Foreground(ColorHighlight).Render(fmt.Sprintf("%d", t.NewTokens)), 100.0-t.CacheHitRate))
+	p1.WriteString(fmt.Sprintf("  • ⏱️ Response / Event Time : %s  (Step #%03d | Status: %s)",
+		lipgloss.NewStyle().Foreground(ColorLightText).Render(timeStr), e.StepIndex, e.Status))
 
 	panel1Box := PanelStyle.Width(panelInnerWidth).Render(p1.String())
 
-	// ==================== PANEL 2: 5-DIMENSION CONTEXT ANATOMY ====================
+	// ==================== PANEL 2: LOCAL 5-DIMENSION CONTEXT ANATOMY (TRACK 2) ====================
 	var p2 strings.Builder
-	p2Title := TitleStyle.Render("🔬 TRACK 2: 本地 5 維度 Context 載荷深度解剖 (Context Payload Anatomy)")
+	p2Title := TitleStyle.Render("🔬 TRACK 2: Local 5-Dimension Context Anatomy (Payload Analysis)")
 	p2.WriteString(p2Title + "\n")
 
 	p2.WriteString(fmt.Sprintf("  1. System Instruction : %-8d Tokens (%5.1f%%)  [%s]\n",
@@ -110,7 +118,7 @@ func (m Model) renderDashboardView() string {
 
 	panel2Box := PanelStyle.Width(panelInnerWidth).Render(p2.String())
 
-	if m.height >= 32 {
+	if m.height >= 33 {
 		var p3 strings.Builder
 		p3.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render("📋 Recent Live Events (Press [Enter] or [2] to inspect history):") + "\n")
 		eventsCount := 2
@@ -134,7 +142,6 @@ func (m Model) renderDashboardView() string {
 }
 
 func (m Model) renderHistoryView() string {
-	// Full width allocation: leftOuterWidth + rightOuterWidth = m.width (100% full screen width)
 	leftOuterWidth := int(float64(m.width) * 0.32)
 	if leftOuterWidth < 26 {
 		leftOuterWidth = 26
@@ -147,9 +154,6 @@ func (m Model) renderHistoryView() string {
 	listInnerWidth := leftOuterWidth - 4
 	detailInnerWidth := rightOuterWidth - 4
 
-	// Total screen height = 1 (header) + OuterBoxHeight (m.height - 2) + 1 (footer) = m.height
-	// OuterBoxHeight = Top Border (1) + InnerLines (innerRowsLimit) + Bottom Border (1)
-	// Therefore: innerRowsLimit = m.height - 4
 	innerRowsLimit := m.height - 4
 	if innerRowsLimit < 4 {
 		innerRowsLimit = 4
@@ -166,7 +170,6 @@ func (m Model) renderHistoryView() string {
 	if len(m.history) == 0 {
 		leftLines = append(leftLines, truncateVisualWidth("  No events yet...", listInnerWidth-2))
 	} else {
-		// Each step card takes 2 lines (Line 1: Header/Badge/Time, Line 2: Summary)
 		maxCards := (innerRowsLimit - 1) / 2
 		if maxCards < 1 {
 			maxCards = 1
@@ -198,11 +201,9 @@ func (m Model) renderHistoryView() string {
 			typeBadge := fmt.Sprintf("[%03d|%-5s]", e.StepIndex, shortenType(string(e.Type)))
 			timeStr := e.Timestamp.Format("15:04:05")
 
-			// Card Line 1: Header + Type + Timestamp
 			cardLine1 := fmt.Sprintf("%s%s %s", prefix, typeBadge, timeStr)
 			leftLines = append(leftLines, headerStyle.Render(truncateVisualWidth(cardLine1, listInnerWidth-2)))
 
-			// Card Line 2: Summary preview (indented by 2 spaces)
 			summaryText := e.Summary
 			if summaryText == "" {
 				summaryText = "(empty content)"
@@ -236,17 +237,16 @@ func (m Model) renderHistoryView() string {
 		}
 		rightTitle = fmt.Sprintf("🔍 Inspector (VISUAL: %d lines | [y] Copy)", end-start+1)
 	} else if m.focusPane == FocusDetail {
-		rightTitle = "🔍 Step Inspector ◀ [Scroll: ↑/↓, Ctrl+u/d, g/G]"
+		rightTitle = "🔍 Step Inspector ◀ [Scroll: j/k, Ctrl+u/d, g/G]"
 	}
 	rightLines = append(rightLines, TitleStyle.Render(truncateVisualWidth(rightTitle, detailInnerWidth-2)))
 
 	selectedEvent, hasEvent := m.getSelectedEvent()
 	if hasEvent {
-		// Build pre-wrapped virtual buffer where every line strictly fits detailInnerWidth-2
 		allInspectorLines := m.buildFullInspectorLines(selectedEvent, detailInnerWidth-2)
 		totalInspectorLines := len(allInspectorLines)
 
-		availableLines := innerRowsLimit - 1 // 1 line reserved for title
+		availableLines := innerRowsLimit - 1
 		if availableLines < 1 {
 			availableLines = 1
 		}
@@ -273,7 +273,6 @@ func (m Model) renderHistoryView() string {
 
 		for i := currentScroll; i < endLine; i++ {
 			rawLine := allInspectorLines[i]
-			// Strict visual width clamp to guarantee zero terminal line wrapping
 			lineText := truncateVisualWidth(rawLine, detailInnerWidth-2)
 			if m.isVisualMode && i >= vStart && i <= vEnd {
 				rightLines = append(rightLines, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorPrimary).Render(lineText))
@@ -318,7 +317,6 @@ func renderColorBar(pct float64, totalBlocks int, color lipgloss.TerminalColor) 
 }
 
 // truncateVisualWidth truncates a string by its visual terminal column width (CJK & Emoji aware)
-// This implements CSS `overflow: hidden; white-space: nowrap` for terminal grid cells.
 func truncateVisualWidth(s string, maxVisualWidth int) string {
 	s = strings.ReplaceAll(s, "\n", " ")
 	s = strings.ReplaceAll(s, "\r", "")

@@ -48,7 +48,7 @@ func TestCJKAndLongPayloadZeroHeightVariation(t *testing.T) {
 
 		// Verify footer shortcuts are strictly on line h-1
 		footerLine := lines[size.h-1]
-		if !strings.Contains(footerLine, "Dashboard") && !strings.Contains(footerLine, "Quit") && !strings.Contains(footerLine, "Focus") {
+		if !strings.Contains(footerLine, "Help") && !strings.Contains(footerLine, "Quit") && !strings.Contains(footerLine, "Focus") {
 			t.Errorf("[%dx%d] Expected footer on line %d, got: %s", size.w, size.h, size.h-1, footerLine)
 		}
 	}
@@ -64,8 +64,8 @@ func TestSessionSwitcherModalRenderingAndFilter(t *testing.T) {
 	}
 
 	view := m.View()
-	if !strings.Contains(view, "Switch Session") {
-		t.Errorf("Expected modal title 'Switch Session' in view, got: %s", view)
+	if !strings.Contains(view, "SWITCH SESSION") {
+		t.Errorf("Expected modal title 'SWITCH SESSION' in view, got: %s", view)
 	}
 
 	// Test Ctrl+P toggle
@@ -90,6 +90,67 @@ func TestSessionSwitcherModalRenderingAndFilter(t *testing.T) {
 	}
 }
 
+func TestHelpModalRenderingAndToggle(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 30
+
+	// 1. Press '?' to open help modal
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+	m = updated.(Model)
+	if !m.isHelpModalOpen {
+		t.Fatal("Expected Help Modal to open after pressing '?'")
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "KEYBOARD SHORTCUTS") {
+		t.Errorf("Expected 'KEYBOARD SHORTCUTS' in view, got: %s", view)
+	}
+
+	// 2. Press '?' or 'Esc' to close help modal
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.isHelpModalOpen {
+		t.Error("Expected Help Modal to close after pressing 'Esc'")
+	}
+}
+
+func TestHistoryInspectionAntiJitterLock(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.activeView = ViewHistory
+	m.focusPane = FocusList
+
+	// Seed with 5 historical steps
+	for i := 0; i < 5; i++ {
+		m.history = append(m.history, core.UnifiedAgentEvent{
+			StepIndex: i,
+			Summary:   "Step " + string(rune('0'+i)),
+			Timestamp: time.Now(),
+		})
+	}
+	m.selectedIdx = 2 // Pointing to Step 2 (realIdx = 5 - 1 - 2 = 2)
+
+	selectedEv, _ := m.getSelectedEvent()
+	if selectedEv.StepIndex != 2 {
+		t.Fatalf("Expected selected step to be 2, got %d", selectedEv.StepIndex)
+	}
+
+	// New event arrives while user is inspecting past step
+	newEvent := core.UnifiedAgentEvent{
+		StepIndex: 5,
+		Summary:   "New incoming Step 5",
+		Timestamp: time.Now(),
+	}
+	updated, _ := m.Update(AgentEventMsg(newEvent))
+	m = updated.(Model)
+
+	// Verify that the inspected step REMAINS step 2!
+	selectedEvAfter, _ := m.getSelectedEvent()
+	if selectedEvAfter.StepIndex != 2 {
+		t.Fatalf("Expected inspected step to remain locked at 2, got %d", selectedEvAfter.StepIndex)
+	}
+}
+
 func TestSessionSwitcherKeyboardNavigationAndActions(t *testing.T) {
 	m := NewModel("test-session-1", true)
 	m.width = 80
@@ -104,18 +165,18 @@ func TestSessionSwitcherKeyboardNavigationAndActions(t *testing.T) {
 	m.filteredSessions = m.availableSessions
 	m.switcherSelectedIdx = 0
 
-	// 1. Test Navigation Down
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	// 1. Test Navigation Down with Ctrl+j (Vim)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
 	m = updated.(Model)
 	if m.switcherSelectedIdx != 1 {
-		t.Errorf("Expected switcherSelectedIdx=1 after down key, got %d", m.switcherSelectedIdx)
+		t.Errorf("Expected switcherSelectedIdx=1 after Ctrl+j, got %d", m.switcherSelectedIdx)
 	}
 
-	// 2. Test Navigation Up
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	// 2. Test Navigation Up with Ctrl+k (Vim)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlK})
 	m = updated.(Model)
 	if m.switcherSelectedIdx != 0 {
-		t.Errorf("Expected switcherSelectedIdx=0 after up key, got %d", m.switcherSelectedIdx)
+		t.Errorf("Expected switcherSelectedIdx=0 after Ctrl+k, got %d", m.switcherSelectedIdx)
 	}
 
 	// 3. Test Typing Filter

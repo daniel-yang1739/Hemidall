@@ -51,6 +51,7 @@ type Model struct {
 	eventCount            int
 	lastActivity          time.Time
 	isSessionSwitcherOpen bool
+	isHelpModalOpen       bool
 	sessionSearchQuery    string
 	availableSessions     []antigravity.SessionInfo
 	filteredSessions      []antigravity.SessionInfo
@@ -74,6 +75,7 @@ func NewModel(sessionID string, openSwitcherOnStart bool) Model {
 		filteredSessions:      sessions,
 		switcherSelectedIdx:   0,
 		isSessionSwitcherOpen: openSwitcherOnStart,
+		isHelpModalOpen:       false,
 	}
 
 	// If sessionID matches one of discovered sessions, select it in the switcher
@@ -109,7 +111,7 @@ func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) [
 	var lines []string
 	t := e.Tokens
 
-	headerLine1 := fmt.Sprintf("• Step %d (%s) at %s | Type: %s | Model: %s",
+	headerLine1 := fmt.Sprintf("• Step %03d (%s) at %s | Type: %s | Model: %s",
 		e.StepIndex, e.Status, e.Timestamp.Format("15:04:05"), e.Type, t.OfficialModel)
 	lines = append(lines, wrapVisualLines(headerLine1, maxWidth)...)
 
@@ -135,7 +137,7 @@ func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) [
 		lines = append(lines, strings.Repeat("─", sepWidth))
 	}
 
-	if e.Thinking != "" {
+	if strings.TrimSpace(e.Thinking) != "" {
 		lines = append(lines, "🧠 Thinking (Chain of Thought):")
 		lines = append(lines, wrapVisualLines(e.Thinking, maxWidth)...)
 		lines = append(lines, strings.Repeat("─", sepWidth))
@@ -169,10 +171,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.lastActivity = time.Now()
 
 		wasAtLatestDashboard := (m.dashboardIdx == len(m.history)-1 || len(m.history) == 0)
+		isInspectingPastStep := (m.activeView == ViewHistory && (m.selectedIdx > 0 || m.focusPane == FocusDetail))
+
 		m.history = append(m.history, event)
 
 		if wasAtLatestDashboard {
 			m.dashboardIdx = len(m.history) - 1
+		}
+
+		// If inspecting a past step or focused on the Inspector, lock the current inspection step in place
+		if isInspectingPastStep {
+			m.selectedIdx++
+			if m.historyOffset > 0 {
+				m.historyOffset++
+			}
 		}
 		return m, nil
 
@@ -193,6 +205,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.detailScroll = 0
 		m.historyOffset = 0
 		m.isSessionSwitcherOpen = false
+		m.isHelpModalOpen = false
 		m.activeView = ViewDashboard
 		m.clipboardStatus = fmt.Sprintf("🟢 Attached session %s (%d steps)", truncateStr(msg.SessionID, 8), len(events))
 		m.clipboardStatusTime = time.Now()
@@ -213,6 +226,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.detailScroll = 0
 		m.historyOffset = 0
 		m.isSessionSwitcherOpen = false
+		m.isHelpModalOpen = false
 		m.activeView = ViewDashboard
 		m.clipboardStatus = fmt.Sprintf("🟢 Switched to session %s (%d steps)", truncateStr(msg.SessionID, 8), len(msg.Events))
 		m.clipboardStatusTime = time.Now()
@@ -221,10 +235,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		key := msg.String()
 
+		// Global toggle for Help Modal: ? or F1
+		if key == "?" || key == "f1" {
+			if !m.isSessionSwitcherOpen {
+				m.isHelpModalOpen = !m.isHelpModalOpen
+				return m, nil
+			}
+		}
+
+		// Help Modal Interaction
+		if m.isHelpModalOpen {
+			if key == "esc" || key == "?" || key == "q" || key == "enter" {
+				m.isHelpModalOpen = false
+				return m, nil
+			}
+			return m, nil
+		}
+
 		// Global toggle for session switcher modal: Ctrl+P
 		if key == "ctrl+p" {
 			m.isSessionSwitcherOpen = !m.isSessionSwitcherOpen
 			if m.isSessionSwitcherOpen {
+				m.isHelpModalOpen = false
 				m.availableSessions, _ = antigravity.DiscoverAllSessions()
 				m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery)
 				m.switcherSelectedIdx = 0
@@ -238,20 +270,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// ==================== SESSION SWITCHER MODAL INTERACTION ====================
+		// ==================== SESSION SWITCHER MODAL INTERACTION (VIM-FIRST) ====================
 		if m.isSessionSwitcherOpen {
 			switch key {
 			case "esc":
 				m.isSessionSwitcherOpen = false
 				return m, nil
-			case "up", "ctrl+k":
+			case "up", "ctrl+k", "ctrl+p":
 				if m.switcherSelectedIdx > 0 {
 					m.switcherSelectedIdx--
 				}
 				return m, nil
-			case "down", "ctrl+j":
+			case "down", "ctrl+j", "ctrl+n", "tab":
 				if m.switcherSelectedIdx < len(m.filteredSessions)-1 {
 					m.switcherSelectedIdx++
+				}
+				return m, nil
+			case "shift+tab":
+				if m.switcherSelectedIdx > 0 {
+					m.switcherSelectedIdx--
 				}
 				return m, nil
 			case "enter":
@@ -269,6 +306,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			default:
+				// If search query is empty, allow direct 'j' and 'k' navigation without typing
+				if m.sessionSearchQuery == "" {
+					if key == "j" {
+						if m.switcherSelectedIdx < len(m.filteredSessions)-1 {
+							m.switcherSelectedIdx++
+						}
+						return m, nil
+					} else if key == "k" {
+						if m.switcherSelectedIdx > 0 {
+							m.switcherSelectedIdx--
+						}
+						return m, nil
+					}
+				}
+
 				// Type characters to filter sessions
 				if len(msg.Runes) > 0 {
 					m.sessionSearchQuery += string(msg.Runes)
@@ -284,10 +336,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch key {
 		case "q", "ctrl+c":
 			return m, tea.Quit
-		case "1":
+		case "1", "d":
 			m.activeView = ViewDashboard
 			return m, nil
-		case "2":
+		case "2", "s":
 			m.activeView = ViewHistory
 			m.focusPane = FocusList
 			return m, nil
@@ -572,6 +624,10 @@ func (m Model) View() string {
 		m.height = 24
 	}
 
+	if m.isHelpModalOpen {
+		return m.renderHelpModal()
+	}
+
 	if m.isSessionSwitcherOpen {
 		return m.renderSessionSwitcherModal()
 	}
@@ -589,7 +645,6 @@ func (m Model) View() string {
 
 	fullView := lipgloss.JoinVertical(lipgloss.Left, header, content, footer)
 
-	// Strictly crop lines and width to guarantee 100% fit without terminal wrapping or scrolling
 	lines := strings.Split(fullView, "\n")
 	if len(lines) > m.height && m.height > 0 {
 		lines = lines[:m.height]
@@ -643,21 +698,22 @@ func (m Model) renderFooter() string {
 	var hints string
 	if m.activeView == ViewHistory {
 		if m.isVisualMode {
-			hints = fmt.Sprintf(" %s Yank  %s Adjust  %s Cancel",
-				KeyStyle.Render("[y]"), KeyStyle.Render("[↑/↓]"), KeyStyle.Render("[Esc]"))
+			hints = fmt.Sprintf(" %s Yank  %s Move  %s Cancel",
+				KeyStyle.Render("[y]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Esc]"))
 		} else if m.focusPane == FocusList {
-			hints = fmt.Sprintf(" %s Focus Detail  %s Select  %s Switch Session  %s Dashboard  %s Quit",
-				KeyStyle.Render("[Tab/Enter]"), KeyStyle.Render("[↑/↓]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[1]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Focus Detail  %s Select  %s Switch  %s Help  %s Dash  %s Quit",
+				KeyStyle.Render("[Tab/l]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[?]"), KeyStyle.Render("[1]"), KeyStyle.Render("[q]"))
 		} else {
-			hints = fmt.Sprintf(" %s Visual  %s Focus List  %s Switch Session  %s Scroll  %s Quit",
-				KeyStyle.Render("[v]"), KeyStyle.Render("[Tab/Esc]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[↑/↓]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Visual  %s Focus List  %s Scroll  %s Help  %s Switch  %s Quit",
+				KeyStyle.Render("[v]"), KeyStyle.Render("[Tab/h]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[?]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[q]"))
 		}
 	} else {
 		if len(m.history) > 0 {
-			hints = fmt.Sprintf(" %s Inspect Step  %s Playback  %s Switch Session  %s LIVE  %s Quit",
-				KeyStyle.Render("[Enter]"), KeyStyle.Render("[↑/↓]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[G]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Inspect  %s Playback  %s LIVE  %s Switch  %s Help  %s Quit",
+				KeyStyle.Render("[Enter/h]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[G]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[?]"), KeyStyle.Render("[q]"))
 		} else {
-			hints = fmt.Sprintf(" %s Switch Session  %s History  %s Quit", KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[2]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Switch Session  %s Help  %s History  %s Quit",
+				KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[?]"), KeyStyle.Render("[2]"), KeyStyle.Render("[q]"))
 		}
 	}
 	return lipgloss.NewStyle().MaxWidth(m.width).Render(hints)

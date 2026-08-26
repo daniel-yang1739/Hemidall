@@ -1,5 +1,11 @@
 # ⏱️ LLM Wiki Chrono Log
 
+## [2026-08-27] feature | 實作 5 大 TUI 體驗與 Vim-First 終極升級 (TUI UX & Anti-Jitter Lock v0.5.1)：
+1. **全介面 100% 純英文標準化 (English-Only TUI)**：全面將面板標題、Badge 狀態、度量欄位與快捷提示英文標準化（如 `Official Gemini Physics Telemetry`、`Local 5-Dimension Context Anatomy`），符合終端機專業工程標準；
+2. **Track 1 擴充第 5 點響應時間戳 (Response / Event Time)**：在官方遙測面板新增 `⏱️ Response / Event Time : 2026-08-27 00:34:18 (Step #1957 | Status: DONE)`，提供精確秒級時序對照；
+3. **新增全域快捷鍵浮動面板 (Floating Help Modal [?])**：支援按 `?` 或 `F1` 彈出居中浮動快捷鍵作弊條（包含 Global、Dashboard、History、Visual 與 Switcher 完整操作說明），按 `Esc` 或 `?` 即刻收合；
+4. **Vim-First 搜尋面板操作**：在 Session Switcher 支援 `Ctrl+j/k`、`Ctrl+n/p`、`Tab/Shift+Tab` 以及空搜尋列下的 `j/k` 快速上下移動；
+5. **歷史步驟防抖動鎖定機制 (History Inspection Anti-Jitter Lock)**：徹底解決回看歷史或在右欄 Inspector 滾動時一有新事件畫面就亂跳亂滾的問題；當 `selectedIdx > 0` 或 `focusPane == FocusDetail` 時，新事件進入自動同步推進索引，保證所檢視的歷史步驟與滾動位置 100% 絕對鎖定凍結！
 ## [2026-08-27] feature | 實作全域會話快切浮動面板與即時動態掛載 (Session Quick Switcher & Dynamic Discovery v0.5.0)：開機預設彈出居中浮動面板 (Float Modal Panel)，自動掃描 `~/.gemini/antigravity-cli/conversations/` 探索所有活躍與歷史會話（依最後修改時序降序排列，展示 Step 數與檔案大小）；支援按鍵即時模糊過濾 (Fuzzy Search)、[↑/↓/Ctrl+j/k] 巡覽、[Enter] 毫秒級無縫切換會話並載入全量歷史步驟，並在全視圖支援 [Ctrl+P] 全域隨時呼叫與切換
 ## [2026-08-26] refactor | 優化根目錄導覽與審查報告時間戳規範 (Root Index Refinement & Review Timestamping)：依使用者指示移除 `docs/index.md` 根目錄冗餘的 ASCII 檔案結構樹（僅保留在 `docs/02_wiki/index.md` 與 `04_meta/02_Obsidian_Vault_Topology.md`），使頂層導覽保持極致精煉；同時將 `docs/reviews/` 下全體審查報告書標準化升級為包含「建立時間」元數據標頭與精確至「秒」的時序檔名（`YYYY-MM-DD_HH-MM-SS_<topic>_audit_report.md`），並同步更新 `SKILL.md` 審查憲法規範
 ## [2026-08-26] distill-production-ready | 透過 wiki-distiller 完成全量素材深度提煉與二次編譯 (Wiki Distillation v0.5.0)：經 18 位世界前 1% 頂尖專家與讀者展開雙輪對抗審查，大檢察官終審簽核通過。新增 3 篇全新世界級知識卡片：`01_theory/04_Context_Compaction_and_Summarization.md` (雙水位線壓縮與遞迴摘要)、`02_architecture/06_Dual_Track_Telemetry_and_Window_Accounting.md` (雙軌遙測與倒推滑動窗口)、`02_architecture/07_TUI_Engine_and_Terminal_Layout_Mechanics.md` (全螢幕 TUI 引擎與終端盒模型)；深度修訂 `01_theory/03`、`02_architecture/03`、`03_planning/04`；產出全景審查報告書 `docs/reviews/2026-08-26_23-13-21_wiki_distillation_comprehensive_audit_report.md`；同步更新 `docs/index.md`、`02_wiki/index.md` 與 `feedbacks/` 反饋記憶庫；貫徹「消化即刪除 (Digest & Delete)」鐵律安全清理全量 9 篇 Raw 素材，保持素材池極致純淨 (全庫共 16 篇世界級 Wiki 卡片)
