@@ -853,6 +853,7 @@ func (m Model) renderFooter() string {
 }
 
 // wrapVisualLines wraps text into slices where each chunk strictly has visual terminal column width <= maxWidth.
+// It is fully aware of ANSI escape sequences and CJK double-width characters.
 func wrapVisualLines(text string, maxWidth int) []string {
 	if maxWidth <= 0 {
 		return []string{""}
@@ -869,7 +870,22 @@ func wrapVisualLines(text string, maxWidth int) []string {
 		runes := []rune(line)
 		var currentChunk []rune
 		currentW := 0
+		inAnsi := false
+
 		for _, r := range runes {
+			if r == 0x1b {
+				inAnsi = true
+				currentChunk = append(currentChunk, r)
+				continue
+			}
+			if inAnsi {
+				currentChunk = append(currentChunk, r)
+				if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+					inAnsi = false
+				}
+				continue
+			}
+
 			rw := runewidth.RuneWidth(r)
 			if currentW+rw > maxWidth {
 				if len(currentChunk) > 0 {

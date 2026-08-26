@@ -326,7 +326,7 @@ func renderColorBar(pct float64, totalBlocks int, color lipgloss.TerminalColor) 
 	return filledStr + emptyStr
 }
 
-// truncateVisualWidth truncates a string by its visual terminal column width (CJK & Emoji aware)
+// truncateVisualWidth truncates a string by its visual terminal column width (CJK, Emoji & ANSI escape aware)
 func truncateVisualWidth(s string, maxVisualWidth int) string {
 	s = strings.ReplaceAll(s, "\n", " ")
 	s = strings.ReplaceAll(s, "\r", "")
@@ -337,8 +337,25 @@ func truncateVisualWidth(s string, maxVisualWidth int) string {
 	}
 
 	w := 0
+	runes := []rune(s)
 	var res []rune
-	for _, r := range []rune(s) {
+	inAnsi := false
+
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
+		if r == 0x1b {
+			inAnsi = true
+			res = append(res, r)
+			continue
+		}
+		if inAnsi {
+			res = append(res, r)
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+				inAnsi = false
+			}
+			continue
+		}
+
 		rw := runewidth.RuneWidth(r)
 		if w+rw > maxVisualWidth {
 			break
