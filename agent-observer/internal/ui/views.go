@@ -131,17 +131,17 @@ func (m Model) renderDashboardView() string {
 
 	// If at least 5 lines remaining (1 title + 2 events + 2 borders = 5), render Panel 3 in a rounded box
 	if remainingLines >= 5 {
-		maxEventLines := remainingLines - 3 // reserve 1 for title, 2 for top/bottom borders
-		if maxEventLines > 6 {
-			maxEventLines = 6
+		p3InnerHeight := remainingLines - 2
+		var p3Lines []string
+		p3Lines = append(p3Lines, TitleStyle.Render("RECENT LIVE EVENTS (Press [Enter] or [2] to inspect history)"))
+
+		maxEventLines := p3InnerHeight - 1 // 1 reserved for title
+		if maxEventLines < 1 {
+			maxEventLines = 1
 		}
 
-		var p3 strings.Builder
-		p3Title := TitleStyle.Render("RECENT LIVE EVENTS (Press [Enter] or [2] to inspect history)")
-		p3.WriteString(p3Title + "\n")
-
 		if len(m.history) == 0 {
-			p3.WriteString("  No events recorded yet...")
+			p3Lines = append(p3Lines, "  No events recorded yet...")
 		} else {
 			startIdx := len(m.history) - maxEventLines
 			if startIdx < 0 {
@@ -152,15 +152,19 @@ func (m Model) renderDashboardView() string {
 				typeBadge := fmt.Sprintf("[%03d|%-5s]", ev.StepIndex, shortenType(string(ev.Type)))
 				timeStr := ev.Timestamp.Format("15:04:05")
 				eventLine := fmt.Sprintf("  %s %s  %s", typeBadge, timeStr, ev.Summary)
-				if i == len(m.history)-1 {
-					p3.WriteString(truncateVisualWidth(eventLine, panelInnerWidth-2))
-				} else {
-					p3.WriteString(truncateVisualWidth(eventLine, panelInnerWidth-2) + "\n")
-				}
+				p3Lines = append(p3Lines, truncateVisualWidth(eventLine, panelInnerWidth-2))
 			}
 		}
 
-		panel3Box := PanelStyle.Width(panelInnerWidth).Render(p3.String())
+		// Pad p3Lines to strictly fill p3InnerHeight
+		for len(p3Lines) < p3InnerHeight {
+			p3Lines = append(p3Lines, "")
+		}
+		if len(p3Lines) > p3InnerHeight {
+			p3Lines = p3Lines[:p3InnerHeight]
+		}
+
+		panel3Box := PanelStyle.Width(panelInnerWidth).Render(strings.Join(p3Lines, "\n"))
 		return lipgloss.JoinVertical(lipgloss.Left, panel1Box, panel2Box, panel3Box)
 	}
 

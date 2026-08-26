@@ -48,37 +48,62 @@ func TestCJKAndLongPayloadZeroHeightVariation(t *testing.T) {
 
 		// Verify footer shortcuts are strictly on line h-1
 		footerLine := lines[size.h-1]
-		if !strings.Contains(footerLine, "Help") && !strings.Contains(footerLine, "Quit") && !strings.Contains(footerLine, "Focus") {
+		if !strings.Contains(footerLine, "Shortcuts") && !strings.Contains(footerLine, "Quit") && !strings.Contains(footerLine, "Docs") {
 			t.Errorf("[%dx%d] Expected footer on line %d, got: %s", size.w, size.h, size.h-1, footerLine)
 		}
 	}
 }
 
-func TestView3HelpAndDocsRenderingAndSearch(t *testing.T) {
+func TestShortcutsFloatModalToggle(t *testing.T) {
 	m := NewModel("test-session", false)
 	m.width = 100
 	m.height = 30
 
-	// 1. Press '3' or '?' to switch to View 3
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
+	// 1. Press '?' to open shortcuts modal
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
 	m = updated.(Model)
-	if m.activeView != ViewHelp {
-		t.Fatalf("Expected activeView=ViewHelp, got %v", m.activeView)
+	if !m.isShortcutsModalOpen {
+		t.Fatal("Expected isShortcutsModalOpen=true after pressing '?'")
 	}
 
 	view := m.View()
-	if !strings.Contains(view, "HELP & ARCHITECTURE GLOSSARY") {
-		t.Errorf("Expected 'HELP & ARCHITECTURE GLOSSARY' in view, got: %s", view)
+	if !strings.Contains(view, "KEYBOARD SHORTCUTS") {
+		t.Errorf("Expected 'KEYBOARD SHORTCUTS' in view, got: %s", view)
 	}
-	if !strings.Contains(view, "Global Navigation") {
-		t.Errorf("Expected 'Global Navigation' in view, got: %s", view)
+
+	// 2. Press 'Esc' or '?' to close modal
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.isShortcutsModalOpen {
+		t.Error("Expected isShortcutsModalOpen=false after pressing Esc")
+	}
+}
+
+func TestView3DocsPageRenderingAndSearch(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 30
+
+	// 1. Press '3' or 'h' to switch to View 3 Docs
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
+	m = updated.(Model)
+	if m.activeView != ViewDocs {
+		t.Fatalf("Expected activeView=ViewDocs, got %v", m.activeView)
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "ARCHITECTURE & CONTEXT DEFINITIONS") {
+		t.Errorf("Expected 'ARCHITECTURE & CONTEXT DEFINITIONS' in view, got: %s", view)
+	}
+	if !strings.Contains(view, "5 Dimensions of Context Anatomy") {
+		t.Errorf("Expected '5 Dimensions of Context Anatomy' in view, got: %s", view)
 	}
 
 	// 2. Press '/' to activate search mode
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
 	m = updated.(Model)
-	if !m.isHelpSearching {
-		t.Error("Expected isHelpSearching=true after pressing '/'")
+	if !m.isDocsSearching {
+		t.Error("Expected isDocsSearching=true after pressing '/'")
 	}
 
 	// 3. Type query "cot" to search
@@ -86,8 +111,8 @@ func TestView3HelpAndDocsRenderingAndSearch(t *testing.T) {
 		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 		m = updated.(Model)
 	}
-	if m.helpSearchQuery != "cot" {
-		t.Errorf("Expected helpSearchQuery='cot', got '%s'", m.helpSearchQuery)
+	if m.docsSearchQuery != "cot" {
+		t.Errorf("Expected docsSearchQuery='cot', got '%s'", m.docsSearchQuery)
 	}
 
 	filteredView := m.View()
@@ -96,7 +121,7 @@ func TestView3HelpAndDocsRenderingAndSearch(t *testing.T) {
 	}
 
 	// 4. Type query "accumulated" to search
-	m.helpSearchQuery = ""
+	m.docsSearchQuery = ""
 	for _, r := range "accumulated" {
 		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 		m = updated.(Model)
@@ -109,23 +134,25 @@ func TestView3HelpAndDocsRenderingAndSearch(t *testing.T) {
 	// 5. Press Esc to clear search
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
-	if m.helpSearchQuery != "" {
-		t.Errorf("Expected helpSearchQuery to be cleared, got '%s'", m.helpSearchQuery)
+	if m.docsSearchQuery != "" {
+		t.Errorf("Expected docsSearchQuery to be cleared, got '%s'", m.docsSearchQuery)
 	}
 }
 
-func TestView3ZeroHeightVariationAcrossSizes(t *testing.T) {
+func TestAllViewsZeroHeightVariationAcrossSizes(t *testing.T) {
 	for _, size := range []struct{ w, h int }{{80, 24}, {100, 30}, {120, 35}, {140, 40}} {
-		m := NewModel("test-session", false)
-		m.width = size.w
-		m.height = size.h
-		m.activeView = ViewHelp
+		for _, view := range []ActiveView{ViewDashboard, ViewHistory, ViewDocs} {
+			m := NewModel("test-session", false)
+			m.width = size.w
+			m.height = size.h
+			m.activeView = view
 
-		view := m.View()
-		lines := strings.Split(view, "\n")
+			v := m.View()
+			lines := strings.Split(v, "\n")
 
-		if len(lines) != size.h {
-			t.Fatalf("[%dx%d] ViewHelp expected exactly %d lines, got %d", size.w, size.h, size.h, len(lines))
+			if len(lines) != size.h {
+				t.Fatalf("[%dx%d] View %v expected exactly %d lines, got %d", size.w, size.h, view, size.h, len(lines))
+			}
 		}
 	}
 }

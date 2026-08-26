@@ -1,5 +1,9 @@
 # ⏱️ LLM Wiki Chrono Log
 
+## [2026-08-27] refactor | 將 Shortcuts 快捷鍵與 Architecture Docs 架構定義解耦分離 (Shortcuts Float Modal & Dedicated Docs Page v0.6.2)：
+1. **Shortcuts 獨立為精簡浮動面板 (Floating Shortcuts Modal [?])**：按下 `?` 或 `F1` 彈出居中浮動快捷鍵作弊條，採定寬左右對齊，按 `Esc`、`?`、`q`、`Enter` 隨時收合返回當前畫面；
+2. **Docs 獨立為全螢幕第 3 頁面 (View 3: `[3] Docs`)**：專門收錄 5 大 Context 維度解剖、Token 計費真理與滑動窗口物理機制；支援 `/` 即時關鍵字搜尋與 `j/k` 虛擬滾動，外框高度 100% 嚴格鎖定永不推擠變形；
+3. **全螢幕 3 大視圖絕對定高防抖 (Pixel-Perfect Strict View Padding)**：在 `Model.View()` 實作全維度自動行數補齊保護，使 Dashboard、History 與 Docs 3 大頁面在 80x24、100x30、120x35、140x40 下永遠 100% 貼齊螢幕底端，底框線與 Footer 絕對無縫吸附
 ## [2026-08-27] style | 將 Recent Live Events 整合進標準圓角外框 (Consistent Rounded Box for Live Events v0.6.1)：在 Live Dashboard 視圖中，將底部 `RECENT LIVE EVENTS` 列表封裝進與 Track 1/Track 2 相同寬度與圓角風格的標準面板框線 (`PanelStyle.Width(panelInnerWidth)`)，使整個儀表板上下 3 個面板框線視覺完全一致、排版緊湊大氣且零高度溢出
 ## [2026-08-27] feature | 重構 Help & Docs 為獨立第 3 頁並支援 `/` 即時搜尋與 ANSI 冒號對齊修復 (View 3 Searchable Docs & Zero-Height Layout v0.6.0)：
 1. **升級為獨立第 3 視圖 (View 3: `[3] Help & Docs`)**：將原本高度易受限制的浮動面板徹底升級為全螢幕第 3 頁面；框體高度嚴格鎖定 `innerRowsLimit = m.height - 4`，與 Dashboard/History 完美 100% 等高，永不因內容增長推擠或改變外框大小；

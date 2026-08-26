@@ -18,7 +18,7 @@ type ActiveView int
 const (
 	ViewDashboard ActiveView = iota
 	ViewHistory
-	ViewHelp
+	ViewDocs
 )
 
 type FocusPane int
@@ -52,13 +52,14 @@ type Model struct {
 	eventCount            int
 	lastActivity          time.Time
 	isSessionSwitcherOpen bool
+	isShortcutsModalOpen  bool
 	sessionSearchQuery    string
 	availableSessions     []antigravity.SessionInfo
 	filteredSessions      []antigravity.SessionInfo
 	switcherSelectedIdx   int
-	helpSearchQuery       string
-	isHelpSearching       bool
-	helpScroll            int
+	docsSearchQuery       string
+	isDocsSearching       bool
+	docsScroll            int
 }
 
 // NewModel creates an initial TUI model
@@ -78,9 +79,10 @@ func NewModel(sessionID string, openSwitcherOnStart bool) Model {
 		filteredSessions:      sessions,
 		switcherSelectedIdx:   0,
 		isSessionSwitcherOpen: openSwitcherOnStart,
-		helpSearchQuery:       "",
-		isHelpSearching:       false,
-		helpScroll:            0,
+		isShortcutsModalOpen:  false,
+		docsSearchQuery:       "",
+		isDocsSearching:       false,
+		docsScroll:            0,
 	}
 
 	// If sessionID matches one of discovered sessions, select it in the switcher
@@ -210,6 +212,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.detailScroll = 0
 		m.historyOffset = 0
 		m.isSessionSwitcherOpen = false
+		m.isShortcutsModalOpen = false
 		m.activeView = ViewDashboard
 		m.clipboardStatus = fmt.Sprintf("Attached session %s (%d steps)", truncateStr(msg.SessionID, 8), len(events))
 		m.clipboardStatusTime = time.Now()
@@ -230,6 +233,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.detailScroll = 0
 		m.historyOffset = 0
 		m.isSessionSwitcherOpen = false
+		m.isShortcutsModalOpen = false
 		m.activeView = ViewDashboard
 		m.clipboardStatus = fmt.Sprintf("Switched to session %s (%d steps)", truncateStr(msg.SessionID, 8), len(msg.Events))
 		m.clipboardStatusTime = time.Now()
@@ -238,10 +242,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		key := msg.String()
 
+		// Global toggle for Keyboard Shortcuts Modal: ? or F1
+		if key == "?" || key == "f1" {
+			if !m.isSessionSwitcherOpen && !m.isDocsSearching {
+				m.isShortcutsModalOpen = !m.isShortcutsModalOpen
+				return m, nil
+			}
+		}
+
+		// Shortcuts Modal Interaction
+		if m.isShortcutsModalOpen {
+			if key == "esc" || key == "?" || key == "q" || key == "enter" {
+				m.isShortcutsModalOpen = false
+				return m, nil
+			}
+			return m, nil
+		}
+
 		// Global toggle for session switcher modal: Ctrl+P
 		if key == "ctrl+p" {
 			m.isSessionSwitcherOpen = !m.isSessionSwitcherOpen
 			if m.isSessionSwitcherOpen {
+				m.isShortcutsModalOpen = false
 				m.availableSessions, _ = antigravity.DiscoverAllSessions()
 				m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery)
 				m.switcherSelectedIdx = 0
@@ -317,66 +339,66 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// ==================== VIEW 3: HELP & DOCS KEYBINDINGS ====================
-		if m.activeView == ViewHelp {
-			if m.isHelpSearching {
+		// ==================== VIEW 3: DOCS & GLOSSARY KEYBINDINGS ====================
+		if m.activeView == ViewDocs {
+			if m.isDocsSearching {
 				switch key {
 				case "enter":
-					m.isHelpSearching = false
+					m.isDocsSearching = false
 					return m, nil
 				case "esc":
-					m.isHelpSearching = false
-					m.helpSearchQuery = ""
-					m.helpScroll = 0
+					m.isDocsSearching = false
+					m.docsSearchQuery = ""
+					m.docsScroll = 0
 					return m, nil
 				case "backspace":
-					if len(m.helpSearchQuery) > 0 {
-						m.helpSearchQuery = m.helpSearchQuery[:len(m.helpSearchQuery)-1]
-						m.helpScroll = 0
+					if len(m.docsSearchQuery) > 0 {
+						m.docsSearchQuery = m.docsSearchQuery[:len(m.docsSearchQuery)-1]
+						m.docsScroll = 0
 					}
 					return m, nil
 				default:
 					if len(msg.Runes) > 0 {
-						m.helpSearchQuery += string(msg.Runes)
-						m.helpScroll = 0
+						m.docsSearchQuery += string(msg.Runes)
+						m.docsScroll = 0
 						return m, nil
 					}
 				}
 			} else {
 				switch key {
 				case "/":
-					m.isHelpSearching = true
+					m.isDocsSearching = true
 					return m, nil
 				case "esc":
-					if m.helpSearchQuery != "" {
-						m.helpSearchQuery = ""
-						m.helpScroll = 0
+					if m.docsSearchQuery != "" {
+						m.docsSearchQuery = ""
+						m.docsScroll = 0
 					} else {
 						m.activeView = ViewDashboard
 					}
 					return m, nil
 				case "j", "down":
-					m.helpScroll++
+					m.docsScroll++
 					return m, nil
 				case "k", "up":
-					if m.helpScroll > 0 {
-						m.helpScroll--
+					if m.docsScroll > 0 {
+						m.docsScroll--
 					}
 					return m, nil
 				case "ctrl+d":
-					m.helpScroll += 10
+					m.docsScroll += 10
 					return m, nil
 				case "ctrl+u":
-					m.helpScroll -= 10
-					if m.helpScroll < 0 {
-						m.helpScroll = 0
+					m.docsScroll -= 10
+					if m.docsScroll < 0 {
+						m.docsScroll = 0
 					}
 					return m, nil
 				case "g", "home":
-					m.helpScroll = 0
+					m.docsScroll = 0
 					return m, nil
 				case "G", "end":
-					m.helpScroll = 9999
+					m.docsScroll = 9999
 					return m, nil
 				case "1", "d":
 					m.activeView = ViewDashboard
@@ -402,9 +424,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activeView = ViewHistory
 			m.focusPane = FocusList
 			return m, nil
-		case "3", "?", "h":
-			m.activeView = ViewHelp
-			m.isHelpSearching = false
+		case "3", "h":
+			m.activeView = ViewDocs
+			m.isDocsSearching = false
 			return m, nil
 		}
 
@@ -687,14 +709,18 @@ func (m Model) View() string {
 		m.height = 24
 	}
 
+	if m.isShortcutsModalOpen {
+		return m.renderShortcutsModal()
+	}
+
 	if m.isSessionSwitcherOpen {
 		return m.renderSessionSwitcherModal()
 	}
 
 	var content string
 	switch m.activeView {
-	case ViewHelp:
-		content = m.renderHelpView()
+	case ViewDocs:
+		content = m.renderDocsView()
 	case ViewHistory:
 		content = m.renderHistoryView()
 	default:
@@ -707,6 +733,9 @@ func (m Model) View() string {
 	fullView := lipgloss.JoinVertical(lipgloss.Left, header, content, footer)
 
 	lines := strings.Split(fullView, "\n")
+	for len(lines) < m.height && m.height > 0 {
+		lines = append(lines, "")
+	}
 	if len(lines) > m.height && m.height > 0 {
 		lines = lines[:m.height]
 	}
@@ -727,15 +756,15 @@ func (m Model) renderHeader() string {
 
 	tab1 := lipgloss.NewStyle().Foreground(ColorMuted).Render(" [1] Dashboard ")
 	tab2 := lipgloss.NewStyle().Foreground(ColorMuted).Render(" [2] History ")
-	tab3 := lipgloss.NewStyle().Foreground(ColorMuted).Render(" [3] Help & Docs ")
+	tab3 := lipgloss.NewStyle().Foreground(ColorMuted).Render(" [3] Docs ")
 
 	switch m.activeView {
 	case ViewDashboard:
 		tab1 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [1] Dashboard ")
 	case ViewHistory:
 		tab2 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [2] History ")
-	case ViewHelp:
-		tab3 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [3] Help & Docs ")
+	case ViewDocs:
+		tab3 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [3] Docs ")
 	}
 
 	viewTabs := tab1 + tab2 + tab3
@@ -763,32 +792,32 @@ func (m Model) renderFooter() string {
 	}
 
 	var hints string
-	if m.activeView == ViewHelp {
-		if m.isHelpSearching {
+	if m.activeView == ViewDocs {
+		if m.isDocsSearching {
 			hints = fmt.Sprintf(" %s Finish Search  %s Clear & Return",
 				KeyStyle.Render("[Enter]"), KeyStyle.Render("[Esc]"))
 		} else {
-			hints = fmt.Sprintf(" %s Filter  %s Scroll  %s Dash  %s Hist  %s Switch  %s Quit",
-				KeyStyle.Render("[/]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[1]"), KeyStyle.Render("[2]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Filter  %s Scroll  %s Shortcuts  %s Dash  %s Hist  %s Switch  %s Quit",
+				KeyStyle.Render("[/]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[?]"), KeyStyle.Render("[1]"), KeyStyle.Render("[2]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[q]"))
 		}
 	} else if m.activeView == ViewHistory {
 		if m.isVisualMode {
 			hints = fmt.Sprintf(" %s Yank  %s Move  %s Cancel",
 				KeyStyle.Render("[y]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Esc]"))
 		} else if m.focusPane == FocusList {
-			hints = fmt.Sprintf(" %s Focus Detail  %s Select  %s Help  %s Switch  %s Dash  %s Quit",
-				KeyStyle.Render("[Tab/l]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[3/?/h]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[1]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Focus Detail  %s Select  %s Shortcuts  %s Docs  %s Switch  %s Dash  %s Quit",
+				KeyStyle.Render("[Tab/l]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[?]"), KeyStyle.Render("[3/h]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[1]"), KeyStyle.Render("[q]"))
 		} else {
-			hints = fmt.Sprintf(" %s Visual  %s Focus List  %s Scroll  %s Help  %s Switch  %s Quit",
-				KeyStyle.Render("[v]"), KeyStyle.Render("[Tab/Esc]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[3/?/h]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Visual  %s Focus List  %s Scroll  %s Shortcuts  %s Docs  %s Switch  %s Quit",
+				KeyStyle.Render("[v]"), KeyStyle.Render("[Tab/Esc]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[?]"), KeyStyle.Render("[3/h]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[q]"))
 		}
 	} else {
 		if len(m.history) > 0 {
-			hints = fmt.Sprintf(" %s Inspect  %s Playback  %s Help  %s Switch  %s LIVE  %s Quit",
-				KeyStyle.Render("[Enter]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[3/?/h]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[G]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Inspect  %s Playback  %s Shortcuts  %s Docs  %s Switch  %s LIVE  %s Quit",
+				KeyStyle.Render("[Enter]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[?]"), KeyStyle.Render("[3/h]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[G]"), KeyStyle.Render("[q]"))
 		} else {
-			hints = fmt.Sprintf(" %s Help  %s Switch  %s History  %s Quit",
-				KeyStyle.Render("[3/?/h]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[2]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Shortcuts  %s Docs  %s Switch  %s History  %s Quit",
+				KeyStyle.Render("[?]"), KeyStyle.Render("[3/h]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[2]"), KeyStyle.Render("[q]"))
 		}
 	}
 	return lipgloss.NewStyle().MaxWidth(m.width).Render(hints)
