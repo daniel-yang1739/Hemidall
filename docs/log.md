@@ -1,5 +1,9 @@
 # ⏱️ LLM Wiki Chrono Log
 
+## [2026-08-27] feature | Docs 頁面多語言 Markdown 嵌入架構與快取標籤辭典 (Docs i18n Embedded Markdown & Cache Badge Glossary v0.7.4)：
+1. **補齊快取狀態辭典**：將 `[CACHE HIT]`、`[PARTIAL HIT]`、`[CACHE WRITE]`、`[TTL EXPIRED]` 與 `[CACHE MISS]` 5 大標籤之物理原理、計費折扣與 TTFT 延遲特性完整收錄；
+2. **多語言架構解耦 (i18n)**：將文檔按語言分流為 `internal/ui/docs/docs_zh.md` (繁體中文) 與 `docs_en.md` (英文)，透過 Go `//go:embed docs/*.md` 靜態嵌入編譯進單一執行檔；
+3. **一鍵切換中英**：在 `[3] Docs` 視圖支援按 **`L`** / **`Tab`** 即時切換繁體中文與英文辭典，標題、過濾器、內容與 Footer 均隨語言即時響應
 ## [2026-08-27] docs | 建立 Cache Hit vs Partial Hit 物理原理與狀態機分階剖析篇 (Prefix Cache Hit vs Partial Hit Mechanics v0.7.3)：在 `docs/01_raw/2026-08-27_01-52-00_cache_hit_vs_partial_hit_mechanics.md` 深度解密 Google SQLite Protobuf 底層欄位真實本質（僅存儲 `Total` 與 `Cached` 原始數值，無文字狀態欄位），剖析 Observer 領域模型如何透過 $\frac{\text{Cached}}{\text{Total}}$ 計算命中率並劃分 `WRITE`、`HIT` (>=80%)、`PARTIAL` (<80%)、`EXPIRED` 與 `MISS` 五大語意狀態，並詳解大檔案讀取/Tool Output 湧入稀釋命中率之物理場景
 ## [2026-08-27] docs | 建立開機預熱管線雙重分析漏洞排查篇並標準化 Raw 檔名至「秒」 (Startup Warmup Pipeline & Second-Precision Raw Naming v0.7.2)：
 1. 在 `docs/01_raw/2026-08-27_01-48-00_startup_warmup_pipeline_and_double_ingestion_bug.md` 深度記錄開機預熱（Warmup）階段因 `main.go` 與 `watcher.go` 雙重調用 `AnalyzeStep` 導致基線混亂、開機瞬間暫存未就緒與全局最新遙測誤用之四重連鎖根因排查；

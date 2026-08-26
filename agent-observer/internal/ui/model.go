@@ -60,6 +60,7 @@ type Model struct {
 	docsSearchQuery       string
 	isDocsSearching       bool
 	docsScroll            int
+	docsLang              string
 }
 
 // NewModel creates an initial TUI model
@@ -83,6 +84,7 @@ func NewModel(sessionID string, openSwitcherOnStart bool) Model {
 		docsSearchQuery:       "",
 		isDocsSearching:       false,
 		docsScroll:            0,
+		docsLang:              "zh",
 	}
 
 	// If sessionID matches one of discovered sessions, select it in the switcher
@@ -368,6 +370,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch key {
 				case "/":
 					m.isDocsSearching = true
+					return m, nil
+				case "L", "l", "tab":
+					if m.docsLang == "zh" {
+						m.docsLang = "en"
+					} else {
+						m.docsLang = "zh"
+					}
 					return m, nil
 				case "esc":
 					if m.docsSearchQuery != "" {
@@ -802,8 +811,12 @@ func (m Model) renderFooter() string {
 			hints = fmt.Sprintf(" %s Finish Search  %s Clear & Return",
 				KeyStyle.Render("[Enter]"), KeyStyle.Render("[Esc]"))
 		} else {
-			hints = fmt.Sprintf(" %s Filter  %s Scroll  %s Shortcuts  %s Dash  %s Hist  %s Switch  %s Quit",
-				KeyStyle.Render("[/]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[?]"), KeyStyle.Render("[1]"), KeyStyle.Render("[2]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[q]"))
+			langLabel := "[L] Lang (繁中)"
+			if m.docsLang == "en" {
+				langLabel = "[L] Lang (EN)"
+			}
+			hints = fmt.Sprintf(" %s Filter  %s  %s Scroll  %s Shortcuts  %s Dash  %s Hist  %s Switch  %s Quit",
+				KeyStyle.Render("[/]"), KeyStyle.Render(langLabel), KeyStyle.Render("[j/k]"), KeyStyle.Render("[?]"), KeyStyle.Render("[1]"), KeyStyle.Render("[2]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[q]"))
 		}
 	} else if m.activeView == ViewHistory {
 		if m.isVisualMode {
