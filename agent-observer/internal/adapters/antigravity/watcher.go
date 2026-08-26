@@ -161,6 +161,10 @@ func (w *Watcher) handleLiveLine(line string, ctx context.Context, out chan<- co
 	}
 	w.lastStepIdx = event.StepIndex
 
+	if w.analyzer != nil {
+		w.analyzer.AnalyzeStep(&event)
+	}
+
 	select {
 	case out <- event:
 	case <-ctx.Done():

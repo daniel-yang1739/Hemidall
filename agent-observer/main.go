@@ -90,7 +90,6 @@ func main() {
 			case <-ctx.Done():
 				return
 			case event := <-eventChan:
-				analyzer.AnalyzeStep(&event)
 				p.Send(ui.AgentEventMsg(event))
 			}
 		}
