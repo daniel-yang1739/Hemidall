@@ -1,5 +1,6 @@
 # ⏱️ LLM Wiki Chrono Log
 
+## [2026-08-27] docs | 建立 Cache Hit vs Partial Hit 物理原理與狀態機分階剖析篇 (Prefix Cache Hit vs Partial Hit Mechanics v0.7.3)：在 `docs/01_raw/2026-08-27_01-52-00_cache_hit_vs_partial_hit_mechanics.md` 深度解密 Google SQLite Protobuf 底層欄位真實本質（僅存儲 `Total` 與 `Cached` 原始數值，無文字狀態欄位），剖析 Observer 領域模型如何透過 $\frac{\text{Cached}}{\text{Total}}$ 計算命中率並劃分 `WRITE`、`HIT` (>=80%)、`PARTIAL` (<80%)、`EXPIRED` 與 `MISS` 五大語意狀態，並詳解大檔案讀取/Tool Output 湧入稀釋命中率之物理場景
 ## [2026-08-27] docs | 建立開機預熱管線雙重分析漏洞排查篇並標準化 Raw 檔名至「秒」 (Startup Warmup Pipeline & Second-Precision Raw Naming v0.7.2)：
 1. 在 `docs/01_raw/2026-08-27_01-48-00_startup_warmup_pipeline_and_double_ingestion_bug.md` 深度記錄開機預熱（Warmup）階段因 `main.go` 與 `watcher.go` 雙重調用 `AnalyzeStep` 導致基線混亂、開機瞬間暫存未就緒與全局最新遙測誤用之四重連鎖根因排查；
 2. 將 `docs/01_raw/` 下全體 8 篇技術文件檔名全面標準化升級為包含精確至「秒」的時序命名（`YYYY-MM-DD_HH-MM-SS_<topic>.md`），與 `docs/reviews/` 審查報告命名規範達成完美統一
