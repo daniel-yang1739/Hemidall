@@ -22,7 +22,7 @@ import (
 const (
 	defaultTranscriptPath = "/Users/daniel_y_yang/.gemini/antigravity-cli/brain/aa726359-08e2-4687-a15c-073a2f4a705b/.system_generated/logs/transcript_full.jsonl"
 	defaultSessionID      = "aa726359-08e2-4687-a15c-073a2f4a705b"
-	version               = "v0.4.0-k9s-tui"
+	version               = "v0.5.0-session-switcher"
 )
 
 func main() {
@@ -36,6 +36,14 @@ func main() {
 	sessionID := flag.String("session", defaultSessionID, "Session ID to track")
 	plainMode := flag.Bool("plain", false, "Use plain scrolling log mode instead of full-screen interactive TUI")
 	flag.Parse()
+
+	sessionPassed := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "session" {
+			sessionPassed = true
+		}
+	})
+	openSwitcherOnStart := !sessionPassed
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -71,8 +79,8 @@ func main() {
 		return
 	}
 
-	// ==================== FULL-SCREEN INTERACTIVE TUI (k9s STYLE) ====================
-	initialModel := ui.NewModel(*sessionID)
+	// ==================== FULL-SCREEN INTERACTIVE TUI (k9s STYLE WITH QUICK SWITCHER) ====================
+	initialModel := ui.NewModel(*sessionID, openSwitcherOnStart)
 	p := tea.NewProgram(initialModel, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	// Goroutine to forward events from adapter channel to Bubble Tea program
@@ -108,67 +116,41 @@ func runPlainLogMode(ctx context.Context, cancel context.CancelFunc, port int, a
 	fmt.Println("👀 Watching agent events & analyzing Context in real-time... (Press Ctrl+C to stop)")
 	fmt.Println()
 
-	stepCount := 0
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("👋 Agent-Observer stopped.")
 			return
 		case event := <-eventChan:
-			stepCount++
 			analyzer.AnalyzeStep(&event)
-			printEventLine(event)
-			if event.Type == core.StepTypeUserInput || event.Type == core.StepTypeModelResponse || event.Type == core.StepTypeToolCall || stepCount%5 == 0 {
-				fmt.Print(core.FormatTokenBreakdownTable(event))
-				fmt.Println()
-			}
+			table := core.FormatTokenBreakdownTable(event)
+			fmt.Println(table)
 		}
 	}
 }
 
-func printBanner(port int, adapter string, file string, db string) {
-	fmt.Println(`
-┌────────────────────────────────────────────────────────────┐
-│  🐹 AGENT-OBSERVER: Phase 3 (Official Telemetry & Context) │
-│  Version   : ` + version + `                          │
-│  Adapter   : ` + fmt.Sprintf("%-45s", adapter) + ` │
-│  Telemetry : Dual-Track (SQLite gen_metadata + BPE Engine) │
-│  HTTP Port : ` + fmt.Sprintf("%-45s", fmt.Sprintf("http://localhost:%d/healthz", port)) + ` │
-│  Log File  : ` + fmt.Sprintf("%-45s", truncatePath(file, 45)) + ` │
-│  SQLite DB : ` + fmt.Sprintf("%-45s", truncatePath(db, 45)) + ` │
-└────────────────────────────────────────────────────────────┘`)
-}
-
-func printEventLine(e core.UnifiedAgentEvent) {
-	timeStr := e.Timestamp.Format("15:04:05")
-	typeBadge := fmt.Sprintf("[Step %03d | %-14s]", e.StepIndex, e.Type)
-	statusBadge := fmt.Sprintf("[%s]", e.Status)
-
-	fmt.Printf("[%s] %s %-34s %s\n", timeStr, typeBadge, e.Summary, statusBadge)
-	if len(e.ToolCalls) > 0 {
-		for _, tc := range e.ToolCalls {
-			fmt.Printf("           ↳ 🛠️  Tool: %s (args: %d)\n", tc.ToolName, len(tc.Arguments))
-		}
-	}
+func printBanner(port int, adapter, file, db string) {
+	fmt.Println("================================================================================")
+	fmt.Printf("  🐹 AGENT-OBSERVER %s (Go Real-Time LLM Context Telemetry)\n", version)
+	fmt.Println("================================================================================")
+	fmt.Printf("  • Local Server Port : http://localhost:%d\n", port)
+	fmt.Printf("  • Active Adapter    : %s\n", adapter)
+	fmt.Printf("  • Log File Path     : %s\n", file)
+	fmt.Printf("  • SQLite Telemetry  : %s\n", db)
+	fmt.Println("================================================================================")
+	fmt.Println()
 }
 
 func startHTTPServer(port int) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"status":"ok","version":"%s","time":"%s"}`, version, time.Now().Format(time.RFC3339))
+	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ok","app":"agent-observer"}`))
 	})
 
 	server := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Handler: mux,
+		Addr:         fmt.Sprintf(":%d", port),
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
 	}
-	_ = server.ListenAndServe()
-}
 
-func truncatePath(p string, maxLen int) string {
-	if len(p) <= maxLen {
-		return p
-	}
-	return "..." + p[len(p)-(maxLen-3):]
+	_ = server.ListenAndServe()
 }

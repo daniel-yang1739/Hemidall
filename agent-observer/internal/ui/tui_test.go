@@ -5,12 +5,13 @@ import (
 	"testing"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"agent-observer/internal/core"
 )
 
 func TestCJKAndLongPayloadZeroHeightVariation(t *testing.T) {
 	for _, size := range []struct{ w, h int }{{80, 24}, {100, 30}, {120, 35}, {140, 40}} {
-		m := NewModel("test-session")
+		m := NewModel("test-session", false)
 		m.width = size.w
 		m.height = size.h
 
@@ -49,5 +50,41 @@ func TestCJKAndLongPayloadZeroHeightVariation(t *testing.T) {
 		if !strings.Contains(footerLine, "Dashboard") && !strings.Contains(footerLine, "Quit") && !strings.Contains(footerLine, "Focus") {
 			t.Errorf("[%dx%d] Expected footer on line %d, got: %s", size.w, size.h, size.h-1, footerLine)
 		}
+	}
+}
+
+func TestSessionSwitcherModalRenderingAndFilter(t *testing.T) {
+	m := NewModel("aa726359-08e2-4687-a15c-073a2f4a705b", true)
+	m.width = 100
+	m.height = 30
+
+	if !m.isSessionSwitcherOpen {
+		t.Fatal("Expected Session Switcher to be open by default")
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "Switch Session") {
+		t.Errorf("Expected modal title 'Switch Session' in view, got: %s", view)
+	}
+
+	// Test Ctrl+P toggle
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+	m = updatedModel.(Model)
+	if m.isSessionSwitcherOpen {
+		t.Error("Expected Ctrl+P to close session switcher modal")
+	}
+
+	// Re-open with Ctrl+P
+	updatedModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+	m = updatedModel.(Model)
+	if !m.isSessionSwitcherOpen {
+		t.Error("Expected Ctrl+P to re-open session switcher modal")
+	}
+
+	// Test typing in search box
+	updatedModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("aa72")})
+	m = updatedModel.(Model)
+	if m.sessionSearchQuery != "aa72" {
+		t.Errorf("Expected query 'aa72', got '%s'", m.sessionSearchQuery)
 	}
 }

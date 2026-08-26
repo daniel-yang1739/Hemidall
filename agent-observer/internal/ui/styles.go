@@ -68,5 +68,12 @@ var (
 
 	KeyStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(ColorSecondary)
+			Foreground(ColorHighlight)
 )
+
+func truncateStr(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}

@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 
+	"agent-observer/internal/adapters/antigravity"
 	"agent-observer/internal/core"
 )
 
@@ -31,38 +32,59 @@ type AgentEventMsg core.UnifiedAgentEvent
 
 // Model represents the bubbletea application state
 type Model struct {
-	sessionID           string
-	activeView          ActiveView
-	focusPane           FocusPane
-	dashboardIdx        int
-	detailScroll        int
-	isVisualMode        bool
-	visualStart         int
-	visualCursor        int
-	clipboardStatus     string
-	clipboardStatusTime time.Time
-	latestEvent         core.UnifiedAgentEvent
-	history             []core.UnifiedAgentEvent
-	selectedIdx         int
-	historyOffset       int
-	width               int
-	height              int
-	eventCount          int
-	lastActivity        time.Time
+	sessionID             string
+	activeView            ActiveView
+	focusPane             FocusPane
+	dashboardIdx          int
+	detailScroll          int
+	isVisualMode          bool
+	visualStart           int
+	visualCursor          int
+	clipboardStatus       string
+	clipboardStatusTime   time.Time
+	latestEvent           core.UnifiedAgentEvent
+	history               []core.UnifiedAgentEvent
+	selectedIdx           int
+	historyOffset         int
+	width                 int
+	height                int
+	eventCount            int
+	lastActivity          time.Time
+	isSessionSwitcherOpen bool
+	sessionSearchQuery    string
+	availableSessions     []antigravity.SessionInfo
+	filteredSessions      []antigravity.SessionInfo
+	switcherSelectedIdx   int
 }
 
 // NewModel creates an initial TUI model
-func NewModel(sessionID string) Model {
-	return Model{
-		sessionID:    sessionID,
-		activeView:   ViewDashboard,
-		focusPane:    FocusList,
-		dashboardIdx: 0,
-		detailScroll: 0,
-		history:      make([]core.UnifiedAgentEvent, 0, 1000),
-		selectedIdx:  0,
-		lastActivity: time.Now(),
+func NewModel(sessionID string, openSwitcherOnStart bool) Model {
+	sessions, _ := antigravity.DiscoverAllSessions()
+
+	m := Model{
+		sessionID:             sessionID,
+		activeView:            ViewDashboard,
+		focusPane:             FocusList,
+		dashboardIdx:          0,
+		detailScroll:          0,
+		history:               make([]core.UnifiedAgentEvent, 0, 1000),
+		selectedIdx:           0,
+		lastActivity:          time.Now(),
+		availableSessions:     sessions,
+		filteredSessions:      sessions,
+		switcherSelectedIdx:   0,
+		isSessionSwitcherOpen: openSwitcherOnStart,
 	}
+
+	// If sessionID matches one of discovered sessions, select it in the switcher
+	for i, s := range sessions {
+		if s.SessionID == sessionID {
+			m.switcherSelectedIdx = i
+			break
+		}
+	}
+
+	return m
 }
 
 func (m Model) Init() tea.Cmd {
@@ -145,8 +167,111 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case SwitchSessionReqMsg:
+		analyzer := core.NewPayloadAnalyzer()
+		events, _ := antigravity.LoadSessionHistory(msg.SessionID, analyzer)
+		m.sessionID = msg.SessionID
+		m.history = events
+		m.eventCount = len(events)
+		if len(events) > 0 {
+			m.latestEvent = events[len(events)-1]
+			m.dashboardIdx = len(events) - 1
+		} else {
+			m.latestEvent = core.UnifiedAgentEvent{}
+			m.dashboardIdx = 0
+		}
+		m.selectedIdx = 0
+		m.detailScroll = 0
+		m.historyOffset = 0
+		m.isSessionSwitcherOpen = false
+		m.activeView = ViewDashboard
+		m.clipboardStatus = fmt.Sprintf("🟢 Attached session %s (%d steps)", truncateStr(msg.SessionID, 8), len(events))
+		m.clipboardStatusTime = time.Now()
+		return m, nil
+
+	case SessionSwitchedMsg:
+		m.sessionID = msg.SessionID
+		m.history = msg.Events
+		m.eventCount = len(msg.Events)
+		if len(msg.Events) > 0 {
+			m.latestEvent = msg.Events[len(msg.Events)-1]
+			m.dashboardIdx = len(msg.Events) - 1
+		} else {
+			m.latestEvent = core.UnifiedAgentEvent{}
+			m.dashboardIdx = 0
+		}
+		m.selectedIdx = 0
+		m.detailScroll = 0
+		m.historyOffset = 0
+		m.isSessionSwitcherOpen = false
+		m.activeView = ViewDashboard
+		m.clipboardStatus = fmt.Sprintf("🟢 Switched to session %s (%d steps)", truncateStr(msg.SessionID, 8), len(msg.Events))
+		m.clipboardStatusTime = time.Now()
+		return m, nil
+
 	case tea.KeyMsg:
 		key := msg.String()
+
+		// Global toggle for session switcher modal: Ctrl+P
+		if key == "ctrl+p" {
+			m.isSessionSwitcherOpen = !m.isSessionSwitcherOpen
+			if m.isSessionSwitcherOpen {
+				m.availableSessions, _ = antigravity.DiscoverAllSessions()
+				m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery)
+				m.switcherSelectedIdx = 0
+				for i, s := range m.filteredSessions {
+					if s.SessionID == m.sessionID {
+						m.switcherSelectedIdx = i
+						break
+					}
+				}
+			}
+			return m, nil
+		}
+
+		// ==================== SESSION SWITCHER MODAL INTERACTION ====================
+		if m.isSessionSwitcherOpen {
+			switch key {
+			case "esc":
+				m.isSessionSwitcherOpen = false
+				return m, nil
+			case "up", "ctrl+k":
+				if m.switcherSelectedIdx > 0 {
+					m.switcherSelectedIdx--
+				}
+				return m, nil
+			case "down", "ctrl+j":
+				if m.switcherSelectedIdx < len(m.filteredSessions)-1 {
+					m.switcherSelectedIdx++
+				}
+				return m, nil
+			case "enter":
+				if len(m.filteredSessions) > 0 && m.switcherSelectedIdx < len(m.filteredSessions) {
+					targetSession := m.filteredSessions[m.switcherSelectedIdx].SessionID
+					m.isSessionSwitcherOpen = false
+					return m.Update(SwitchSessionReqMsg{SessionID: targetSession})
+				}
+				return m, nil
+			case "backspace":
+				if len(m.sessionSearchQuery) > 0 {
+					m.sessionSearchQuery = m.sessionSearchQuery[:len(m.sessionSearchQuery)-1]
+					m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery)
+					m.switcherSelectedIdx = 0
+				}
+				return m, nil
+			default:
+				// Type characters to filter sessions
+				if len(msg.Runes) > 0 {
+					m.sessionSearchQuery += string(msg.Runes)
+					m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery)
+					m.switcherSelectedIdx = 0
+					return m, nil
+				}
+			}
+			return m, nil
+		}
+
+		// ==================== GLOBAL VIEW SWITCHING ====================
 		switch key {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -438,6 +563,10 @@ func (m Model) View() string {
 		m.height = 24
 	}
 
+	if m.isSessionSwitcherOpen {
+		return m.renderSessionSwitcherModal()
+	}
+
 	var content string
 	switch m.activeView {
 	case ViewHistory:
@@ -480,10 +609,12 @@ func (m Model) renderHeader() string {
 			lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [2] 📜 History ")
 	}
 
+	sessionBadge := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf(" [Ctrl+P] %s ", truncateStr(m.sessionID, 8)))
+
 	statusText := fmt.Sprintf("Events: %d | %s", m.eventCount, time.Now().Format("15:04:05"))
 	status := lipgloss.NewStyle().Foreground(ColorLightText).Render(statusText)
 
-	left := lipgloss.JoinHorizontal(lipgloss.Center, title, viewTabs)
+	left := lipgloss.JoinHorizontal(lipgloss.Center, title, viewTabs, sessionBadge)
 	gapWidth := m.width - lipgloss.Width(left) - lipgloss.Width(status) - 1
 	if gapWidth < 1 {
 		gapWidth = 1
@@ -506,18 +637,18 @@ func (m Model) renderFooter() string {
 			hints = fmt.Sprintf(" %s Yank  %s Adjust  %s Cancel",
 				KeyStyle.Render("[y]"), KeyStyle.Render("[↑/↓]"), KeyStyle.Render("[Esc]"))
 		} else if m.focusPane == FocusList {
-			hints = fmt.Sprintf(" %s Focus Detail  %s Select  %s Dashboard  %s Quit",
-				KeyStyle.Render("[Tab/Enter]"), KeyStyle.Render("[↑/↓]"), KeyStyle.Render("[1]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Focus Detail  %s Select  %s Switch Session  %s Dashboard  %s Quit",
+				KeyStyle.Render("[Tab/Enter]"), KeyStyle.Render("[↑/↓]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[1]"), KeyStyle.Render("[q]"))
 		} else {
-			hints = fmt.Sprintf(" %s Visual  %s Focus List  %s Scroll  %s Quit",
-				KeyStyle.Render("[v]"), KeyStyle.Render("[Tab/Esc]"), KeyStyle.Render("[↑/↓/Ctrl+u/d]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Visual  %s Focus List  %s Switch Session  %s Scroll  %s Quit",
+				KeyStyle.Render("[v]"), KeyStyle.Render("[Tab/Esc]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[↑/↓]"), KeyStyle.Render("[q]"))
 		}
 	} else {
 		if len(m.history) > 0 {
-			hints = fmt.Sprintf(" %s Inspect Step  %s Playback  %s LIVE  %s Quit",
-				KeyStyle.Render("[Enter]"), KeyStyle.Render("[↑/↓]"), KeyStyle.Render("[G]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Inspect Step  %s Playback  %s Switch Session  %s LIVE  %s Quit",
+				KeyStyle.Render("[Enter]"), KeyStyle.Render("[↑/↓]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[G]"), KeyStyle.Render("[q]"))
 		} else {
-			hints = fmt.Sprintf(" %s History  %s Quit", KeyStyle.Render("[2]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Switch Session  %s History  %s Quit", KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[2]"), KeyStyle.Render("[q]"))
 		}
 	}
 	return lipgloss.NewStyle().MaxWidth(m.width).Render(hints)
