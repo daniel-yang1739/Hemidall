@@ -193,9 +193,9 @@ func (m Model) renderDocsView() string {
 	if currentLang == "" {
 		currentLang = "zh"
 	}
-	langBadge := "[L: 繁體中文]"
+	langBadge := "[l: 繁體中文]"
 	if currentLang == "en" {
-		langBadge = "[L: English]"
+		langBadge = "[l: English]"
 	}
 
 	titleText := "ARCHITECTURE & CONTEXT DEFINITIONS  " + lipgloss.NewStyle().Foreground(ColorHighlight).Render(langBadge)
@@ -204,9 +204,9 @@ func (m Model) renderDocsView() string {
 	}
 
 	// 2. Search / Filter Header
-	searchStatus := "[Press / to search, L to switch language, Esc to clear]"
+	searchStatus := "[Press / to search, l to switch language, Esc to clear]"
 	if currentLang == "zh" {
-		searchStatus = "[按 / 搜尋，按 L 切換中英，按 Esc 清除]"
+		searchStatus = "[按 / 搜尋，按 l 切換中英，按 Esc 清除]"
 	}
 	if m.isDocsSearching {
 		searchStatus = "[SEARCHING: Type to filter, Enter/Esc to finish]"

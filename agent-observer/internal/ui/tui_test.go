@@ -97,11 +97,11 @@ func TestView3DocsPageRenderingAndSearch(t *testing.T) {
 		t.Errorf("Expected '架構名詞釋義與上下文辭典' in view, got: %s", view)
 	}
 
-	// 2. Press 'L' to toggle to English
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("L")})
+	// 2. Press 'l' to toggle to English
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
 	m = updated.(Model)
 	if m.docsLang != "en" {
-		t.Errorf("Expected docsLang='en' after pressing 'L', got '%s'", m.docsLang)
+		t.Errorf("Expected docsLang='en' after pressing 'l', got '%s'", m.docsLang)
 	}
 	enView := m.View()
 	if !strings.Contains(enView, "ARCHITECTURE & CONTEXT DEFINITIONS") {

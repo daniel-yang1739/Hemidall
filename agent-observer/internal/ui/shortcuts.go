@@ -40,6 +40,7 @@ var allShortcutItems = []ShortcutItem{
 
 	// 4. Docs View Controls
 	{Category: "Docs View", Key: "/", Desc: "Activate real-time keyword search filter"},
+	{Category: "Docs View", Key: "l / Tab", Desc: "Toggle language (Traditional Chinese / English)"},
 	{Category: "Docs View", Key: "j / k / ↑ / ↓", Desc: "Scroll documentation topics"},
 	{Category: "Docs View", Key: "Ctrl+d / Ctrl+u", Desc: "Scroll documentation by 10 lines"},
 	{Category: "Docs View", Key: "Esc", Desc: "Clear search query or return to Dashboard"},

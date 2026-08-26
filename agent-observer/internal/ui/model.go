@@ -822,9 +822,9 @@ func (m Model) renderFooter() string {
 			hints = fmt.Sprintf(" %s Finish Search  %s Clear & Return",
 				KeyStyle.Render("[Enter]"), KeyStyle.Render("[Esc]"))
 		} else {
-			langLabel := "[L] Lang (繁中)"
+			langLabel := "[l] Lang (繁中)"
 			if m.docsLang == "en" {
-				langLabel = "[L] Lang (EN)"
+				langLabel = "[l] Lang (EN)"
 			}
 			hints = fmt.Sprintf(" %s Filter  %s  %s Scroll  %s Shortcuts  %s Dash  %s Hist  %s Switch  %s Quit",
 				KeyStyle.Render("[/]"), KeyStyle.Render(langLabel), KeyStyle.Render("[j/k]"), KeyStyle.Render("[?]"), KeyStyle.Render("[1]"), KeyStyle.Render("[2]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[q]"))
