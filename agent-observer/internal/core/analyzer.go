@@ -180,13 +180,14 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 		event.Tokens.SystemTokens = state.BaseSystem
 		event.Tokens.ToolsDefTokens = state.BaseToolsDef
 
+		var currentStepTokens int = stepTokens
 		switch event.Type {
 		case StepTypeUserInput, StepTypeModelResponse, StepTypeToolCall:
-			event.Tokens.ActiveTurnTokens = stepTokens
+			event.Tokens.ActiveTurnTokens = currentStepTokens
 		case StepTypeRunCommand, StepTypeViewFile, StepTypeCodeAction, StepTypeListDirectory, StepTypeToolResult:
-			event.Tokens.ToolResultTokens = stepTokens
+			event.Tokens.ToolResultTokens = currentStepTokens
 		default:
-			event.Tokens.HistoryTokens = stepTokens
+			event.Tokens.ActiveTurnTokens = currentStepTokens
 		}
 
 		isTTLExpired := false
@@ -205,6 +206,12 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 			event.Tokens.CacheHitRate = 0.0
 			event.CacheStatus = "EXPIRED"
 			state.PrevTotalTokens = totalTokens
+
+			hist := totalTokens - (state.BaseSystem + state.BaseToolsDef + currentStepTokens)
+			if hist < 0 {
+				hist = 0
+			}
+			event.Tokens.HistoryTokens = hist
 		} else if !state.HasInitialized || state.PrevTotalTokens == 0 {
 			// First-ever Cold Start turn
 			event.Tokens.TotalTokens = state.BaseSystem + state.BaseToolsDef + stepTokens
@@ -212,6 +219,7 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 			event.Tokens.NewTokens = event.Tokens.TotalTokens
 			event.Tokens.CacheHitRate = 0.0
 			event.CacheStatus = "WRITE"
+			event.Tokens.HistoryTokens = 0
 			state.HasInitialized = true
 			state.PrevTotalTokens = event.Tokens.TotalTokens
 		} else {
@@ -231,6 +239,12 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 			event.Tokens.CacheHitRate = hitRate
 			event.CacheStatus = determineCacheStatus(cachedTokens, totalTokens, hitRate)
 			state.PrevTotalTokens = totalTokens
+
+			hist := totalTokens - (state.BaseSystem + state.BaseToolsDef + currentStepTokens)
+			if hist < 0 {
+				hist = 0
+			}
+			event.Tokens.HistoryTokens = hist
 		}
 	}
 

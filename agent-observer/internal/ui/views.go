@@ -74,7 +74,7 @@ func (m Model) renderDashboardView() string {
 
 	modelName := t.OfficialModel
 	if modelName == "" {
-		modelName = "gemini-3.7-flash-high (Official API)"
+		modelName = "gemini-3.7-flash-high"
 	}
 
 	timeStr := e.Timestamp.Format("2006-01-02 15:04:05")
