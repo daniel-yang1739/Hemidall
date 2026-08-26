@@ -85,7 +85,7 @@ func TestView3DocsPageRenderingAndSearch(t *testing.T) {
 	m.width = 100
 	m.height = 30
 
-	// 1. Press '3' or 'h' to switch to View 3 Docs (Default: 繁體中文)
+	// 1. Press '3' or 'h' to switch to View 3 Docs (Default: English)
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
 	m = updated.(Model)
 	if m.activeView != ViewDocs {
@@ -93,19 +93,19 @@ func TestView3DocsPageRenderingAndSearch(t *testing.T) {
 	}
 
 	view := m.View()
-	if !strings.Contains(view, "架構名詞釋義與上下文辭典") {
-		t.Errorf("Expected '架構名詞釋義與上下文辭典' in view, got: %s", view)
+	if !strings.Contains(view, "ARCHITECTURE & CONTEXT DEFINITIONS") {
+		t.Errorf("Expected 'ARCHITECTURE & CONTEXT DEFINITIONS' in view, got: %s", view)
 	}
 
-	// 2. Press 'l' to toggle to English
+	// 2. Press 'l' to toggle to Traditional Chinese
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
 	m = updated.(Model)
-	if m.docsLang != "en" {
-		t.Errorf("Expected docsLang='en' after pressing 'l', got '%s'", m.docsLang)
+	if m.docsLang != "zh" {
+		t.Errorf("Expected docsLang='zh' after pressing 'l', got '%s'", m.docsLang)
 	}
-	enView := m.View()
-	if !strings.Contains(enView, "ARCHITECTURE & CONTEXT DEFINITIONS") {
-		t.Errorf("Expected English title in enView, got: %s", enView)
+	zhView := m.View()
+	if !strings.Contains(zhView, "架構名詞釋義與上下文辭典") {
+		t.Errorf("Expected Chinese title in zhView, got: %s", zhView)
 	}
 
 	// 3. Press '/' to activate search mode and search for "cache"

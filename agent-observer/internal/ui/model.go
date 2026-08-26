@@ -84,7 +84,7 @@ func NewModel(sessionID string, openSwitcherOnStart bool) Model {
 		docsSearchQuery:       "",
 		isDocsSearching:       false,
 		docsScroll:            0,
-		docsLang:              "zh",
+		docsLang:              "en",
 	}
 
 	// If sessionID matches one of discovered sessions, select it in the switcher

@@ -22,9 +22,9 @@ type DocDefinitionItem struct {
 
 // loadDocDefinitions parses embedded Markdown files by language (en or zh)
 func loadDocDefinitions(lang string) []DocDefinitionItem {
-	filename := "docs/docs_zh.md"
-	if lang == "en" {
-		filename = "docs/docs_en.md"
+	filename := "docs/docs_en.md"
+	if lang == "zh" {
+		filename = "docs/docs_zh.md"
 	}
 
 	data, err := docsFS.ReadFile(filename)
@@ -134,7 +134,7 @@ func (m Model) getDocsMaxScroll() int {
 
 	currentLang := m.docsLang
 	if currentLang == "" {
-		currentLang = "zh"
+		currentLang = "en"
 	}
 	defs := loadDocDefinitions(currentLang)
 	query := strings.ToLower(strings.TrimSpace(m.docsSearchQuery))
@@ -191,11 +191,11 @@ func (m Model) renderDocsView() string {
 	// 1. Title with Language Indicator
 	currentLang := m.docsLang
 	if currentLang == "" {
-		currentLang = "zh"
+		currentLang = "en"
 	}
-	langBadge := "[l: 繁體中文]"
-	if currentLang == "en" {
-		langBadge = "[l: English]"
+	langBadge := "[l: English]"
+	if currentLang == "zh" {
+		langBadge = "[l: 繁體中文]"
 	}
 
 	titleText := "ARCHITECTURE & CONTEXT DEFINITIONS  " + lipgloss.NewStyle().Foreground(ColorHighlight).Render(langBadge)

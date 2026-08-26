@@ -1,5 +1,6 @@
 # ⏱️ LLM Wiki Chrono Log
 
+## [2026-08-27] config | Docs 頁面預設語言切換為英文 (Default English for Docs Page v0.7.9)：將 Docs 視圖之預設語系初始化為 English (`docsLang: "en"`)，預設載入 `docs_en.md`，並可隨時按下 `[l]` 鍵即時無縫切換為繁體中文辭典 (`docs_zh.md`)
 ## [2026-08-27] polish | 統一多語言切換提示為小寫 `[l]` 鍵與 Shortcuts 說明補齊 (Lowercase Language Toggle Hint & Shortcuts Docs v0.7.8)：
 1. **提示字元統一為小寫 `l`**：將 Docs 標題列 `[l: 繁體中文]`、搜尋狀態提示 `[按 l 切換中英]` 及底部狀態列 `[l] Lang (繁中)` 全面統一為小寫 `l`，符合終端機鍵盤操作習慣；
 2. **補齊快捷鍵浮動面板**：在 `?` Shortcuts Modal 中的 `Docs View Controls` 區塊新增 `l / Tab` 切換中英文辭典之操作提示
