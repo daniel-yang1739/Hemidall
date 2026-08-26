@@ -12,7 +12,7 @@ aliases: [Multi-Agent Review, 對抗審查模式, 自我進化系統, 雙輪審�
 
 > [!NOTE]
 > **⚡ 30 秒核心精華 (Key Takeaway)**
-> 傳統生成式 AI 撰寫技術文檔常面臨「條列式空洞、缺乏深度推導、無法驗證真實性、充滿虛浮比喻」的痛點。本模式提出了一套工業級的 **「18 位頂尖專家/讀者矩陣 + 雙輪對抗審查 (Two-Round Adversarial Review) + 具體演繹專家 + 雙層智能過濾與否決 (Triage & Veto) + 反饋記憶自我進化閉環 (Self-Evolving Feedback Loop)」**，將文檔產出推向世界級技術專著（如 CSAPP, DDIA）般的嚴密水準。
+> 傳統生成式 AI 撰寫技術文檔常面臨「條列式空洞、缺乏深度推導、無法驗證真實性、充滿虛浮比喻」的痛點。本模式提出了一套工業級的 **「19 位頂尖專家/讀者矩陣 + 雙輪深層對抗審查 (Two-Round Adversarial Review) + 具體演繹專家 + QA/Runbook 專家 + 雙層智能過濾與否決 (Triage & Veto) + 反饋記憶自我進化閉環 (Self-Evolving Feedback Loop)」**，將文檔產出推向世界級技術專著（如 CSAPP, DDIA）般的嚴密水準。
 
 ---
 
@@ -30,13 +30,13 @@ aliases: [Multi-Agent Review, 對抗審查模式, 自我進化系統, 雙輪審�
 
 ```mermaid
 flowchart TD
-    Step0["0. 🧠 【開局載入免疫抗體】<br/>讀取 feedbacks/ 歷史記憶庫 (裝載 ACCEPTED / REJECTED 邊界)"] --> Ingest
+    Step0["0. 🧠 【開局載入免疫抗體】<br/>讀取 feedbacks/ 5 大歷史記憶庫 (裝載 ACCEPTED / REJECTED 邊界)"] --> Ingest
     
-    Ingest["1. 素材攝取與源碼事實溯源<br/>(Trace 專案原始碼，以 Code is Law 為真理)"] --> Draft["2. 初版提煉與認知演進編號"]
+    Ingest["1. 素材攝取與源碼事實溯源<br/>(Trace 專案原始碼，以 Code is Law 為真理)"] --> Draft["2. 初版提煉與認知演進編號<br/>(含核心概念與四段式排查/Runbook)"]
     
-    subgraph Round1 ["🔄 【Round 1：18 位頂尖角色深層地毯式審查 (全面窮舉原則)】"]
+    subgraph Round1 ["🔄 【Round 1：19 位頂尖角色深層地毯式審查 (全面窮舉原則)】"]
         direction TB
-        R1A["🎓 專家組 (8位)<br/>(物理官、架構官、教育講師、圖譜官、技術作家、資訊架構師、代碼清道夫、演繹追蹤專家)"]
+        R1A["🎓 專家組 (9位)<br/>(物理官、架構官、教育講師、圖譜官、技術作家、資訊架構師、代碼清道夫、演繹追蹤專家、QA/Runbook 專家)"]
         R1B["👶 Junior 天賦組 (4位)<br/>(直覺天才、實戰駭客、邏輯偵探、背景因果審查官)"]
         R1C["🧓 Senior 首席組 (5位)<br/>(首席架構師、建模大師、體系結構權威、深度推導官、認知路徑大師)"]
         R1A --- R1B --- R1C
@@ -45,18 +45,19 @@ flowchart TD
     Draft --> Round1
     Round1 --> Triage{"3. 🛡️ Main Agent 批判性篩選<br/>(拒絕照單全收 / 剔除噪音)"}
     
-    Triage -- "高價值實質建議 (ACCEPTED)" --> Fix1["4. 🛠️ Fix 1 深度修訂與源碼對齊<br/>(補齊極簡 Input 逐輪演繹、4維度圖解導讀)"]
+    Triage -- "高價值實質建議 (ACCEPTED)" --> Fix1["4. 🛠️ Fix 1 深度修訂與源碼對齊<br/>(補齊極簡 Input 逐輪演繹、4維度圖解導讀、四段式排查與雙向鏈接)"]
     Triage -- "瑣碎挑刺 / 偏離主題 (REJECTED)" --> Veto["記錄至 Veto Log"]
     
-    Fix1 --> Round2["5. 🔄 【Round 2：原班人馬回歸覆審 (Re-verification)】"]
+    Fix1 --> Round2["5. 🔄 【Round 2：原班人馬 Delta 差量覆審 (Re-verification)】"]
     Round2 --> Inquisitor{"6. ⚖️ 大檢察官終審裁決院 (Veto Power)"}
     
     Inquisitor -- "通過 ✅" --> Report["7. 📜 強制生成 docs/reviews/ 全景審查報告書"]
-    Report --> SecArchive["8. 📋 秘書長智能沉澱入 feedbacks/<br/>(查重聚合 + ⚠️ 累犯記錄升級)"]
+    Report --> SecArchive["8. 📋 秘書長智能沉澱入 feedbacks/ 5 大記憶庫<br/>(查重聚合 + ⚠️ 累犯記錄升級)"]
     SecArchive --> Cleanup["9. 🗑️ 執行 Digest & Delete 清理 01_raw/"]
 ```
 
 ### 📖 圖表深度精讀指南 (Diagram Walkthrough)
+
 
 1. **【核心視野】**：本圖揭示了一個具備自我演進能力的閉環系統。從開局載入歷史抗體開始，經由 18 位多角色雙輪對抗與雙層過濾，最終將新教訓沉澱回記憶庫，形成永不退化的正向增益循環。
 2. **【看圖路徑 (Step-by-Step)】**：

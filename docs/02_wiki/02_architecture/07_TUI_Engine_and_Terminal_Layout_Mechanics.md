@@ -128,7 +128,7 @@ func truncateVisualWidth(s string, maxVisualWidth int) string {
 在 Inspector 右欄中，長代碼或長段落若直接硬切會遺失資訊。系統採用 **Pre-wrapping 軟換行虛擬緩衝區**：
 
 ```go
-// wrapVisualLines 將長段落預先切成符合欄寬的虛擬行，保證每一行 visualWidth <= maxWidth
+// wrapVisualLines 將長段落預先切成符合欄寬的虛擬行，精確忽略 ANSI 轉義字元佔位
 func wrapVisualLines(text string, maxWidth int) []string {
     if maxWidth <= 0 {
         return []string{""}
@@ -145,7 +145,22 @@ func wrapVisualLines(text string, maxWidth int) []string {
         runes := []rune(line)
         var currentChunk []rune
         currentW := 0
+        inAnsi := false
+
         for _, r := range runes {
+            if r == 0x1b { // Escape char
+                inAnsi = true
+                currentChunk = append(currentChunk, r)
+                continue
+            }
+            if inAnsi {
+                currentChunk = append(currentChunk, r)
+                if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+                    inAnsi = false
+                }
+                continue
+            }
+
             rw := runewidth.RuneWidth(r)
             if currentW+rw > maxWidth {
                 if len(currentChunk) > 0 {
@@ -165,27 +180,39 @@ func wrapVisualLines(text string, maxWidth int) []string {
 }
 ```
 
-### 💡 雙重保障：
-1. **內容 100% 完整**：長段落完整保留在緩衝區中，可透過 `detailScroll` 垂直滾動閱讀；
-2. **高度 100% 鎖死**：視窗切片永遠只取 `innerRowsLimit - 1` 行，左右兩欄高度永遠絕對平齊！
+---
+
+## 🎨 七、ANSI 轉義序列感知狀態機與全寬懸掛縮排 (ANSI State Machine & Hanging Indent)
+
+### 🚨 致命黑天鵝：隱形 ANSI 轉義字元虛擬佔位
+* **現象**：字串在經由 Lipgloss 上色後（如 `\x1b[38;2;108;92;231m...`），底層包含了約 20 個不可見字元；
+* **Bug 根因**：若直接在渲染後呼叫寬度截斷，這些不可見字元會被誤計為 20 欄寬，導致文字才剛印到第 50 欄就被當作達到 100 欄而**腰斬折行**；
+* **徹底解決方案**：在 `truncateVisualWidth` 與 `wrapVisualLines` 導入 **ANSI 感知狀態機**（遇到 `\x1b` 至結尾字母期間 `w += 0`），使文字 100% 完整延伸至螢幕最右側邊界 `│`！
+
+### 📖 29 格全寬懸掛縮排 (Hanging Indent)
+對於辭典類的 Key-Value 排版，採用純文字先折行與 29 格縮排：
+* **Line 1**：`  Key (24) : DescChunk[0]`（第一段文字頂到最右邊界）；
+* **Line 2+**：`                           `（29 格縮排）+ `DescChunk[i]`（維持左側欄位垂直對齊）。
 
 ---
 
-## 🗂️ 六、左欄雙行步驟卡片佈局 (2-Line Step Card)
+## ⚡ 八、過度滾動硬性約束與嵌入式 Markdown 多語言架構 (Zero-Overscroll & Embedded i18n)
 
-```text
-╭─────────────────────────────╮
-│ 📜 Steps (Newest First ◀)   │
-│ ▶ [035|MODEL] 15:04:05      │  <- Card 1 Line 1 (序號 + 類型 + 時間戳)
-│   剛剛你說3x 萬字是為什麼... │  <- Card 1 Line 2 (縮排摘要文字)
-│   [034|TOOL ] 15:03:50      │  <- Card 2 Line 1
-│   view_file (internal/ui)   │  <- Card 2 Line 2
-╰─────────────────────────────╯
-```
+1. **過度滾動硬性約束 (Zero-Overscroll Clamping)**：
+   * 透過 `m.getDocsMaxScroll()` 動態計算總行數與視窗高度差額，將滾動變數 `docsScroll` 嚴格約束在 `[0, maxScroll]` 範圍內；
+   * 徹底杜絕連按 `j` 到底後按 `k` 需連敲數十下才動的數值溢出延遲。
+2. **Go `embed.FS` 嵌入式雙語辭典**：
+   * 採用 `//go:embed docs/*.md` 將 `docs_en.md` 與 `docs_zh.md` 靜態編譯進二進制檔；
+   * 預設英文，在 Docs 視圖中按下小寫 **`[l]`** 或 **`Tab`** 即可即時無縫切換繁中與英文。
+3. **職責分離**：
+   * **`?` Shortcuts Modal**：輕量全域浮動快捷鍵面板；
+   * **`[3] Docs` 獨立頁面**：具備 `/` 即時搜尋、多語言切換與全寬懸掛縮排的完整架構辭典。
 
 ---
 
-## 🔗 七、相關概念與延伸閱讀
+## 🔗 九、相關概念與延伸閱讀
 * [[03_Agent_Storage_and_State_Machine]]：SQLite 狀態機與 Protobuf 載荷。
 * [[06_Dual_Track_Telemetry_and_Window_Accounting]]：雙軌遙測與倒推滑動窗口。
 * [[04_Service_Plan_Agent_Observer]]：`agent-observer` 完整服務架構規劃。
+* [[08_Interactive_Session_Switching_and_Anti_Jitter|互動式會話快切與防抖動機制]]：全域會話快切與動態目錄發現。
+* [[05_troubleshooting/03_TUI_ANSI_Escape_Truncation_and_Overscroll_Lag|實戰排查：ANSI 字元隱形佔位腰斬折行與過度滾動卡頓]]：終端機排版三大黑天鵝排查。

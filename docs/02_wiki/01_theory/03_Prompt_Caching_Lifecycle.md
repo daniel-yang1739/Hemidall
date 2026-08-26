@@ -174,13 +174,35 @@ flowchart TD
 ### 📋 快取設計的三大鐵律：
 1. **靜態內容必須置頂 (Static Content at Top)**：永遠將固定不變的 System Instructions 與 Tools Schema 置於 Context 最前端。
 2. **禁止在頂部注入動態變數**：若在 System Instruction 中插入 `Current Time: 15:30:22.105` 或隨機數，整整 10 萬字的前綴快取會瞬間全毀（Cache Miss 100%）。
-3. **保持歷史不可變 (Immutable History)**：若必須對歷史進行壓縮或修改，必須整批在特定檢查點執行，並承擔該輪快取重建的代價。
+## 📊 七、快取命中率分階與 Partial Hit 物理稀釋機制 (Full Hit vs Partial Hit)
+
+在底層推論叢集中，官方 SQLite Protobuf (`gen_metadata`) 僅記錄純數值：
+* `total_token_count`：當前請求送入神經網絡的總 Token 數；
+* `cached_content_token_count`：直接復用 GPU HBM 顯存的前綴 Token 數。
+
+根據 $\text{CacheHitRate} = \frac{\text{CachedTokens}}{\text{TotalTokens}} \times 100\%$，觀測系統劃分出五大語意狀態：
+
+| 狀態徽章 | 命中率區間 | 典型物理場景 | 計費與硬體代價 |
+| :--- | :--- | :--- | :--- |
+| **`[CACHE WRITE]`** | 0.0% | 會話第 0 步首次開局 | 系統詞與工具定義首次寫入 GPU 顯存，全額原價 Prefill |
+| **`[CACHE HIT]`** | $\ge 80.0\%$ | 連續正常多輪對話 (Prompt 增量小) | 享有 70%~75% 費用折扣，TTFT 降至毫秒級 |
+| **`[PARTIAL HIT]`** | $0.1\% \sim 79.9\%$ | **超大檔案讀取、大量 Tool Output / Diff 湧入** | 前綴歷史有命中打折，但巨量新內容引發大額新計費 |
+| **`[TTL EXPIRED]`** | 0.0% | 閒置超時 (> 5 分鐘未操作) | GPU 顯存釋放先前快取，全量歷史被迫重新計算 (冷啟動) |
+| **`[CACHE MISS]`** | 0.0% | 前綴變更或模型跨族路由失敗 | 前綴不匹配，全量上下文以全額原價計算 |
+
+### 💡 Partial Hit 的物理本質：稀釋效應 (Dilution Effect)
+當 Agent 在歷史長達 80,000 字時，突然執行 `view_file` 讀取了一個 120,000 字的大檔案：
+* 既有的 80,000 字前綴**確實 100% 命中了 GPU 顯存快取**（享有折扣）；
+* 但因為總 Context 瞬間膨脹為 $80,000 + 120,000 = 200,000$ 字；
+* 命中率被稀釋為 $\frac{80,000}{200,000} = \mathbf{40.0\%}$；
+* 標記為 `[PARTIAL HIT]` 能精確提醒工程師該步驟產生了 120,000 字的新計費 Token！
 
 ---
 
-## 🔗 七、相關概念與延伸閱讀
+## 🔗 八、相關概念與延伸閱讀
 * [[01_Transformer_Prefill_vs_Decode]]：推論兩階段之 Prefill 與 Decode 物理對照。
 * [[02_KV_Cache_Mechanics]]：KV Cache 顯存大小推導與 GQA 架構。
 * [[04_Context_Compaction_and_Summarization]]：上下文雙水位線壓縮與遞迴摘要機制。
 * [[02_architecture/02_Token_Calculation_and_LCP|Token 計算與 LCP 演算法]]：手刻 LCP 前綴比對演算法實作。
 * [[02_architecture/06_Dual_Track_Telemetry_and_Window_Accounting|雙軌遙測架構與窗口會計]]：官方 Protobuf 帳單與本地 5 維度分析。
+* [[05_troubleshooting/01_Context_Inflation_and_Intermediate_Compounding|實戰排查：Fallback 累積膨脹 89 萬 Tokens 與基線污染]]：中間步驟非遞增基線修復。

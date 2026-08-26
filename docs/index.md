@@ -43,12 +43,18 @@
 * [[04_Phased_Implementation_Roadmap]]：Phase 1 至 Phase 5 循序漸進實作路線圖（Phase 3 雙軌遙測與 TUI 已 100% 驗收）。
 
 ### 4. [[02_wiki/04_meta/index|🤖 04_meta: AI 協同工程與知識庫方法論 (元架構與體系)]]
-* [[01_Multi_Agent_Adversarial_Review_Pattern]]：18 位世界前 1% 審查矩陣、雙輪對抗審查、Main Agent 批判性過濾與自我進化閉環。
+* [[01_Multi_Agent_Adversarial_Review_Pattern]]：19 位世界前 1% 審查矩陣、雙輪深層對抗審查、Main Agent 批判性過濾與自我進化閉環。
 * [[02_Obsidian_Vault_Topology]]：全域檔案結構樹、High-Level 目錄職責對照表、Wiki 終點論、三權分立拓撲、.obsidian 嚴格 Git 白名單與 AGENTS.md 協同憲法。
+
+### 5. [[02_wiki/05_troubleshooting/index|🛠️ 05_troubleshooting: 實戰故障排查、QA 問答與 Runbook 手冊 (實戰武器庫)]]
+* [[01_Context_Inflation_and_Intermediate_Compounding|01. 89 萬字膨脹與基線污染]]：中間步驟非遞增基線修復與 256k 物理窗口硬約束。
+* [[02_Startup_Warmup_Double_Ingestion_and_Cache_Lag|02. 開機預熱雙重分析與歷史遙測誤用]]：單一攝入責任鏈與開機 700+ 世代紀錄預載入。
+* [[03_TUI_ANSI_Escape_Truncation_and_Overscroll_Lag|03. ANSI 字元隱形佔位與滾動卡頓]]：ANSI 感知狀態機、29 格懸掛縮排與 `getDocsMaxScroll` 邊界約束。
 
 ---
 
 ## 📜 三、審查委員會全景報告書 (`docs/reviews/`)
+* **👉 [[reviews/2026-08-27_02-15-00_multi_agent_adversarial_review_audit_report|🏛️ 2026-08-27 02:15:00 19 角色雙輪深層對抗審查、QA/Runbook 模組落地與全量 Raw 提煉審查報告書]]**
 * **👉 [[reviews/2026-08-26_23-13-21_wiki_distillation_comprehensive_audit_report|🏛️ 2026-08-26 23:13:21 全量 16 篇 Wiki 卡片深度提煉、雙軌遙測、TUI 盒模型與雙水位線壓縮審查報告書]]**
 * **👉 [[reviews/2026-08-26_15-11-37_concrete_walkthrough_audit_report|🏛️ 2026-08-26 15:11:37 具體演繹實例升級雙輪審查全景報告書]]**
 * **👉 [[reviews/2026-08-26_02-28-53_meta_module_audit_report|🏛️ 2026-08-26 02:28:53 04_meta 模組雙輪審查全景報告書]]**

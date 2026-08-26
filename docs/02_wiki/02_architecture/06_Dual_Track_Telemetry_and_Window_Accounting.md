@@ -154,20 +154,37 @@ func (a *PayloadAnalyzer) CalculateBreakdownWithOfficialBudget(history []Unified
 }
 ```
 
+## 🛡️ 六、中間過渡步驟非遞增基線與防膨脹硬約束 (Non-Compounding Intermediate Baseline & Clamping)
+
+在 Agentic Coding 工作流中，步驟在 **「雲端 LLM 生成 (LLM Generation)」** 與 **「本地本機工具執行 (Local Tool Execution)」** 之間頻繁交替：
+
+```mermaid
+flowchart LR
+    G1["Step N: LLM 生成 (官方 185k)"] --> T1["Step N+1: bash run_command (本地 200 字)"]
+    T1 --> T2["Step N+2: view_file (本地 300 字)"]
+    T2 --> T3["Step N+3: git status (本地 150 字)"]
+    T3 --> G2["Step N+4: LLM 生成 (官方 186k)"]
+
+    style G1 fill:#d4edda,stroke:#28a745
+    style G2 fill:#d4edda,stroke:#28a745
+    style T1 fill:#fff3cd,stroke:#ffc107
+    style T2 fill:#fff3cd,stroke:#ffc107
+    style T3 fill:#fff3cd,stroke:#ffc107
+```
+
+### 🚨 為什麼中間步驟絕不能更新 `state.PrevTotalTokens` 基線？
+1. **中間步驟無 API 呼叫**：本地執行 `ls`、`cat`、`run_command` 時，完全沒有向雲端 LLM 發出 HTTP 請求，因此不存在新的官方計費帳單；
+2. **基線污染災難**：若在 Fallback 模式中每遇到一個本地中間步驟就執行 `state.PrevTotalTokens = totalTokens`，數十個連續工具步驟會將歷史「虛擬滾雪球累加」，導致上下文虛擬暴增至 **893,834 Tokens**（349% 窗口溢出）；
+3. **兩大架構防護鐵律**：
+   * **鐵律 1 (非遞增基線)**：中間步驟僅作為當前輪次的局部增量展示，**絕對不覆寫 `state.PrevTotalTokens`**；
+   * **鐵律 2 (物理窗口硬約束)**：Fallback 計算嚴格受限於 `maxContextLimit = 256,000`，杜絕任何數值溢出。
+
 ---
 
-## ❄️ 五、TTL 顯存超時冷啟動增量模型 (Incremental Active Window)
-
-當發生 TTL 顯存淘汰（如閒置超過 5 分鐘）且觸發冷啟動時：
-* **官方帳單**：`Cached Tokens = 0`, `New Tokens = 165,000`（全量歷史重算）；
-* **本地會計修正**：
-  在沒有快取命中時，發送的總上下文依然包含這 16.5 萬字的活躍歷史，因此 `TotalTokens` 仍為 16.5 萬，全額計入 `NewTokens`，徹底根除冷啟動時誤判為「只有 5,000 Tokens」的統計斷層。
-
----
-
-## 🔗 六、相關概念與延伸閱讀
+## 🔗 七、相關概念與延伸閱讀
 * [[01_Context_5_Dimensions]]：5 維度上下文模型。
 * [[03_Prompt_Caching_Lifecycle]]：前綴快取生命週期與 TTL 淘汰物理。
 * [[04_Context_Compaction_and_Summarization]]：長上下文雙水位線壓縮機制。
 * [[03_Agent_Storage_and_State_Machine]]：SQLite 7 表與 Protobuf 遙測中樞。
 * [[07_TUI_Engine_and_Terminal_Layout_Mechanics]]：全螢幕 TUI 引擎與終端機盒模型。
+* [[05_troubleshooting/01_Context_Inflation_and_Intermediate_Compounding|實戰排查：Fallback 累積膨脹 89 萬 Tokens 與基線污染]]：中間步驟非遞增基線修復。

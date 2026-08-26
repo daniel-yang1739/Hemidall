@@ -1,5 +1,12 @@
 # ⏱️ LLM Wiki Chrono Log
 
+## [2026-08-27] distill | 19 角色雙輪對抗審查完成、落地 05_troubleshooting 模組並全量消化 10 份 Raw 素材 (Full Distillation & Troubleshooting Module v0.8.1)：
+1. **建立 05_troubleshooting 實戰排查手冊**：產出 3 篇具備四段式結構與 Runbook SOP 的 Postmortem 卡片（89 萬字基線膨脹排查、開機雙重分析排查、ANSI 隱形佔位腰斬排查）與模組索引；
+2. **新增架構卡片 08**：產出 `02_architecture/08_Interactive_Session_Switching_and_Anti_Jitter.md`，解密全域會話快切中樞與歷史步驟防抖動鎖定機制；
+3. **全面深化核心卡片**：更新 `01_theory/03` (Partial Hit 稀釋機制)、`02_architecture/03` (六角架構與 WAL 直讀)、`02_architecture/06` (中間步驟非遞增基線) 與 `02_architecture/07` (ANSI 感知狀態機與嵌入式 Markdown i18n)；
+4. **輸出全景審查報告書**：於 `docs/reviews/2026-08-27_02-15-00_multi_agent_adversarial_review_audit_report.md` 留存 19 角色雙輪審查全景紀錄；
+5. **落實 Digest & Delete**：100% 安全清理刪除 `docs/01_raw/` 下已完全消化的 10 份原始素材；
+6. **更新雙層 MOC 索引**：同步維護 `docs/index.md` 與 `docs/02_wiki/index.md`，全庫保持 0 孤島雙向鏈接
 ## [2026-08-27] skill | 升級 wiki-distiller 審查體系：擴充 QA/Runbook 專家與明確雙輪對抗審查閉環 (Two-Round Adversarial Review & Incident Runbook Role v0.8.0)：
 1. **新增角色 10**：建立 `roles/10_qa_runbook_incident_troubleshooting_expert.md` (實戰排查、QA 問答與 Runbook 知識化專家)，審查所有 Bug 排查與 QA 卡片是否符合「現象定義 $\to$ 根因代碼溯源 $\to$ 架構修復 $\to$ 總結與 Runbook SOP」四段式標準，並強制與核心概念頁面建立雙向鏈接；
 2. **新增反饋記憶庫 05**：在 `feedbacks/05_qa_troubleshooting_and_runbooks.md` 沉澱排查四段式結構、診斷 SOP 與防孤島抗體規範；

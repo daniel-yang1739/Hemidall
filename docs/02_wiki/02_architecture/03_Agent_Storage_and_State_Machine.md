@@ -132,12 +132,68 @@ type TelemetryRecord struct {
 ### ⚡ 102,400 Bytes (100KB) 分片的三大工程優勢：
 1. **毫秒級虛擬滾動 (Virtual Scrolling)**：TUI 介面只需按需加載最新的 `0000000N.jsonl` 切片，即使長程對話累積了 100MB 日誌，啟動依然秒開。
 2. **零鎖競爭 (Zero-Lock Contention)**：主行程以 Append-Only 方式寫入當前切片，外部觀測器（`agent-observer`）獨立 Tail 讀取，完全無需加鎖。
-3. **優雅的斷點續傳 (Checkpoint Recovery)**：若程式意外中斷，系統只需檢查最後一個 Chunk 的結尾即可快速恢復狀態。
+## 🏛️ 六、六角架構適配器設計與零侵入 WAL 直讀 (Hexagonal Architecture & WAL Direct Read)
+
+為了讓觀測系統維持「零侵入性 (Zero Intrusion)」與「高擴充性」，`agent-observer` 採用了嚴格的六角架構（Ports & Adapters）：
+
+```mermaid
+graph TD
+    subgraph AntigravityStorage["外部資料源 (External World)"]
+        SQLiteDB["conversations/*.db (WAL Mode)"]
+        JSONLogs["logs/transcript_full.jsonl"]
+        VaultDirs[".gemini/antigravity-cli/brain/"]
+    end
+
+    subgraph Adapters["Antigravity Adapters (internal/adapters/antigravity)"]
+        Disc["SessionDiscovery<br/>(目錄掃描與會話快照)"]
+        SQLR["SQLiteTelemetryReader<br/>(WAL 唯讀連線 + Protobuf 解碼)"]
+        Watch["FileWatcher<br/>(雙軌 JSONL Tail 追蹤與預熱管線)"]
+    end
+
+    subgraph CoreDomain["核心領域層 (internal/core)"]
+        Event["UnifiedAgentEvent (統一事件標準)"]
+        Analyzer["PayloadAnalyzer (5 維度分詞與倒推滑動窗口)"]
+    end
+
+    subgraph UIAdapters["呈現適配器 (internal/ui)"]
+        TUI["Bubbletea Model & Views<br/>(Dashboard, History Explorer, Docs)"]
+    end
+
+    SQLiteDB --> SQLR
+    JSONLogs --> Watch
+    VaultDirs --> Disc
+
+    Disc --> Event
+    SQLR --> Event
+    Watch --> Event
+
+    Event --> Analyzer
+    Analyzer --> TUI
+```
+
+### 💡 直讀 WAL 模式 vs 建立分析型 Sink DB 之架構決策 (Tradeoffs)：
+* **直讀 WAL 模式 (Zero-Sink Direct WAL Read - 最終採納)**：
+  * 使用唯讀連線 `file:<path>?mode=ro&_journal_mode=WAL` 直讀主 Agent 正在寫入的 SQLite 資料庫；
+  * **優點**：架構極簡、常駐記憶體 $< 15\text{MB}$、即時零延遲、無需在本地維護第二份資料庫複製品；
+  * **代價**：讀取端必須自行解析底層 Protobuf BLOB 二進制資料。
+* **建立分析型 Sink DB (Rejected)**：
+  * 開闢獨立的 DuckDB 或 SQLite 將日誌 ETL 轉存；
+  * **缺點**：寫入放大 (Write Amplification)、磁碟佔用加倍、且需處理複雜的資料同步與快照過期問題。
 
 ---
 
-## 🔗 六、相關概念與延伸閱讀
+## ⚡ 七、本地永久保留 vs 雲端 GPU 5 分鐘 TTL 顯存淘汰
+
+* **本地磁碟層**：`conversation_summaries` 與 JSONL 是 **永久且不可變的 Append-Only 日誌**，對話歷史會隨步數一路增長至數十萬乃至數百萬字（`Raw Log Accumulated`）；
+* **雲端推論層**：Google GPU 叢集顯存遵循 **5 分鐘閒置淘汰 (5-min Idle Eviction TTL)**。閒置超過 5 分鐘後，GPU HBM 中的 KV Cache 會被釋放；
+* **觀測系統的職責**：精確識別本地日誌的持續累積與雲端 GPU 快取的過期斷層，標記 `[TTL EXPIRED]`，提醒工程師注意冷啟動 Prefill 代價！
+
+---
+
+## 🔗 八、相關概念與延伸閱讀
 * [[01_Context_5_Dimensions]]：5 維度上下文分類模型。
 * [[02_Token_Calculation_and_LCP]]：Token 計算與最長公共前綴演算法。
 * [[06_Dual_Track_Telemetry_and_Window_Accounting]]：雙軌遙測引擎與倒推滑動窗口實作。
 * [[07_TUI_Engine_and_Terminal_Layout_Mechanics]]：全螢幕 TUI 引擎與終端機盒模型物理。
+* [[08_Interactive_Session_Switching_and_Anti_Jitter|互動式會話快切與防抖動機制]]：全域會話快切與動態目錄發現。
+* [[05_troubleshooting/02_Startup_Warmup_Double_Ingestion_and_Cache_Lag|實戰排查：開機預熱雙重分析與全域遙測誤用]]：開機預熱管線單一攝入修復。

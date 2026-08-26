@@ -20,6 +20,8 @@
    * *雙軌遙測與會計*：實作 Track 1 官方物理帳單與 Track 2 本地 5 維度解剖，透過倒推滑動窗口（Reverse Sliding Window）消除本地與雲端截斷失真。
 7. **[[07_TUI_Engine_and_Terminal_Layout_Mechanics]]**：
    * *終端機佈局物理*：以 Bubbletea 與 Lipgloss 打造全螢幕互動介面，攻克盒模型幾何陷阱、中文字元（CJK）2 倍列寬與軟換行虛擬緩衝區。
+8. **[[08_Interactive_Session_Switching_and_Anti_Jitter]]**：
+   * *會話快切與防抖動*：全域會話快切中樞（`Ctrl+p`）、動態目錄發現與歷史步驟防抖動鎖定機制（Anti-Jitter Lock）。
 
 ---
 
@@ -27,3 +29,4 @@
 * 🔙 回到上一層：[[02_wiki/index|Wiki 知識庫總導覽]]
 * 🔙 上一模組：[[02_wiki/01_theory/index|01_theory: 推論物理與數學模型]]
 * 🔜 下一模組：[[02_wiki/03_planning/index|03_planning: 系列藍圖與規劃規格]]
+* 🔜 實戰手冊：[[02_wiki/05_troubleshooting/index|05_troubleshooting: 實戰故障排查與 Runbook]]
