@@ -52,6 +52,7 @@ type Model struct {
 	lastActivity          time.Time
 	isSessionSwitcherOpen bool
 	isHelpModalOpen       bool
+	isGlossaryModalOpen   bool
 	sessionSearchQuery    string
 	availableSessions     []antigravity.SessionInfo
 	filteredSessions      []antigravity.SessionInfo
@@ -76,6 +77,7 @@ func NewModel(sessionID string, openSwitcherOnStart bool) Model {
 		switcherSelectedIdx:   0,
 		isSessionSwitcherOpen: openSwitcherOnStart,
 		isHelpModalOpen:       false,
+		isGlossaryModalOpen:   false,
 	}
 
 	// If sessionID matches one of discovered sessions, select it in the switcher
@@ -131,19 +133,19 @@ func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) [
 
 	if len(e.ToolCalls) > 0 {
 		for _, tc := range e.ToolCalls {
-			tcText := fmt.Sprintf("🛠️ Tool: %s (args: %v)", tc.ToolName, tc.Arguments)
+			tcText := fmt.Sprintf("Tool: %s (args: %v)", tc.ToolName, tc.Arguments)
 			lines = append(lines, wrapVisualLines(tcText, maxWidth)...)
 		}
 		lines = append(lines, strings.Repeat("─", sepWidth))
 	}
 
 	if strings.TrimSpace(e.Thinking) != "" {
-		lines = append(lines, "🧠 Thinking (Chain of Thought):")
+		lines = append(lines, "Thinking (Chain of Thought):")
 		lines = append(lines, wrapVisualLines(e.Thinking, maxWidth)...)
 		lines = append(lines, strings.Repeat("─", sepWidth))
 	}
 
-	lines = append(lines, "📄 Content Payload:")
+	lines = append(lines, "Content Payload:")
 	if strings.TrimSpace(e.RawContent) != "" {
 		wrappedPayload := wrapVisualLines(e.RawContent, maxWidth)
 		lines = append(lines, wrappedPayload...)
@@ -206,8 +208,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.historyOffset = 0
 		m.isSessionSwitcherOpen = false
 		m.isHelpModalOpen = false
+		m.isGlossaryModalOpen = false
 		m.activeView = ViewDashboard
-		m.clipboardStatus = fmt.Sprintf("🟢 Attached session %s (%d steps)", truncateStr(msg.SessionID, 8), len(events))
+		m.clipboardStatus = fmt.Sprintf("Attached session %s (%d steps)", truncateStr(msg.SessionID, 8), len(events))
 		m.clipboardStatusTime = time.Now()
 		return m, nil
 
@@ -227,17 +230,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.historyOffset = 0
 		m.isSessionSwitcherOpen = false
 		m.isHelpModalOpen = false
+		m.isGlossaryModalOpen = false
 		m.activeView = ViewDashboard
-		m.clipboardStatus = fmt.Sprintf("🟢 Switched to session %s (%d steps)", truncateStr(msg.SessionID, 8), len(msg.Events))
+		m.clipboardStatus = fmt.Sprintf("Switched to session %s (%d steps)", truncateStr(msg.SessionID, 8), len(msg.Events))
 		m.clipboardStatusTime = time.Now()
 		return m, nil
 
 	case tea.KeyMsg:
 		key := msg.String()
 
+		// Global toggle for Glossary Modal: h (when in Dashboard or global without typing)
+		if key == "h" && !m.isSessionSwitcherOpen && !m.isHelpModalOpen && (m.activeView == ViewDashboard || m.focusPane == FocusList) {
+			m.isGlossaryModalOpen = !m.isGlossaryModalOpen
+			return m, nil
+		}
+
+		// Glossary Modal Interaction
+		if m.isGlossaryModalOpen {
+			if key == "esc" || key == "h" || key == "q" || key == "enter" || key == "?" {
+				m.isGlossaryModalOpen = false
+				return m, nil
+			}
+			return m, nil
+		}
+
 		// Global toggle for Help Modal: ? or F1
 		if key == "?" || key == "f1" {
-			if !m.isSessionSwitcherOpen {
+			if !m.isSessionSwitcherOpen && !m.isGlossaryModalOpen {
 				m.isHelpModalOpen = !m.isHelpModalOpen
 				return m, nil
 			}
@@ -245,7 +264,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Help Modal Interaction
 		if m.isHelpModalOpen {
-			if key == "esc" || key == "?" || key == "q" || key == "enter" {
+			if key == "esc" || key == "?" || key == "q" || key == "enter" || key == "h" {
 				m.isHelpModalOpen = false
 				return m, nil
 			}
@@ -257,6 +276,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.isSessionSwitcherOpen = !m.isSessionSwitcherOpen
 			if m.isSessionSwitcherOpen {
 				m.isHelpModalOpen = false
+				m.isGlossaryModalOpen = false
 				m.availableSessions, _ = antigravity.DiscoverAllSessions()
 				m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery)
 				m.switcherSelectedIdx = 0
@@ -348,7 +368,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// ==================== DASHBOARD VIEW KEYBINDINGS ====================
 		if m.activeView == ViewDashboard {
 			switch key {
-			case "enter", "h", "H":
+			case "enter":
 				if len(m.history) > 0 {
 					m.selectedIdx = len(m.history) - 1 - m.dashboardIdx
 					if m.selectedIdx < 0 {
@@ -455,7 +475,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if len(fullLines) > 0 && start <= end {
 							selectedText := strings.Join(fullLines[start:end+1], "\n")
 							_ = CopyToClipboard(selectedText)
-							m.clipboardStatus = fmt.Sprintf("📋 Copied %d lines to clipboard!", end-start+1)
+							m.clipboardStatus = fmt.Sprintf("Copied %d lines to clipboard", end-start+1)
 							m.clipboardStatusTime = time.Now()
 						}
 						m.isVisualMode = false
@@ -510,7 +530,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.focusPane == FocusList {
 					m.focusPane = FocusDetail
 				}
-			case "esc", "left", "h":
+			case "esc", "left":
 				if m.focusPane == FocusDetail {
 					m.focusPane = FocusList
 					m.isVisualMode = false
@@ -624,6 +644,10 @@ func (m Model) View() string {
 		m.height = 24
 	}
 
+	if m.isGlossaryModalOpen {
+		return m.renderGlossaryModal()
+	}
+
 	if m.isHelpModalOpen {
 		return m.renderHelpModal()
 	}
@@ -659,18 +683,18 @@ func (m Model) View() string {
 }
 
 func (m Model) renderHeader() string {
-	title := HeaderStyle.Render(" 🐹 AGENT-OBSERVER ")
+	title := HeaderStyle.Render(" AGENT-OBSERVER ")
 	if m.width < 90 {
-		title = HeaderStyle.Render(" 🐹 OBSERVER ")
+		title = HeaderStyle.Render(" OBSERVER ")
 	}
 
 	viewTabs := ""
 	if m.activeView == ViewDashboard {
-		viewTabs = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [1] 📊 Dashboard ") +
-			lipgloss.NewStyle().Foreground(ColorMuted).Render(" [2] 📜 History ")
+		viewTabs = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [1] Dashboard ") +
+			lipgloss.NewStyle().Foreground(ColorMuted).Render(" [2] History ")
 	} else {
-		viewTabs = lipgloss.NewStyle().Foreground(ColorMuted).Render(" [1] 📊 Dashboard ") +
-			lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [2] 📜 History ")
+		viewTabs = lipgloss.NewStyle().Foreground(ColorMuted).Render(" [1] Dashboard ") +
+			lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [2] History ")
 	}
 
 	sessionBadge := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf(" [Ctrl+P] %s ", truncateStr(m.sessionID, 8)))
@@ -701,19 +725,19 @@ func (m Model) renderFooter() string {
 			hints = fmt.Sprintf(" %s Yank  %s Move  %s Cancel",
 				KeyStyle.Render("[y]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Esc]"))
 		} else if m.focusPane == FocusList {
-			hints = fmt.Sprintf(" %s Focus Detail  %s Select  %s Switch  %s Help  %s Dash  %s Quit",
-				KeyStyle.Render("[Tab/l]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[?]"), KeyStyle.Render("[1]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Focus Detail  %s Select  %s Glossary  %s Help  %s Switch  %s Dash  %s Quit",
+				KeyStyle.Render("[Tab/l]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[h]"), KeyStyle.Render("[?]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[1]"), KeyStyle.Render("[q]"))
 		} else {
-			hints = fmt.Sprintf(" %s Visual  %s Focus List  %s Scroll  %s Help  %s Switch  %s Quit",
-				KeyStyle.Render("[v]"), KeyStyle.Render("[Tab/h]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[?]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Visual  %s Focus List  %s Scroll  %s Glossary  %s Help  %s Switch  %s Quit",
+				KeyStyle.Render("[v]"), KeyStyle.Render("[Tab/Esc]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[h]"), KeyStyle.Render("[?]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[q]"))
 		}
 	} else {
 		if len(m.history) > 0 {
-			hints = fmt.Sprintf(" %s Inspect  %s Playback  %s LIVE  %s Switch  %s Help  %s Quit",
-				KeyStyle.Render("[Enter/h]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[G]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[?]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Inspect  %s Playback  %s Glossary  %s Help  %s Switch  %s LIVE  %s Quit",
+				KeyStyle.Render("[Enter]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[h]"), KeyStyle.Render("[?]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[G]"), KeyStyle.Render("[q]"))
 		} else {
-			hints = fmt.Sprintf(" %s Switch Session  %s Help  %s History  %s Quit",
-				KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[?]"), KeyStyle.Render("[2]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Glossary  %s Help  %s Switch  %s History  %s Quit",
+				KeyStyle.Render("[h]"), KeyStyle.Render("[?]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[2]"), KeyStyle.Render("[q]"))
 		}
 	}
 	return lipgloss.NewStyle().MaxWidth(m.width).Render(hints)

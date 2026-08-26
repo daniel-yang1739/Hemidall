@@ -46,15 +46,15 @@ func (m Model) renderDashboardView() string {
 	var cacheBadge string
 	switch e.CacheStatus {
 	case "HIT":
-		cacheBadge = BadgeSuccess.Render(fmt.Sprintf("🟢 [CACHE HIT %.1f%%]", t.CacheHitRate))
+		cacheBadge = BadgeSuccess.Render(fmt.Sprintf("[CACHE HIT %.1f%%]", t.CacheHitRate))
 	case "PARTIAL":
-		cacheBadge = BadgeWarning.Render(fmt.Sprintf("🟡 [PARTIAL HIT %.1f%%]", t.CacheHitRate))
+		cacheBadge = BadgeWarning.Render(fmt.Sprintf("[PARTIAL HIT %.1f%%]", t.CacheHitRate))
 	case "WRITE":
-		cacheBadge = TitleStyle.Render("🔵 [CACHE WRITE / INITIAL]")
+		cacheBadge = TitleStyle.Render("[CACHE WRITE / INITIAL]")
 	case "EXPIRED":
-		cacheBadge = BadgeDanger.Render("🔴 [TTL EXPIRED / COLD START]")
+		cacheBadge = BadgeDanger.Render("[TTL EXPIRED / COLD START]")
 	default:
-		cacheBadge = BadgeDanger.Render("🔴 [CACHE MISS / BROKEN]")
+		cacheBadge = BadgeDanger.Render("[CACHE MISS / BROKEN]")
 	}
 
 	panelInnerWidth := m.width - 4
@@ -64,10 +64,10 @@ func (m Model) renderDashboardView() string {
 
 	// ==================== PANEL 1: OFFICIAL TELEMETRY & CACHE (TRACK 1) ====================
 	var p1 strings.Builder
-	p1Title := "👑 TRACK 1: Official Gemini Physics Telemetry (Ground Truth Billing)"
+	p1Title := "TRACK 1: OFFICIAL GEMINI TELEMETRY (BILLING GROUND TRUTH)"
 	if isPlayback {
-		p1Title = fmt.Sprintf("👑 TRACK 1: Official Telemetry %s",
-			lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("(⏮️ PLAYBACK: Step #%d | %d of %d)", e.StepIndex, m.dashboardIdx+1, len(m.history))))
+		p1Title = fmt.Sprintf("TRACK 1: OFFICIAL TELEMETRY %s",
+			lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("(PLAYBACK: Step #%d | %d of %d)", e.StepIndex, m.dashboardIdx+1, len(m.history))))
 	}
 	p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 
@@ -82,21 +82,21 @@ func (m Model) renderDashboardView() string {
 	}
 
 	// 5 Comprehensive Points for Track 1
-	p1.WriteString(fmt.Sprintf("  • 🎯 Backend Model         : %s\n", lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName)))
-	p1.WriteString(fmt.Sprintf("  • 📊 Total Active Context  : %s Tokens (%5.1f%% of %dk Window)\n",
+	p1.WriteString(fmt.Sprintf("  • Backend Model         : %s\n", lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName)))
+	p1.WriteString(fmt.Sprintf("  • Total Active Context  : %s Tokens (%5.1f%% of %dk Window)\n",
 		lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1000))
-	p1.WriteString(fmt.Sprintf("  • ⚡ Prefix Cache Hit      : %s Tokens (%5.1f%%)  %s\n",
+	p1.WriteString(fmt.Sprintf("  • Prefix Cache Hit      : %s Tokens (%5.1f%%)  %s\n",
 		BadgeSuccess.Render(fmt.Sprintf("%d", t.CachedTokens)), t.CacheHitRate, cacheBadge))
-	p1.WriteString(fmt.Sprintf("  • 🔥 New Billable Tokens   : %s Tokens (%5.1f%%)\n",
+	p1.WriteString(fmt.Sprintf("  • New Billable Tokens   : %s Tokens (%5.1f%%)\n",
 		lipgloss.NewStyle().Foreground(ColorHighlight).Render(fmt.Sprintf("%d", t.NewTokens)), 100.0-t.CacheHitRate))
-	p1.WriteString(fmt.Sprintf("  • ⏱️ Response / Event Time : %s  (Step #%03d | Status: %s)",
+	p1.WriteString(fmt.Sprintf("  • Response / Event Time : %s  (Step #%03d | Status: %s)",
 		lipgloss.NewStyle().Foreground(ColorLightText).Render(timeStr), e.StepIndex, e.Status))
 
 	panel1Box := PanelStyle.Width(panelInnerWidth).Render(p1.String())
 
 	// ==================== PANEL 2: LOCAL 5-DIMENSION CONTEXT ANATOMY (TRACK 2) ====================
 	var p2 strings.Builder
-	p2Title := TitleStyle.Render("🔬 TRACK 2: Local 5-Dimension Context Anatomy (Payload Analysis)")
+	p2Title := TitleStyle.Render("TRACK 2: LOCAL 5-DIMENSION CONTEXT ANATOMY (PAYLOAD ANALYSIS)")
 	p2.WriteString(p2Title + "\n")
 
 	p2.WriteString(fmt.Sprintf("  1. System Instruction : %-8d Tokens (%5.1f%%)  [%s]\n",
@@ -112,7 +112,7 @@ func (m Model) renderDashboardView() string {
 
 	if t.RawLocalAccumulated > total && m.height >= 34 {
 		truncated := t.RawLocalAccumulated - total
-		p2.WriteString(fmt.Sprintf("\n  💡 Raw Log Accumulated: %d Tokens (✂️ %d Tokens Truncated by Cloud Window)",
+		p2.WriteString(fmt.Sprintf("\n  Raw Log Accumulated   : %d Tokens (%d Tokens Truncated by Cloud Window)",
 			t.RawLocalAccumulated, truncated))
 	}
 
@@ -120,7 +120,7 @@ func (m Model) renderDashboardView() string {
 
 	if m.height >= 33 {
 		var p3 strings.Builder
-		p3.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render("📋 Recent Live Events (Press [Enter] or [2] to inspect history):") + "\n")
+		p3.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render("RECENT LIVE EVENTS (Press [Enter] or [2] to inspect history):") + "\n")
 		eventsCount := 2
 		if m.height >= 38 {
 			eventsCount = 4
@@ -161,9 +161,9 @@ func (m Model) renderHistoryView() string {
 
 	// ==================== 1. Left Pane: Step List (2 Lines per Step Card) ====================
 	var leftLines []string
-	leftTitle := "📜 Steps (Newest First)"
+	leftTitle := "STEPS (Newest First)"
 	if m.focusPane == FocusList {
-		leftTitle = "📜 Steps (Newest First ◀)"
+		leftTitle = "STEPS (Newest First <)"
 	}
 	leftLines = append(leftLines, TitleStyle.Render(truncateVisualWidth(leftTitle, listInnerWidth-2)))
 
@@ -188,7 +188,7 @@ func (m Model) renderHistoryView() string {
 			summaryStyle := lipgloss.NewStyle().Foreground(ColorMuted)
 
 			if i == m.selectedIdx {
-				prefix = "▶ "
+				prefix = "> "
 				if m.focusPane == FocusList {
 					headerStyle = SelectedRowStyle
 					summaryStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorPrimary)
@@ -228,16 +228,16 @@ func (m Model) renderHistoryView() string {
 
 	// ==================== 2. Right Pane: Selected Step Detail Inspector (Word-Wrapped Buffer) ====================
 	var rightLines []string
-	rightTitle := "🔍 Step Inspector"
+	rightTitle := "STEP INSPECTOR"
 	if m.isVisualMode {
 		start := m.visualStart
 		end := m.visualCursor
 		if start > end {
 			start, end = end, start
 		}
-		rightTitle = fmt.Sprintf("🔍 Inspector (VISUAL: %d lines | [y] Copy)", end-start+1)
+		rightTitle = fmt.Sprintf("STEP INSPECTOR (VISUAL: %d lines | [y] Copy)", end-start+1)
 	} else if m.focusPane == FocusDetail {
-		rightTitle = "🔍 Step Inspector ◀ [Scroll: j/k, Ctrl+u/d, g/G]"
+		rightTitle = "STEP INSPECTOR < [Scroll: j/k, Ctrl+u/d, g/G]"
 	}
 	rightLines = append(rightLines, TitleStyle.Render(truncateVisualWidth(rightTitle, detailInnerWidth-2)))
 

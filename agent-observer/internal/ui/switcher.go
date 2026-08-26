@@ -41,18 +41,18 @@ func (m Model) renderSessionSwitcherModal() string {
 	var contentLines []string
 
 	// 1. Modal Title
-	titleText := "🔍 SWITCH SESSION [Ctrl+P]"
+	titleText := "SWITCH SESSION [Ctrl+P]"
 	contentLines = append(contentLines, TitleStyle.Render(truncateVisualWidth(titleText, modalInnerWidth)))
 
 	// 2. Search Input Box
 	queryDisplay := m.sessionSearchQuery
 	cursorChar := "█"
-	inputBox := fmt.Sprintf("🔎 Search: [%s%s] (Type to filter)", queryDisplay, lipgloss.NewStyle().Foreground(ColorHighlight).Render(cursorChar))
+	inputBox := fmt.Sprintf("Filter: [%s%s] (Type to search)", queryDisplay, lipgloss.NewStyle().Foreground(ColorHighlight).Render(cursorChar))
 	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(truncateVisualWidth(inputBox, modalInnerWidth)))
 	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", modalInnerWidth)))
 
 	// 3. Filtered Session List
-	maxVisibleRows := modalHeight - 6 // Reserve 3 lines for title/search/sep, 3 lines for footer
+	maxVisibleRows := modalHeight - 6
 	if maxVisibleRows < 2 {
 		maxVisibleRows = 2
 	}
@@ -96,7 +96,7 @@ func (m Model) renderSessionSwitcherModal() string {
 			cardStyle2 := lipgloss.NewStyle().Foreground(ColorMuted)
 
 			if isSelected {
-				prefix = "▶ "
+				prefix = "> "
 				cardStyle1 = SelectedRowStyle
 				cardStyle2 = lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Background(ColorDarkBg)
 			} else if isActive {
@@ -109,7 +109,7 @@ func (m Model) renderSessionSwitcherModal() string {
 			contentLines = append(contentLines, cardStyle1.Render(truncateVisualWidth(line1, modalInnerWidth)))
 
 			// Line 2: Last activity timestamp
-			line2 := fmt.Sprintf("    🕒 Last Modified: %s", s.LastModified.Format("2006-01-02 15:04:05"))
+			line2 := fmt.Sprintf("    Last Modified: %s", s.LastModified.Format("2006-01-02 15:04:05"))
 			contentLines = append(contentLines, cardStyle2.Render(truncateVisualWidth(line2, modalInnerWidth)))
 		}
 	}
@@ -136,7 +136,6 @@ func (m Model) renderSessionSwitcherModal() string {
 		Width(modalInnerWidth).
 		Render(strings.Join(contentLines, "\n"))
 
-	// Center the modal dialog over the screen
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modalBox)
 }
 

@@ -1,5 +1,9 @@
 # ⏱️ LLM Wiki Chrono Log
 
+## [2026-08-27] feature | 實作名詞釋義浮動面板與極簡無 Emoji 終端美學 (Glossary Float Modal & Clean ASCII UI v0.5.2)：
+1. **新增名詞釋義浮動面板 (Terminology & Concepts Glossary [h])**：在全域支援按 `h` 鍵彈出居中浮動名詞解讀字典，清楚解釋 `Total Active Context`、`Prefix Cache Hit`、`New Billable Tokens`、`Raw Log Accumulated` (本地未壓縮日誌 vs 雲端滑動窗口截斷)、`Active Turn / CoT` (模型當前思維鏈與工具調用) 以及 5 大 Context 維度的底層物理意義；
+2. **全介面移除所有 Emojis (Clean & Distraction-Free ASCII UI)**：全面移除所有干擾閱讀的表情符號，採用極簡整齊的 ASCII 符號與邊框，大幅提升終端機專業感；
+3. **快捷鍵面板表格對齊排版 (Tab-Aligned Shortcuts Sheet [?])**：重構 `?` 快捷鍵指南為左右定寬欄位對齊，階梯式分組排版，按 `Esc` 或 `?` 即刻關閉
 ## [2026-08-27] feature | 實作 5 大 TUI 體驗與 Vim-First 終極升級 (TUI UX & Anti-Jitter Lock v0.5.1)：
 1. **全介面 100% 純英文標準化 (English-Only TUI)**：全面將面板標題、Badge 狀態、度量欄位與快捷提示英文標準化（如 `Official Gemini Physics Telemetry`、`Local 5-Dimension Context Anatomy`），符合終端機專業工程標準；
 2. **Track 1 擴充第 5 點響應時間戳 (Response / Event Time)**：在官方遙測面板新增 `⏱️ Response / Event Time : 2026-08-27 00:34:18 (Step #1957 | Status: DONE)`，提供精確秒級時序對照；
