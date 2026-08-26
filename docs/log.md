@@ -1,9 +1,11 @@
 # ⏱️ LLM Wiki Chrono Log
 
+## [2026-08-27] style | Recent Live Events 高度內容自適應貼合與 Header 尾部時間序列重構 (Content-Hugging Events Box & Header Clock Sequence v0.6.6)：
+1. **Recent Live Events 外框高度自適應貼合 (Content-Hugging Box)**：移除 Dashboard Panel 3 強制填滿螢幕底部的過度空白，改為依實際事件數（最多 6 筆）動態貼合外框高度，排版緊密且自然；
+2. **頂部 Header 尾端重構為 `hh:mm:ss | Events: xxxx | (hashhash)`**：將時間戳、事件數與會話短 Hash 依時序遞進排版（如 `01:22:13 | Events: 2200 | (aa726359)`），視覺節奏更具韻律感
 ## [2026-08-27] style | Recent Live Events 限制最多 6 筆與 Header 尾部格式優化 (Live Events Cap & Header Tail Polish v0.6.5)：
 1. **Recent Live Events 限制最多 6 筆**：在 Dashboard 視圖中，將底部 `RECENT LIVE EVENTS` 列表硬性上限鎖定為最多呈現最新 6 筆事件（`maxEventLines <= 6`），避免在大螢幕下過度拉長佔據版面；
 2. **頂部 Header 尾端美化為 `(hashhash) | Events: xxxx | hh:mm:ss`**：將當前會話 Hash、事件總數與當前時鐘以標準直槓分隔整齊排列（如 `(aa726359) | Events: 2200 | 01:19:15`），使兩端視覺達到完美平衡
-## [2026-08-27] style | 頂部 Header 佈局重構與 Session Hash 尾端括號美化 (Header Layout Polish & Clean Session Tag v0.6.4)：移除頂部 Tab 列中突兀的 `[Ctrl+P]` 字樣與省略號 `...`，將當前連線 Session Hash 移至 Header 最右側末端並以乾淨的半形括號包裹呈現（如 `Events: 2200 | 01:14:31  (aa726359)`），左側 Tab 保留純粹清爽的 `[1] Dashboard  [2] History  [3] Docs`
 ## [2026-08-27] bugfix | 修復 Shortcuts 與 Switcher 浮動面板分隔線折行 Bug (Modal Divider Padding Width Fix v0.6.3)：抓出 Lipgloss `Padding(0, 1)` 使內部可用字元寬度為 `modalInnerWidth - 2`，先前分隔線 `strings.Repeat("─", modalInnerWidth)` 因超出 2 字元被終端折行至下一行產生雙重框線之瑕疵；精確重構為 `contentWidth = modalInnerWidth - 2` 進行分隔線與文字嚴格截斷，徹底消除多餘折行
 ## [2026-08-27] refactor | 將 Shortcuts 快捷鍵與 Architecture Docs 架構定義解耦分離 (Shortcuts Float Modal & Dedicated Docs Page v0.6.2)：
 1. **Shortcuts 獨立為精簡浮動面板 (Floating Shortcuts Modal [?])**：按下 `?` 或 `F1` 彈出居中浮動快捷鍵作弊條，採定寬左右對齊，按 `Esc`、`?`、`q`、`Enter` 隨時收合返回當前畫面；

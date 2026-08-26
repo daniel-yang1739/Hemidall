@@ -774,11 +774,11 @@ func (m Model) renderHeader() string {
 	if len(shortHash) > 8 {
 		shortHash = shortHash[:8]
 	}
-	sessionTag := lipgloss.NewStyle().Foreground(ColorHighlight).Render(fmt.Sprintf("(%s)", shortHash))
+	timeInfo := lipgloss.NewStyle().Foreground(ColorLightText).Render(time.Now().Format("15:04:05"))
 	sep := lipgloss.NewStyle().Foreground(ColorBorder).Render(" | ")
 	eventsInfo := lipgloss.NewStyle().Foreground(ColorLightText).Render(fmt.Sprintf("Events: %d", m.eventCount))
-	timeInfo := lipgloss.NewStyle().Foreground(ColorLightText).Render(time.Now().Format("15:04:05"))
-	right := sessionTag + sep + eventsInfo + sep + timeInfo
+	sessionTag := lipgloss.NewStyle().Foreground(ColorHighlight).Render(fmt.Sprintf("(%s)", shortHash))
+	right := timeInfo + sep + eventsInfo + sep + sessionTag
 
 	gapWidth := m.width - lipgloss.Width(left) - lipgloss.Width(right) - 1
 	if gapWidth < 1 {

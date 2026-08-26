@@ -110,39 +110,20 @@ func (m Model) renderDashboardView() string {
 	p2.WriteString(fmt.Sprintf("  5. Active Turn / CoT  : %-8d Tokens (%5.1f%%)  [%s]",
 		t.ActiveTurnTokens+t.ThinkingTokens, activePct, renderColorBar(activePct, 15, ColorWarning)))
 
-	hasRawLogLine := false
 	if t.RawLocalAccumulated > total && m.height >= 34 {
 		truncated := t.RawLocalAccumulated - total
 		p2.WriteString(fmt.Sprintf("\n  Raw Log Accumulated   : %d Tokens (%d Tokens Truncated by Cloud Window)",
 			t.RawLocalAccumulated, truncated))
-		hasRawLogLine = true
 	}
 
 	panel2Box := PanelStyle.Width(panelInnerWidth).Render(p2.String())
 
-	// ==================== PANEL 3: RECENT LIVE EVENTS (ROUNDED BOX) ====================
-	p1LinesCount := 8 // 1 title + 5 items + 2 border
-	p2LinesCount := 8 // 1 title + 5 items + 2 border
-	if hasRawLogLine {
-		p2LinesCount = 9
-	}
-	usedLines := 2 + p1LinesCount + p2LinesCount // 2 for header + footer
-	remainingLines := m.height - usedLines
-
-	// If at least 5 lines remaining (1 title + 2 events + 2 borders = 5), render Panel 3 in a rounded box
-	if remainingLines >= 5 {
-		p3InnerHeight := remainingLines - 2
+	// ==================== PANEL 3: RECENT LIVE EVENTS (CONTENT-HUGGING ROUNDED BOX) ====================
+	if len(m.history) > 0 || m.height >= 26 {
 		var p3Lines []string
 		p3Lines = append(p3Lines, TitleStyle.Render("RECENT LIVE EVENTS (Press [Enter] or [2] to inspect history)"))
 
-		maxEventLines := p3InnerHeight - 1 // 1 reserved for title
-		if maxEventLines > 6 {
-			maxEventLines = 6
-		}
-		if maxEventLines < 1 {
-			maxEventLines = 1
-		}
-
+		maxEventLines := 6
 		if len(m.history) == 0 {
 			p3Lines = append(p3Lines, "  No events recorded yet...")
 		} else {
@@ -157,14 +138,6 @@ func (m Model) renderDashboardView() string {
 				eventLine := fmt.Sprintf("  %s %s  %s", typeBadge, timeStr, ev.Summary)
 				p3Lines = append(p3Lines, truncateVisualWidth(eventLine, panelInnerWidth-2))
 			}
-		}
-
-		// Pad p3Lines to strictly fill p3InnerHeight
-		for len(p3Lines) < p3InnerHeight {
-			p3Lines = append(p3Lines, "")
-		}
-		if len(p3Lines) > p3InnerHeight {
-			p3Lines = p3Lines[:p3InnerHeight]
 		}
 
 		panel3Box := PanelStyle.Width(panelInnerWidth).Render(strings.Join(p3Lines, "\n"))
