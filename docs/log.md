@@ -1,5 +1,8 @@
 # ⏱️ LLM Wiki Chrono Log
 
+## [2026-08-27] style | Recent Live Events 限制最多 6 筆與 Header 尾部格式優化 (Live Events Cap & Header Tail Polish v0.6.5)：
+1. **Recent Live Events 限制最多 6 筆**：在 Dashboard 視圖中，將底部 `RECENT LIVE EVENTS` 列表硬性上限鎖定為最多呈現最新 6 筆事件（`maxEventLines <= 6`），避免在大螢幕下過度拉長佔據版面；
+2. **頂部 Header 尾端美化為 `(hashhash) | Events: xxxx | hh:mm:ss`**：將當前會話 Hash、事件總數與當前時鐘以標準直槓分隔整齊排列（如 `(aa726359) | Events: 2200 | 01:19:15`），使兩端視覺達到完美平衡
 ## [2026-08-27] style | 頂部 Header 佈局重構與 Session Hash 尾端括號美化 (Header Layout Polish & Clean Session Tag v0.6.4)：移除頂部 Tab 列中突兀的 `[Ctrl+P]` 字樣與省略號 `...`，將當前連線 Session Hash 移至 Header 最右側末端並以乾淨的半形括號包裹呈現（如 `Events: 2200 | 01:14:31  (aa726359)`），左側 Tab 保留純粹清爽的 `[1] Dashboard  [2] History  [3] Docs`
 ## [2026-08-27] bugfix | 修復 Shortcuts 與 Switcher 浮動面板分隔線折行 Bug (Modal Divider Padding Width Fix v0.6.3)：抓出 Lipgloss `Padding(0, 1)` 使內部可用字元寬度為 `modalInnerWidth - 2`，先前分隔線 `strings.Repeat("─", modalInnerWidth)` 因超出 2 字元被終端折行至下一行產生雙重框線之瑕疵；精確重構為 `contentWidth = modalInnerWidth - 2` 進行分隔線與文字嚴格截斷，徹底消除多餘折行
 ## [2026-08-27] refactor | 將 Shortcuts 快捷鍵與 Architecture Docs 架構定義解耦分離 (Shortcuts Float Modal & Dedicated Docs Page v0.6.2)：
@@ -7,21 +10,6 @@
 2. **Docs 獨立為全螢幕第 3 頁面 (View 3: `[3] Docs`)**：專門收錄 5 大 Context 維度解剖、Token 計費真理與滑動窗口物理機制；支援 `/` 即時關鍵字搜尋與 `j/k` 虛擬滾動，外框高度 100% 嚴格鎖定永不推擠變形；
 3. **全螢幕 3 大視圖絕對定高防抖 (Pixel-Perfect Strict View Padding)**：在 `Model.View()` 實作全維度自動行數補齊保護，使 Dashboard、History 與 Docs 3 大頁面在 80x24、100x30、120x35、140x40 下永遠 100% 貼齊螢幕底端，底框線與 Footer 絕對無縫吸附
 ## [2026-08-27] style | 將 Recent Live Events 整合進標準圓角外框 (Consistent Rounded Box for Live Events v0.6.1)：在 Live Dashboard 視圖中，將底部 `RECENT LIVE EVENTS` 列表封裝進與 Track 1/Track 2 相同寬度與圓角風格的標準面板框線 (`PanelStyle.Width(panelInnerWidth)`)，使整個儀表板上下 3 個面板框線視覺完全一致、排版緊湊大氣且零高度溢出
-## [2026-08-27] feature | 重構 Help & Docs 為獨立第 3 頁並支援 `/` 即時搜尋與 ANSI 冒號對齊修復 (View 3 Searchable Docs & Zero-Height Layout v0.6.0)：
-1. **升級為獨立第 3 視圖 (View 3: `[3] Help & Docs`)**：將原本高度易受限制的浮動面板徹底升級為全螢幕第 3 頁面；框體高度嚴格鎖定 `innerRowsLimit = m.height - 4`，與 Dashboard/History 完美 100% 等高，永不因內容增長推擠或改變外框大小；
-2. **支援 `/` 即時關鍵字搜尋與虛擬滾動 (Vim Search & Virtual Buffer)**：按下 `/` 即可輸入關鍵字即時過濾全域快捷鍵、5 大 Context 維度與架構術語（如 `/accumulated`、`/cot`、`/compaction`），按 `Enter/Esc` 返回 `j/k/Ctrl+d/u` 順暢虛擬滾動瀏覽；
-3. **徹底攻克 Lipgloss ANSI 轉義字元排版缺陷與黑底色塊 Bug**：抓出過去在含有 ANSI Style 的字串直接使用 `fmt.Sprintf("%-24s")` 導致 byte 長度包含隱形轉義序列而算錯欄寬，以及 outer box `Background()` 被子元素 reset `\033[0m` 抹消造成的色塊殘留問題；重構為「先以純文字填補固定欄位寬度 (Pre-Pad Plain String) 再進行 Lipgloss 上色渲染」，並統一採用標準半形英文冒號 ` : `，徹底消除所有排版錯位與殘留底色
-## [2026-08-27] feature | 實作名詞釋義浮動面板與極簡無 Emoji 終端美學 (Glossary Float Modal & Clean ASCII UI v0.5.2)：
-1. **新增名詞釋義浮動面板 (Terminology & Concepts Glossary [h])**：在全域支援按 `h` 鍵彈出居中浮動名詞解讀字典，清楚解釋 `Total Active Context`、`Prefix Cache Hit`、`New Billable Tokens`、`Raw Log Accumulated` (本地未壓縮日誌 vs 雲端滑動窗口截斷)、`Active Turn / CoT` (模型當前思維鏈與工具調用) 以及 5 大 Context 維度的底層物理意義；
-2. **全介面移除所有 Emojis (Clean & Distraction-Free ASCII UI)**：全面移除所有干擾閱讀的表情符號，採用極簡整齊的 ASCII 符號與邊框，大幅提升終端機專業感；
-3. **快捷鍵面板表格對齊排版 (Tab-Aligned Shortcuts Sheet [?])**：重構 `?` 快捷鍵指南為左右定寬欄位對齊，階梯式分組排版，按 `Esc` 或 `?` 即刻關閉
-## [2026-08-27] feature | 實作 5 大 TUI 體驗與 Vim-First 終極升級 (TUI UX & Anti-Jitter Lock v0.5.1)：
-1. **全介面 100% 純英文標準化 (English-Only TUI)**：全面將面板標題、Badge 狀態、度量欄位與快捷提示英文標準化（如 `Official Gemini Physics Telemetry`、`Local 5-Dimension Context Anatomy`），符合終端機專業工程標準；
-2. **Track 1 擴充第 5 點響應時間戳 (Response / Event Time)**：在官方遙測面板新增 `⏱️ Response / Event Time : 2026-08-27 00:34:18 (Step #1957 | Status: DONE)`，提供精確秒級時序對照；
-3. **新增全域快捷鍵浮動面板 (Floating Help Modal [?])**：支援按 `?` 或 `F1` 彈出居中浮動快捷鍵作弊條（包含 Global、Dashboard、History、Visual 與 Switcher 完整操作說明），按 `Esc` 或 `?` 即刻收合；
-4. **Vim-First 搜尋面板操作**：在 Session Switcher 支援 `Ctrl+j/k`、`Ctrl+n/p`、`Tab/Shift+Tab` 以及空搜尋列下的 `j/k` 快速上下移動；
-5. **歷史步驟防抖動鎖定機制 (History Inspection Anti-Jitter Lock)**：徹底解決回看歷史或在右欄 Inspector 滾動時一有新事件畫面就逆跳亂滾的問題；當 `selectedIdx > 0` 或 `focusPane == FocusDetail` 時，新事件進入自動同步推進索引，保證所檢視的歷史步驟與滾動位置 100% 絕對鎖定凍結！
-## [2026-08-27] feature | 實作全域會話快切浮動面板與即時動態掛載 (Session Quick Switcher & Dynamic Discovery v0.5.0)：開機預設彈出居中浮動面板 (Float Modal Panel)，自動掃描 `~/.gemini/antigravity-cli/conversations/` 探索所有活躍與歷史會話（依最後修改時序降序排列，展示 Step 數與檔案大小）；支援按鍵即時模糊過濾 (Fuzzy Search)、[↑/↓/Ctrl+j/k] 巡覽、[Enter] 毫秒級無縫切換會話並載入全量歷史步驟，並在全視圖支援 [Ctrl+P] 全域隨時呼叫與切換
 ## [2026-08-26] refactor | 優化根目錄導覽與審查報告時間戳規範 (Root Index Refinement & Review Timestamping)：依使用者指示移除 `docs/index.md` 根目錄冗餘的 ASCII 檔案結構樹（僅保留在 `docs/02_wiki/index.md` 與 `04_meta/02_Obsidian_Vault_Topology.md`），使頂層導覽保持極致精煉；同時將 `docs/reviews/` 下全體審查報告書標準化升級為包含「建立時間」元數據標頭與精確至「秒」的時序檔名（`YYYY-MM-DD_HH-MM-SS_<topic>_audit_report.md`），並同步更新 `SKILL.md` 審查憲法規範
 ## [2026-08-26] distill-production-ready | 透過 wiki-distiller 完成全量素材深度提煉與二次編譯 (Wiki Distillation v0.5.0)：經 18 位世界前 1% 頂尖專家與讀者展開雙輪對抗審查，大檢察官終審簽核通過。新增 3 篇全新世界級知識卡片：`01_theory/04_Context_Compaction_and_Summarization.md` (雙水位線壓縮與遞迴摘要)、`02_architecture/06_Dual_Track_Telemetry_and_Window_Accounting.md` (雙軌遙測與倒推滑動窗口)、`02_architecture/07_TUI_Engine_and_Terminal_Layout_Mechanics.md` (全螢幕 TUI 引擎與終端盒模型)；深度修訂 `01_theory/03`、`02_architecture/03`、`03_planning/04`；產出全景審查報告書 `docs/reviews/2026-08-26_23-13-21_wiki_distillation_comprehensive_audit_report.md`；同步更新 `docs/index.md`、`02_wiki/index.md` 與 `feedbacks/` 反饋記憶庫；貫徹「消化即刪除 (Digest & Delete)」鐵律安全清理全量 9 篇 Raw 素材，保持素材池極致純淨 (全庫共 16 篇世界級 Wiki 卡片)
 ## [2026-08-26] feature | 實作右欄軟換行 (Soft Wrap) 與左欄雙行步驟卡片 (2-Line Step Card v0.4.9)：在 Inspector 右欄實作視覺列寬軟換行演算法 (wrapVisualLines)，將長段落與大型 JSON 參數無損換行並整合進虛擬滾動 Buffer，實現零字元截斷遺漏；在左欄重構為人體工學「雙行步驟卡片」（第 1 行顯示序號、類型與時間戳，第 2 行縮排呈現繁中/英文摘要內容），並同步適配上下巡覽滾動邏輯

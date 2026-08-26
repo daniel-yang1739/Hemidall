@@ -136,6 +136,9 @@ func (m Model) renderDashboardView() string {
 		p3Lines = append(p3Lines, TitleStyle.Render("RECENT LIVE EVENTS (Press [Enter] or [2] to inspect history)"))
 
 		maxEventLines := p3InnerHeight - 1 // 1 reserved for title
+		if maxEventLines > 6 {
+			maxEventLines = 6
+		}
 		if maxEventLines < 1 {
 			maxEventLines = 1
 		}
