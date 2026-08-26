@@ -48,8 +48,84 @@ func TestCJKAndLongPayloadZeroHeightVariation(t *testing.T) {
 
 		// Verify footer shortcuts are strictly on line h-1
 		footerLine := lines[size.h-1]
-		if !strings.Contains(footerLine, "Help") && !strings.Contains(footerLine, "Quit") && !strings.Contains(footerLine, "Glossary") {
+		if !strings.Contains(footerLine, "Help") && !strings.Contains(footerLine, "Quit") && !strings.Contains(footerLine, "Focus") {
 			t.Errorf("[%dx%d] Expected footer on line %d, got: %s", size.w, size.h, size.h-1, footerLine)
+		}
+	}
+}
+
+func TestView3HelpAndDocsRenderingAndSearch(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 30
+
+	// 1. Press '3' or '?' to switch to View 3
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
+	m = updated.(Model)
+	if m.activeView != ViewHelp {
+		t.Fatalf("Expected activeView=ViewHelp, got %v", m.activeView)
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "HELP & ARCHITECTURE GLOSSARY") {
+		t.Errorf("Expected 'HELP & ARCHITECTURE GLOSSARY' in view, got: %s", view)
+	}
+	if !strings.Contains(view, "Global Navigation") {
+		t.Errorf("Expected 'Global Navigation' in view, got: %s", view)
+	}
+
+	// 2. Press '/' to activate search mode
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	m = updated.(Model)
+	if !m.isHelpSearching {
+		t.Error("Expected isHelpSearching=true after pressing '/'")
+	}
+
+	// 3. Type query "cot" to search
+	for _, r := range "cot" {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = updated.(Model)
+	}
+	if m.helpSearchQuery != "cot" {
+		t.Errorf("Expected helpSearchQuery='cot', got '%s'", m.helpSearchQuery)
+	}
+
+	filteredView := m.View()
+	if !strings.Contains(filteredView, "Active Turn / CoT") {
+		t.Errorf("Expected filtered view to contain 'Active Turn / CoT', got: %s", filteredView)
+	}
+
+	// 4. Type query "accumulated" to search
+	m.helpSearchQuery = ""
+	for _, r := range "accumulated" {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = updated.(Model)
+	}
+	filteredView2 := m.View()
+	if !strings.Contains(filteredView2, "Raw Log Accumulated") {
+		t.Errorf("Expected filtered view to contain 'Raw Log Accumulated', got: %s", filteredView2)
+	}
+
+	// 5. Press Esc to clear search
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.helpSearchQuery != "" {
+		t.Errorf("Expected helpSearchQuery to be cleared, got '%s'", m.helpSearchQuery)
+	}
+}
+
+func TestView3ZeroHeightVariationAcrossSizes(t *testing.T) {
+	for _, size := range []struct{ w, h int }{{80, 24}, {100, 30}, {120, 35}, {140, 40}} {
+		m := NewModel("test-session", false)
+		m.width = size.w
+		m.height = size.h
+		m.activeView = ViewHelp
+
+		view := m.View()
+		lines := strings.Split(view, "\n")
+
+		if len(lines) != size.h {
+			t.Fatalf("[%dx%d] ViewHelp expected exactly %d lines, got %d", size.w, size.h, size.h, len(lines))
 		}
 	}
 }
@@ -87,62 +163,6 @@ func TestSessionSwitcherModalRenderingAndFilter(t *testing.T) {
 	m = updatedModel.(Model)
 	if m.sessionSearchQuery != "aa72" {
 		t.Errorf("Expected query 'aa72', got '%s'", m.sessionSearchQuery)
-	}
-}
-
-func TestHelpModalRenderingAndToggle(t *testing.T) {
-	m := NewModel("test-session", false)
-	m.width = 100
-	m.height = 30
-
-	// 1. Press '?' to open help modal
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
-	m = updated.(Model)
-	if !m.isHelpModalOpen {
-		t.Fatal("Expected Help Modal to open after pressing '?'")
-	}
-
-	view := m.View()
-	if !strings.Contains(view, "KEYBOARD SHORTCUTS") {
-		t.Errorf("Expected 'KEYBOARD SHORTCUTS' in view, got: %s", view)
-	}
-
-	// 2. Press '?' or 'Esc' to close help modal
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	m = updated.(Model)
-	if m.isHelpModalOpen {
-		t.Error("Expected Help Modal to close after pressing 'Esc'")
-	}
-}
-
-func TestGlossaryModalRenderingAndToggle(t *testing.T) {
-	m := NewModel("test-session", false)
-	m.width = 100
-	m.height = 30
-
-	// 1. Press 'h' to open glossary modal
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
-	m = updated.(Model)
-	if !m.isGlossaryModalOpen {
-		t.Fatal("Expected Glossary Modal to open after pressing 'h'")
-	}
-
-	view := m.View()
-	if !strings.Contains(view, "TERMINOLOGY & ARCHITECTURE GLOSSARY") {
-		t.Errorf("Expected 'GLOSSARY' in view, got: %s", view)
-	}
-	if !strings.Contains(view, "Raw Log Accumulated") {
-		t.Errorf("Expected 'Raw Log Accumulated' explanation in view, got: %s", view)
-	}
-	if !strings.Contains(view, "Active Turn / CoT") {
-		t.Errorf("Expected 'Active Turn / CoT' explanation in view, got: %s", view)
-	}
-
-	// 2. Press 'Esc' or 'h' to close glossary modal
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	m = updated.(Model)
-	if m.isGlossaryModalOpen {
-		t.Error("Expected Glossary Modal to close after pressing 'Esc'")
 	}
 }
 

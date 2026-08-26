@@ -1,5 +1,9 @@
 # ⏱️ LLM Wiki Chrono Log
 
+## [2026-08-27] feature | 重構 Help & Docs 為獨立第 3 頁並支援 `/` 即時搜尋與 ANSI 冒號對齊修復 (View 3 Searchable Docs & Zero-Height Layout v0.6.0)：
+1. **升級為獨立第 3 視圖 (View 3: `[3] Help & Docs`)**：將原本高度易受限制的浮動面板徹底升級為全螢幕第 3 頁面；框體高度嚴格鎖定 `innerRowsLimit = m.height - 4`，與 Dashboard/History 完美 100% 等高，永不因內容增長推擠或改變外框大小；
+2. **支援 `/` 即時關鍵字搜尋與虛擬滾動 (Vim Search & Virtual Buffer)**：按下 `/` 即可輸入關鍵字即時過濾全域快捷鍵、5 大 Context 維度與架構術語（如 `/accumulated`、`/cot`、`/compaction`），按 `Enter/Esc` 返回 `j/k/Ctrl+d/u` 順暢虛擬滾動瀏覽；
+3. **徹底攻克 Lipgloss ANSI 轉義字元排版缺陷與黑底色塊 Bug**：抓出過去在含有 ANSI Style 的字串直接使用 `fmt.Sprintf("%-24s")` 導致 byte 長度包含隱形轉義序列而算錯欄寬，以及 outer box `Background()` 被子元素 reset `\033[0m` 抹消造成的色塊殘留問題；重構為「先以純文字填補固定欄位寬度 (Pre-Pad Plain String) 再進行 Lipgloss 上色渲染」，並統一採用標準半形英文冒號 ` : `，徹底消除所有排版錯位與殘留底色
 ## [2026-08-27] feature | 實作名詞釋義浮動面板與極簡無 Emoji 終端美學 (Glossary Float Modal & Clean ASCII UI v0.5.2)：
 1. **新增名詞釋義浮動面板 (Terminology & Concepts Glossary [h])**：在全域支援按 `h` 鍵彈出居中浮動名詞解讀字典，清楚解釋 `Total Active Context`、`Prefix Cache Hit`、`New Billable Tokens`、`Raw Log Accumulated` (本地未壓縮日誌 vs 雲端滑動窗口截斷)、`Active Turn / CoT` (模型當前思維鏈與工具調用) 以及 5 大 Context 維度的底層物理意義；
 2. **全介面移除所有 Emojis (Clean & Distraction-Free ASCII UI)**：全面移除所有干擾閱讀的表情符號，採用極簡整齊的 ASCII 符號與邊框，大幅提升終端機專業感；
