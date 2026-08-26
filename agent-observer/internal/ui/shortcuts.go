@@ -16,9 +16,10 @@ type ShortcutItem struct {
 
 var allShortcutItems = []ShortcutItem{
 	// 1. Global Navigation
+	{Category: "Global Navigation", Key: "Tab / Shift+Tab", Desc: "Cyclic cycle views (Dashboard ➔ History ➔ Docs)"},
 	{Category: "Global Navigation", Key: "1 / d", Desc: "Switch to Live Dashboard View"},
 	{Category: "Global Navigation", Key: "2 / s", Desc: "Switch to Step History Explorer View"},
-	{Category: "Global Navigation", Key: "3 / h", Desc: "Switch to Architecture Docs & Glossary View"},
+	{Category: "Global Navigation", Key: "3 / i", Desc: "Switch to Architecture Docs & Glossary View"},
 	{Category: "Global Navigation", Key: "Ctrl+p", Desc: "Open Session Quick Switcher Modal"},
 	{Category: "Global Navigation", Key: "? / F1", Desc: "Toggle this Keyboard Shortcuts Float Panel"},
 	{Category: "Global Navigation", Key: "q / Ctrl+c", Desc: "Gracefully quit agent-observer"},
@@ -30,8 +31,8 @@ var allShortcutItems = []ShortcutItem{
 	{Category: "Dashboard Playback", Key: "Enter", Desc: "Inspect selected playback step in History View"},
 
 	// 3. Step History Explorer Controls
-	{Category: "History Explorer", Key: "Tab / Enter / l", Desc: "Switch focus to Right Pane (Inspector)"},
-	{Category: "History Explorer", Key: "Esc / Left", Desc: "Return focus to Left Pane (Steps List)"},
+	{Category: "History Explorer", Key: "l / Enter / Right", Desc: "Switch focus to Right Pane (Inspector)"},
+	{Category: "History Explorer", Key: "h / Esc / Left", Desc: "Return focus to Left Pane (Steps List)"},
 	{Category: "History Explorer", Key: "j / k / ↑ / ↓", Desc: "Select step (Left) / Scroll Inspector (Right)"},
 	{Category: "History Explorer", Key: "Ctrl+d / Ctrl+u", Desc: "Scroll Inspector by 10 lines"},
 	{Category: "History Explorer", Key: "Ctrl+f / Ctrl+b", Desc: "Page Down / Page Up in Inspector buffer"},
@@ -40,7 +41,7 @@ var allShortcutItems = []ShortcutItem{
 
 	// 4. Docs View Controls
 	{Category: "Docs View", Key: "/", Desc: "Activate real-time keyword search filter"},
-	{Category: "Docs View", Key: "l / Tab", Desc: "Toggle language (Traditional Chinese / English)"},
+	{Category: "Docs View", Key: "t / T", Desc: "Toggle language (Traditional Chinese / English)"},
 	{Category: "Docs View", Key: "j / k / ↑ / ↓", Desc: "Scroll documentation topics"},
 	{Category: "Docs View", Key: "Ctrl+d / Ctrl+u", Desc: "Scroll documentation by 10 lines"},
 	{Category: "Docs View", Key: "Esc", Desc: "Clear search query or return to Dashboard"},

@@ -85,7 +85,7 @@ func TestView3DocsPageRenderingAndSearch(t *testing.T) {
 	m.width = 100
 	m.height = 30
 
-	// 1. Press '3' or 'h' to switch to View 3 Docs (Default: English)
+	// 1. Press '3' or 'i' to switch to View 3 Docs (Default: English)
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
 	m = updated.(Model)
 	if m.activeView != ViewDocs {
@@ -97,18 +97,25 @@ func TestView3DocsPageRenderingAndSearch(t *testing.T) {
 		t.Errorf("Expected 'ARCHITECTURE & CONTEXT DEFINITIONS' in view, got: %s", view)
 	}
 
-	// 2. Press 'l' to toggle to Traditional Chinese
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	// 2. Press 't' to toggle to Traditional Chinese
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
 	m = updated.(Model)
 	if m.docsLang != "zh" {
-		t.Errorf("Expected docsLang='zh' after pressing 'l', got '%s'", m.docsLang)
+		t.Errorf("Expected docsLang='zh' after pressing 't', got '%s'", m.docsLang)
 	}
 	zhView := m.View()
 	if !strings.Contains(zhView, "架構名詞釋義與上下文辭典") {
 		t.Errorf("Expected Chinese title in zhView, got: %s", zhView)
 	}
 
-	// 3. Press '/' to activate search mode and search for "cache"
+	// 3. Press 't' again to toggle back to English
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+	m = updated.(Model)
+	if m.docsLang != "en" {
+		t.Errorf("Expected docsLang='en' after pressing 't' again, got '%s'", m.docsLang)
+	}
+
+	// 4. Press '/' to activate search mode and search for "cache"
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
 	m = updated.(Model)
 	if !m.isDocsSearching {
@@ -124,7 +131,7 @@ func TestView3DocsPageRenderingAndSearch(t *testing.T) {
 		t.Errorf("Expected cache status definitions in cacheFilteredView, got: %s", cacheFilteredView)
 	}
 
-	// 4. Press Esc to clear search, then search for "cot"
+	// 5. Press Esc to clear search, then search for "cot"
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
@@ -142,14 +149,14 @@ func TestView3DocsPageRenderingAndSearch(t *testing.T) {
 		t.Errorf("Expected filtered view to contain 'Active Turn / CoT', got: %s", filteredView)
 	}
 
-	// 5. Press Esc to clear search
+	// 6. Press Esc to clear search
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
 	if m.docsSearchQuery != "" {
 		t.Errorf("Expected docsSearchQuery to be cleared, got '%s'", m.docsSearchQuery)
 	}
 
-	// 6. Test overscroll prevention on 'j' and 'G'
+	// 7. Test overscroll prevention on 'j' and 'G'
 	for i := 0; i < 200; i++ {
 		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 		m = updated.(Model)
@@ -164,6 +171,73 @@ func TestView3DocsPageRenderingAndSearch(t *testing.T) {
 	m = updated.(Model)
 	if m.docsScroll != maxScroll-1 {
 		t.Errorf("Expected docsScroll to immediately decrement to %d on first 'k', got %d", maxScroll-1, m.docsScroll)
+	}
+}
+
+func TestCyclicTabAndShiftTabViewSwitching(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 30
+
+	if m.activeView != ViewDashboard {
+		t.Fatalf("Initial view should be ViewDashboard, got %v", m.activeView)
+	}
+
+	// 1. Press Tab -> ViewHistory
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.activeView != ViewHistory {
+		t.Fatalf("After 1st Tab, expected ViewHistory, got %v", m.activeView)
+	}
+
+	// 2. Press Tab -> ViewDocs
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.activeView != ViewDocs {
+		t.Fatalf("After 2nd Tab, expected ViewDocs, got %v", m.activeView)
+	}
+
+	// 3. Press Tab -> ViewDashboard (Clockwise wrap)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.activeView != ViewDashboard {
+		t.Fatalf("After 3rd Tab, expected ViewDashboard, got %v", m.activeView)
+	}
+
+	// 4. Press Shift+Tab -> ViewDocs (Counter-clockwise wrap)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = updated.(Model)
+	if m.activeView != ViewDocs {
+		t.Fatalf("After Shift+Tab, expected ViewDocs, got %v", m.activeView)
+	}
+
+	// 5. Press Shift+Tab -> ViewHistory
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = updated.(Model)
+	if m.activeView != ViewHistory {
+		t.Fatalf("After 2nd Shift+Tab, expected ViewHistory, got %v", m.activeView)
+	}
+}
+
+func TestHistoryVimPaneSwitchingHL(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 30
+	m.activeView = ViewHistory
+	m.focusPane = FocusList
+
+	// 1. Press 'l' to enter Right Pane (Inspector)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	m = updated.(Model)
+	if m.focusPane != FocusDetail {
+		t.Fatalf("Expected focusPane=FocusDetail after pressing 'l', got %v", m.focusPane)
+	}
+
+	// 2. Press 'h' to return to Left Pane (Steps List)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
+	m = updated.(Model)
+	if m.focusPane != FocusList {
+		t.Fatalf("Expected focusPane=FocusList after pressing 'h', got %v", m.focusPane)
 	}
 }
 

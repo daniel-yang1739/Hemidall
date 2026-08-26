@@ -63,6 +63,34 @@ type Model struct {
 	docsLang              string
 }
 
+// nextView cycles active view clockwise: Dashboard -> History -> Docs -> Dashboard
+func (m *Model) nextView() {
+	m.isDocsSearching = false
+	switch m.activeView {
+	case ViewDashboard:
+		m.activeView = ViewHistory
+		m.focusPane = FocusList
+	case ViewHistory:
+		m.activeView = ViewDocs
+	case ViewDocs:
+		m.activeView = ViewDashboard
+	}
+}
+
+// prevView cycles active view counter-clockwise: Dashboard -> Docs -> History -> Dashboard
+func (m *Model) prevView() {
+	m.isDocsSearching = false
+	switch m.activeView {
+	case ViewDashboard:
+		m.activeView = ViewDocs
+	case ViewHistory:
+		m.activeView = ViewDashboard
+	case ViewDocs:
+		m.activeView = ViewHistory
+		m.focusPane = FocusList
+	}
+}
+
 // NewModel creates an initial TUI model
 func NewModel(sessionID string, openSwitcherOnStart bool) Model {
 	sessions, _ := antigravity.DiscoverAllSessions()
@@ -371,7 +399,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case "/":
 					m.isDocsSearching = true
 					return m, nil
-				case "L", "l", "tab":
+				case "t", "T":
 					if m.docsLang == "zh" {
 						m.docsLang = "en"
 					} else {
@@ -420,31 +448,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case "G", "end":
 					m.docsScroll = m.getDocsMaxScroll()
 					return m, nil
-				case "1", "d":
-					m.activeView = ViewDashboard
-					return m, nil
-				case "2", "s":
-					m.activeView = ViewHistory
-					m.focusPane = FocusList
-					return m, nil
-				case "q", "ctrl+c":
-					return m, tea.Quit
 				}
 			}
 		}
 
-		// ==================== GLOBAL VIEW SWITCHING ====================
+		// ==================== GLOBAL VIEW CYCLING (TAB / SHIFT+TAB) ====================
+		if !(m.activeView == ViewDocs && m.isDocsSearching) {
+			switch key {
+			case "tab":
+				m.nextView()
+				return m, nil
+			case "shift+tab", "backtab":
+				m.prevView()
+				return m, nil
+			}
+		}
+
+		// ==================== GLOBAL VIEW SWITCHING (DIRECT SHORTCUTS) ====================
 		switch key {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "1", "d":
 			m.activeView = ViewDashboard
+			m.isDocsSearching = false
 			return m, nil
 		case "2", "s":
 			m.activeView = ViewHistory
 			m.focusPane = FocusList
+			m.isDocsSearching = false
 			return m, nil
-		case "3", "h":
+		case "3", "i":
 			m.activeView = ViewDocs
 			m.isDocsSearching = false
 			return m, nil
@@ -604,18 +637,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			switch key {
-			case "tab":
-				if m.focusPane == FocusList {
-					m.focusPane = FocusDetail
-				} else {
-					m.focusPane = FocusList
-					m.isVisualMode = false
-				}
 			case "enter", "right", "l":
 				if m.focusPane == FocusList {
 					m.focusPane = FocusDetail
 				}
-			case "esc", "left":
+			case "esc", "left", "h":
 				if m.focusPane == FocusDetail {
 					m.focusPane = FocusList
 					m.isVisualMode = false
@@ -822,31 +848,31 @@ func (m Model) renderFooter() string {
 			hints = fmt.Sprintf(" %s Finish Search  %s Clear & Return",
 				KeyStyle.Render("[Enter]"), KeyStyle.Render("[Esc]"))
 		} else {
-			langLabel := "[l] Lang (繁中)"
+			langLabel := "[t] Lang (繁中)"
 			if m.docsLang == "en" {
-				langLabel = "[l] Lang (EN)"
+				langLabel = "[t] Lang (EN)"
 			}
-			hints = fmt.Sprintf(" %s Filter  %s  %s Scroll  %s Shortcuts  %s Dash  %s Hist  %s Switch  %s Quit",
-				KeyStyle.Render("[/]"), KeyStyle.Render(langLabel), KeyStyle.Render("[j/k]"), KeyStyle.Render("[?]"), KeyStyle.Render("[1]"), KeyStyle.Render("[2]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Filter  %s  %s Scroll  %s Cycle  %s Shortcuts  %s Switch  %s Quit",
+				KeyStyle.Render("[/]"), KeyStyle.Render(langLabel), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[q]"))
 		}
 	} else if m.activeView == ViewHistory {
 		if m.isVisualMode {
 			hints = fmt.Sprintf(" %s Yank  %s Move  %s Cancel",
 				KeyStyle.Render("[y]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Esc]"))
 		} else if m.focusPane == FocusList {
-			hints = fmt.Sprintf(" %s Focus Detail  %s Select  %s Shortcuts  %s Docs  %s Switch  %s Dash  %s Quit",
-				KeyStyle.Render("[Tab/l]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[?]"), KeyStyle.Render("[3/h]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[1]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Focus Detail  %s Select  %s Cycle  %s Shortcuts  %s Switch  %s Quit",
+				KeyStyle.Render("[l/Enter]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[q]"))
 		} else {
-			hints = fmt.Sprintf(" %s Visual  %s Focus List  %s Scroll  %s Shortcuts  %s Docs  %s Switch  %s Quit",
-				KeyStyle.Render("[v]"), KeyStyle.Render("[Tab/Esc]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[?]"), KeyStyle.Render("[3/h]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Focus List  %s Visual  %s Scroll  %s Cycle  %s Shortcuts  %s Switch  %s Quit",
+				KeyStyle.Render("[h/Esc]"), KeyStyle.Render("[v]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[q]"))
 		}
 	} else {
 		if len(m.history) > 0 {
-			hints = fmt.Sprintf(" %s Inspect  %s Playback  %s Shortcuts  %s Docs  %s Switch  %s LIVE  %s Quit",
-				KeyStyle.Render("[Enter]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[?]"), KeyStyle.Render("[3/h]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[G]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Inspect  %s Playback  %s Cycle  %s Shortcuts  %s Switch  %s LIVE  %s Quit",
+				KeyStyle.Render("[Enter]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[G]"), KeyStyle.Render("[q]"))
 		} else {
-			hints = fmt.Sprintf(" %s Shortcuts  %s Docs  %s Switch  %s History  %s Quit",
-				KeyStyle.Render("[?]"), KeyStyle.Render("[3/h]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[2]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Shortcuts  %s Cycle  %s Switch  %s History  %s Quit",
+				KeyStyle.Render("[?]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[2]"), KeyStyle.Render("[q]"))
 		}
 	}
 	return lipgloss.NewStyle().MaxWidth(m.width).Render(hints)

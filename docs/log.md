@@ -1,5 +1,12 @@
 # ⏱️ LLM Wiki Chrono Log
 
+## [2026-08-27] polish | 全域 Tab/Shift+Tab 循環切頁、Docs 't' 語系切換與 History 'h/l' Vim 左右分欄導航 (Vim-First Cyclic Tabs & Conflict-Free Shortcuts v0.8.2)：
+1. **全域循環切頁 (Cyclic View Switching)**：支援按 **`Tab`** 順時針循環切換分頁 (`[1] Dashboard` $\to$ `[2] History` $\to$ `[3] Docs` $\to$ `[1] Dashboard`)，按 **`Shift+Tab`** / **`Backtab`** 逆時針切換，提供流暢的現代 TUI 瀏覽體驗；
+2. **解決 Vim 左右鍵衝突**：
+   * **語系切換改為 `t` (Translate / Toggle)**：在 Docs 頁面改用 `t / T` 切換繁體中文與英文辭典，徹底釋放 `l` 鍵；
+   * **History 雙欄導航回歸純粹 Vim**：在 History View 中，按 **`l`** (或 `Enter` / `Right`) 進入右欄 Inspector，按 **`h`** (或 `Esc` / `Left`) 返回左欄 Steps List；
+   * **Docs 視圖直切改為 `3 / i` (Info/Insight)**：移除全域 `h` 快捷鍵，根除在歷史檢驗時按 `h` 誤跳頁之衝突；
+3. **全面同步**：同步更新 Header Badge (`[t: 繁體中文]`)、搜尋提示、底部 Footer 狀態提示與 `?` Shortcuts 浮動面板
 ## [2026-08-27] distill | 19 角色雙輪對抗審查完成、落地 05_troubleshooting 模組並全量消化 10 份 Raw 素材 (Full Distillation & Troubleshooting Module v0.8.1)：
 1. **建立 05_troubleshooting 實戰排查手冊**：產出 3 篇具備四段式結構與 Runbook SOP 的 Postmortem 卡片（89 萬字基線膨脹排查、開機雙重分析排查、ANSI 隱形佔位腰斬排查）與模組索引；
 2. **新增架構卡片 08**：產出 `02_architecture/08_Interactive_Session_Switching_and_Anti_Jitter.md`，解密全域會話快切中樞與歷史步驟防抖動鎖定機制；
