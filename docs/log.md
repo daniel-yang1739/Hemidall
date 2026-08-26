@@ -1,5 +1,8 @@
 # ⏱️ LLM Wiki Chrono Log
 
+## [2026-08-27] bugfix | 徹底修復邊框寬度未頂到最右側之 2~4 列間隙 Bug (Pixel-Perfect Full-Width Terminal Alignment v0.6.7)：
+1. **抓出右側間隙根本原因**：Lipgloss `PanelStyle.Width(W)` 在設定 `.Border()` 時外框寬度為 `W + 2`，先前因誤扣 padding 設定為 `m.width - 4`，導致面板總寬度僅有 `m.width - 2`（History 甚至僅 `m.width - 4`），比全滿版 Header 窄了 2~4 個字元，造成 Header 尾端 Hash Code 比面板右邊界更突出的視覺落差；
+2. **達成 100% 絕對頂到底 (Pixel-Perfect Full-Width Grid)**：將 Dashboard、History 左右雙欄、Docs 與 Header/Footer 全面重構為 `W = m.width - 2`（單欄）與 `listInnerWidth + detailInnerWidth + 4 = m.width`（雙欄），在 80、100、120、140 等全尺寸下所有框線最右邊緣 `╮`、`│`、`╯` 與 Header/Footer 100% 完美貼齊終端機最右側第 `m.width` 列！
 ## [2026-08-27] style | Recent Live Events 高度內容自適應貼合與 Header 尾部時間序列重構 (Content-Hugging Events Box & Header Clock Sequence v0.6.6)：
 1. **Recent Live Events 外框高度自適應貼合 (Content-Hugging Box)**：移除 Dashboard Panel 3 強制填滿螢幕底部的過度空白，改為依實際事件數（最多 6 筆）動態貼合外框高度，排版緊密且自然；
 2. **頂部 Header 尾端重構為 `hh:mm:ss | Events: xxxx | (hashhash)`**：將時間戳、事件數與會話短 Hash 依時序遞進排版（如 `01:22:13 | Events: 2200 | (aa726359)`），視覺節奏更具韻律感

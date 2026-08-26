@@ -780,7 +780,7 @@ func (m Model) renderHeader() string {
 	sessionTag := lipgloss.NewStyle().Foreground(ColorHighlight).Render(fmt.Sprintf("(%s)", shortHash))
 	right := timeInfo + sep + eventsInfo + sep + sessionTag
 
-	gapWidth := m.width - lipgloss.Width(left) - lipgloss.Width(right) - 1
+	gapWidth := m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	if gapWidth < 1 {
 		gapWidth = 1
 	}

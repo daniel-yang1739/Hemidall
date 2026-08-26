@@ -88,10 +88,11 @@ var allDocDefinitions = []DocDefinitionItem{
 }
 
 func (m Model) renderDocsView() string {
-	boxInnerWidth := m.width - 4
+	boxInnerWidth := m.width - 2
 	if boxInnerWidth < 40 {
 		boxInnerWidth = 40
 	}
+	contentWidth := boxInnerWidth - 2 // Account for Padding(0, 1)
 
 	innerRowsLimit := m.height - 4
 	if innerRowsLimit < 4 {
@@ -114,9 +115,9 @@ func (m Model) renderDocsView() string {
 		lipgloss.NewStyle().Foreground(ColorHighlight).Render(cursorChar),
 		lipgloss.NewStyle().Foreground(ColorMuted).Render(searchStatus))
 
-	rawLines = append(rawLines, TitleStyle.Render(truncateVisualWidth("ARCHITECTURE & CONTEXT DEFINITIONS", boxInnerWidth-2)))
-	rawLines = append(rawLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(truncateVisualWidth(searchBar, boxInnerWidth-2)))
-	rawLines = append(rawLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", boxInnerWidth-2)))
+	rawLines = append(rawLines, TitleStyle.Render(truncateVisualWidth("ARCHITECTURE & CONTEXT DEFINITIONS", contentWidth)))
+	rawLines = append(rawLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(truncateVisualWidth(searchBar, contentWidth)))
+	rawLines = append(rawLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", contentWidth)))
 
 	// 2. Filter & Render Definition Items
 	query := strings.ToLower(strings.TrimSpace(m.docsSearchQuery))
@@ -148,7 +149,7 @@ func (m Model) renderDocsView() string {
 		descRendered := lipgloss.NewStyle().Foreground(ColorLightText).Render(item.Desc)
 
 		entryLine := "  " + keyRendered + sepRendered + descRendered
-		rawLines = append(rawLines, wrapVisualLines(entryLine, boxInnerWidth-4)...)
+		rawLines = append(rawLines, wrapVisualLines(entryLine, contentWidth-2)...)
 	}
 
 	if matchedCount == 0 {
@@ -177,7 +178,7 @@ func (m Model) renderDocsView() string {
 
 	var visibleLines []string
 	for i := currentScroll; i < endLine; i++ {
-		visibleLines = append(visibleLines, truncateVisualWidth(rawLines[i], boxInnerWidth-2))
+		visibleLines = append(visibleLines, truncateVisualWidth(rawLines[i], contentWidth))
 	}
 
 	for len(visibleLines) < innerRowsLimit {

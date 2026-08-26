@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"agent-observer/internal/adapters/antigravity"
 	"agent-observer/internal/core"
 )
@@ -327,3 +328,34 @@ func TestDirectSessionSwitchMsgState(t *testing.T) {
 		t.Errorf("Expected status message in clipboardStatus, got: %s", m.clipboardStatus)
 	}
 }
+
+func TestWidthMeasurement(t *testing.T) {
+	m := NewModel("aa726359-08e2-4687-a15c-073a2f4a705b", false)
+	m.width = 120
+	m.height = 30
+	m.eventCount = 2200
+
+	header := m.renderHeader()
+	t.Logf("Header length: %d, string: %s", lipgloss.Width(header), header)
+
+	m.activeView = ViewDashboard
+	dash := m.renderDashboardView()
+	dashLines := strings.Split(dash, "\n")
+	for i, l := range dashLines {
+		t.Logf("Dash line %d width: %d | %s", i, lipgloss.Width(l), l)
+		if i > 3 {
+			break
+		}
+	}
+
+	m.activeView = ViewHistory
+	hist := m.renderHistoryView()
+	histLines := strings.Split(hist, "\n")
+	for i, l := range histLines {
+		t.Logf("Hist line %d width: %d | %s", i, lipgloss.Width(l), l)
+		if i > 3 {
+			break
+		}
+	}
+}
+

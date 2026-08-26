@@ -57,10 +57,11 @@ func (m Model) renderDashboardView() string {
 		cacheBadge = BadgeDanger.Render("[CACHE MISS / BROKEN]")
 	}
 
-	panelInnerWidth := m.width - 4
+	panelInnerWidth := m.width - 2
 	if panelInnerWidth < 40 {
 		panelInnerWidth = 40
 	}
+	contentWidth := panelInnerWidth - 2 // Account for Padding(0, 1)
 
 	// ==================== PANEL 1: OFFICIAL TELEMETRY & CACHE (TRACK 1) ====================
 	var p1 strings.Builder
@@ -136,7 +137,7 @@ func (m Model) renderDashboardView() string {
 				typeBadge := fmt.Sprintf("[%03d|%-5s]", ev.StepIndex, shortenType(string(ev.Type)))
 				timeStr := ev.Timestamp.Format("15:04:05")
 				eventLine := fmt.Sprintf("  %s %s  %s", typeBadge, timeStr, ev.Summary)
-				p3Lines = append(p3Lines, truncateVisualWidth(eventLine, panelInnerWidth-2))
+				p3Lines = append(p3Lines, truncateVisualWidth(eventLine, contentWidth))
 			}
 		}
 
@@ -157,8 +158,11 @@ func (m Model) renderHistoryView() string {
 		rightOuterWidth = 30
 	}
 
-	listInnerWidth := leftOuterWidth - 4
-	detailInnerWidth := rightOuterWidth - 4
+	listInnerWidth := leftOuterWidth - 2
+	detailInnerWidth := rightOuterWidth - 2
+
+	listContentWidth := listInnerWidth - 2
+	detailContentWidth := detailInnerWidth - 2
 
 	innerRowsLimit := m.height - 4
 	if innerRowsLimit < 4 {
@@ -171,10 +175,10 @@ func (m Model) renderHistoryView() string {
 	if m.focusPane == FocusList {
 		leftTitle = "STEPS (Newest First <)"
 	}
-	leftLines = append(leftLines, TitleStyle.Render(truncateVisualWidth(leftTitle, listInnerWidth-2)))
+	leftLines = append(leftLines, TitleStyle.Render(truncateVisualWidth(leftTitle, listContentWidth)))
 
 	if len(m.history) == 0 {
-		leftLines = append(leftLines, truncateVisualWidth("  No events yet...", listInnerWidth-2))
+		leftLines = append(leftLines, truncateVisualWidth("  No events yet...", listContentWidth))
 	} else {
 		maxCards := (innerRowsLimit - 1) / 2
 		if maxCards < 1 {
@@ -208,14 +212,14 @@ func (m Model) renderHistoryView() string {
 			timeStr := e.Timestamp.Format("15:04:05")
 
 			cardLine1 := fmt.Sprintf("%s%s %s", prefix, typeBadge, timeStr)
-			leftLines = append(leftLines, headerStyle.Render(truncateVisualWidth(cardLine1, listInnerWidth-2)))
+			leftLines = append(leftLines, headerStyle.Render(truncateVisualWidth(cardLine1, listContentWidth)))
 
 			summaryText := e.Summary
 			if summaryText == "" {
 				summaryText = "(empty content)"
 			}
 			cardLine2 := "  " + summaryText
-			leftLines = append(leftLines, summaryStyle.Render(truncateVisualWidth(cardLine2, listInnerWidth-2)))
+			leftLines = append(leftLines, summaryStyle.Render(truncateVisualWidth(cardLine2, listContentWidth)))
 		}
 	}
 	for len(leftLines) < innerRowsLimit {
@@ -245,11 +249,11 @@ func (m Model) renderHistoryView() string {
 	} else if m.focusPane == FocusDetail {
 		rightTitle = "STEP INSPECTOR < [Scroll: j/k, Ctrl+u/d, g/G]"
 	}
-	rightLines = append(rightLines, TitleStyle.Render(truncateVisualWidth(rightTitle, detailInnerWidth-2)))
+	rightLines = append(rightLines, TitleStyle.Render(truncateVisualWidth(rightTitle, detailContentWidth)))
 
 	selectedEvent, hasEvent := m.getSelectedEvent()
 	if hasEvent {
-		allInspectorLines := m.buildFullInspectorLines(selectedEvent, detailInnerWidth-2)
+		allInspectorLines := m.buildFullInspectorLines(selectedEvent, detailContentWidth)
 		totalInspectorLines := len(allInspectorLines)
 
 		availableLines := innerRowsLimit - 1
@@ -279,7 +283,7 @@ func (m Model) renderHistoryView() string {
 
 		for i := currentScroll; i < endLine; i++ {
 			rawLine := allInspectorLines[i]
-			lineText := truncateVisualWidth(rawLine, detailInnerWidth-2)
+			lineText := truncateVisualWidth(rawLine, detailContentWidth)
 			if m.isVisualMode && i >= vStart && i <= vEnd {
 				rightLines = append(rightLines, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorPrimary).Render(lineText))
 			} else {
@@ -287,7 +291,7 @@ func (m Model) renderHistoryView() string {
 			}
 		}
 	} else {
-		rightLines = append(rightLines, truncateVisualWidth("  Select a step on the left to inspect details.", detailInnerWidth-2))
+		rightLines = append(rightLines, truncateVisualWidth("  Select a step on the left to inspect details.", detailContentWidth))
 	}
 
 	for len(rightLines) < innerRowsLimit {
