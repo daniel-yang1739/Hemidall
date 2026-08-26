@@ -61,6 +61,7 @@ func (m Model) renderShortcutsModal() string {
 		modalWidth = 48
 	}
 	modalInnerWidth := modalWidth - 4
+	contentWidth := modalInnerWidth - 2 // Account for Padding(0, 1)
 
 	modalHeight := m.height - 4
 	if modalHeight > 24 {
@@ -74,8 +75,8 @@ func (m Model) renderShortcutsModal() string {
 
 	// 1. Title
 	titleText := "KEYBOARD SHORTCUTS [?]"
-	contentLines = append(contentLines, TitleStyle.Render(truncateVisualWidth(titleText, modalInnerWidth)))
-	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", modalInnerWidth)))
+	contentLines = append(contentLines, TitleStyle.Render(truncateVisualWidth(titleText, contentWidth)))
+	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", contentWidth)))
 
 	// 2. Body Items grouped by category
 	currentCat := ""
@@ -92,7 +93,7 @@ func (m Model) renderShortcutsModal() string {
 		line := fmt.Sprintf("  %s : %s",
 			KeyStyle.Render(paddedKey),
 			lipgloss.NewStyle().Foreground(ColorLightText).Render(item.Desc))
-		contentLines = append(contentLines, truncateVisualWidth(line, modalInnerWidth))
+		contentLines = append(contentLines, truncateVisualWidth(line, contentWidth))
 	}
 
 	// Pad or clamp to modalHeight - 2
@@ -104,9 +105,9 @@ func (m Model) renderShortcutsModal() string {
 	}
 
 	// 3. Footer
-	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", modalInnerWidth)))
+	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", contentWidth)))
 	footerHint := fmt.Sprintf(" Press %s or %s to close this shortcuts panel", KeyStyle.Render("[?]"), KeyStyle.Render("[Esc]"))
-	contentLines = append(contentLines, lipgloss.NewStyle().MaxWidth(modalInnerWidth).Render(footerHint))
+	contentLines = append(contentLines, lipgloss.NewStyle().MaxWidth(contentWidth).Render(footerHint))
 
 	modalBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).

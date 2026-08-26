@@ -30,6 +30,7 @@ func (m Model) renderSessionSwitcherModal() string {
 	}
 
 	modalInnerWidth := modalWidth - 4
+	contentWidth := modalInnerWidth - 2 // Account for Padding(0, 1)
 	modalHeight := m.height - 6
 	if modalHeight > 18 {
 		modalHeight = 18
@@ -42,14 +43,14 @@ func (m Model) renderSessionSwitcherModal() string {
 
 	// 1. Modal Title
 	titleText := "SWITCH SESSION [Ctrl+P]"
-	contentLines = append(contentLines, TitleStyle.Render(truncateVisualWidth(titleText, modalInnerWidth)))
+	contentLines = append(contentLines, TitleStyle.Render(truncateVisualWidth(titleText, contentWidth)))
 
 	// 2. Search Input Box
 	queryDisplay := m.sessionSearchQuery
 	cursorChar := "█"
 	inputBox := fmt.Sprintf("Filter: [%s%s] (Type to search)", queryDisplay, lipgloss.NewStyle().Foreground(ColorHighlight).Render(cursorChar))
-	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(truncateVisualWidth(inputBox, modalInnerWidth)))
-	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", modalInnerWidth)))
+	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(truncateVisualWidth(inputBox, contentWidth)))
+	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", contentWidth)))
 
 	// 3. Filtered Session List
 	maxVisibleRows := modalHeight - 6
@@ -106,11 +107,11 @@ func (m Model) renderSessionSwitcherModal() string {
 			// Line 1: Badge + ID + Steps + Size
 			line1 := fmt.Sprintf("%s%s %s  (%4d steps | %4.1fMB)",
 				prefix, statusTag, s.SessionID, s.StepCount, s.SizeMB)
-			contentLines = append(contentLines, cardStyle1.Render(truncateVisualWidth(line1, modalInnerWidth)))
+			contentLines = append(contentLines, cardStyle1.Render(truncateVisualWidth(line1, contentWidth)))
 
 			// Line 2: Last activity timestamp
 			line2 := fmt.Sprintf("    Last Modified: %s", s.LastModified.Format("2006-01-02 15:04:05"))
-			contentLines = append(contentLines, cardStyle2.Render(truncateVisualWidth(line2, modalInnerWidth)))
+			contentLines = append(contentLines, cardStyle2.Render(truncateVisualWidth(line2, contentWidth)))
 		}
 	}
 
@@ -123,10 +124,10 @@ func (m Model) renderSessionSwitcherModal() string {
 	}
 
 	// 4. Modal Footer / Keybindings
-	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", modalInnerWidth)))
+	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", contentWidth)))
 	footerHints := fmt.Sprintf(" %s Move  %s Attach  %s Cancel  %s Filter",
 		KeyStyle.Render("[Ctrl+j/k, ↑/↓]"), KeyStyle.Render("[Enter]"), KeyStyle.Render("[Esc/Ctrl+p]"), KeyStyle.Render("[Type]"))
-	contentLines = append(contentLines, lipgloss.NewStyle().MaxWidth(modalInnerWidth).Render(footerHints))
+	contentLines = append(contentLines, lipgloss.NewStyle().MaxWidth(contentWidth).Render(footerHints))
 
 	modalBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
