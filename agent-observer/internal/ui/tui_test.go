@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"agent-observer/internal/adapters/antigravity"
 	"agent-observer/internal/core"
 )
 
@@ -86,5 +87,104 @@ func TestSessionSwitcherModalRenderingAndFilter(t *testing.T) {
 	m = updatedModel.(Model)
 	if m.sessionSearchQuery != "aa72" {
 		t.Errorf("Expected query 'aa72', got '%s'", m.sessionSearchQuery)
+	}
+}
+
+func TestSessionSwitcherKeyboardNavigationAndActions(t *testing.T) {
+	m := NewModel("test-session-1", true)
+	m.width = 80
+	m.height = 24
+
+	// Mock available sessions
+	m.availableSessions = []antigravity.SessionInfo{
+		{SessionID: "session-alpha", StepCount: 100, LastModified: time.Now()},
+		{SessionID: "session-beta", StepCount: 50, LastModified: time.Now().Add(-1 * time.Hour)},
+		{SessionID: "session-gamma", StepCount: 10, LastModified: time.Now().Add(-2 * time.Hour)},
+	}
+	m.filteredSessions = m.availableSessions
+	m.switcherSelectedIdx = 0
+
+	// 1. Test Navigation Down
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(Model)
+	if m.switcherSelectedIdx != 1 {
+		t.Errorf("Expected switcherSelectedIdx=1 after down key, got %d", m.switcherSelectedIdx)
+	}
+
+	// 2. Test Navigation Up
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(Model)
+	if m.switcherSelectedIdx != 0 {
+		t.Errorf("Expected switcherSelectedIdx=0 after up key, got %d", m.switcherSelectedIdx)
+	}
+
+	// 3. Test Typing Filter
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("gamma")})
+	m = updated.(Model)
+	if len(m.filteredSessions) != 1 || m.filteredSessions[0].SessionID != "session-gamma" {
+		t.Fatalf("Expected 1 filtered session 'session-gamma', got %d", len(m.filteredSessions))
+	}
+
+	// 4. Test Backspace
+	for i := 0; i < 5; i++ {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+		m = updated.(Model)
+	}
+	if len(m.filteredSessions) != 3 {
+		t.Errorf("Expected 3 sessions restored after backspace, got %d", len(m.filteredSessions))
+	}
+
+	// 5. Test Escape Key (Cancel without switching)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.isSessionSwitcherOpen {
+		t.Error("Expected Esc key to close switcher modal")
+	}
+}
+
+func TestDirectSessionSwitchMsgState(t *testing.T) {
+	m := NewModel("initial-session", false)
+
+	// Simulate switching session with mock events
+	mockEvents := []core.UnifiedAgentEvent{
+		{
+			StepIndex: 1,
+			Type:      core.StepTypeUserInput,
+			Summary:   "Hello Agent",
+			Timestamp: time.Now(),
+		},
+		{
+			StepIndex: 2,
+			Type:      core.StepTypeModelResponse,
+			Summary:   "Hello! How can I help you?",
+			Timestamp: time.Now(),
+			Tokens: core.TokenBreakdown{
+				TotalTokens:  1500,
+				CachedTokens: 1200,
+				CacheHitRate: 80.0,
+			},
+		},
+	}
+
+	updated, _ := m.Update(SessionSwitchedMsg{
+		SessionID: "target-session-123",
+		Events:    mockEvents,
+	})
+	m = updated.(Model)
+
+	if m.sessionID != "target-session-123" {
+		t.Errorf("Expected sessionID 'target-session-123', got '%s'", m.sessionID)
+	}
+	if len(m.history) != 2 {
+		t.Errorf("Expected 2 history events, got %d", len(m.history))
+	}
+	if m.dashboardIdx != 1 {
+		t.Errorf("Expected dashboardIdx=1 (latest event), got %d", m.dashboardIdx)
+	}
+	if m.isSessionSwitcherOpen {
+		t.Error("Expected session switcher to be closed after switch")
+	}
+	if !strings.Contains(m.clipboardStatus, "Switched to session") {
+		t.Errorf("Expected status message in clipboardStatus, got: %s", m.clipboardStatus)
 	}
 }
