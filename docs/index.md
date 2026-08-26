@@ -11,10 +11,10 @@
 | 目錄路徑 | 核心職責與功能定位 | 生命週期與治理規則 |
 | :--- | :--- | :--- |
 | **`01_raw/`** | **臨時素材收集池 (Intake Pool)**<br/>存放未加工的 API Traces、逆向日誌、臨時截圖與靈感碎片。 | **Digest & Delete**：一旦經 `wiki-distiller` 100% 提煉進 `02_wiki/`，原始檔案立即安全清理刪除，保持素材池極致乾淨。 |
-| **`02_wiki/`** | **永久核心知識資產庫 (Permanent Asset Hub)**<br/>世界級、排版精美、結構自洽、具備 4 維度圖解導讀與極簡演繹實例的永久資產。 | **永不刪除 / 持續迭代**：嚴禁存放未完成的草稿。依大腦認知演進（`01_` $\to$ `02_` $\to$ `03_` $\to$ `04_`）嚴密編號。 |
+| **`02_wiki/`** | **永久核心知識資產庫 (Permanent Asset Hub)**<br/>世界級、排版精美、結構自洽、具備 4 維度圖解導讀與極簡演繹實例的永久資產。 | **永不刪除 / 持續迭代**：嚴禁存放未完成的草稿。依大腦認知演進（`01_` $\to$ `02_` $\to$ `03_` $\to$ `04_` $\to$ `05_`）嚴密編號。 |
 | **`ithome_draft/`** | **文章草稿工作區 (Writing Workspace)**<br/>以 Wiki 為武器庫，專門用於撰寫 iThome 鐵人賽 30 天連載草稿。 | **短期專案週期**：與底層 Wiki 完全解耦，專注於文章受眾節奏、開場 Hook 與章節編排。 |
 | **`ithome_ready/`** | **定稿發布庫 (Production Release)**<br/>完成最終潤稿、排版校對，隨時可直接複製 Po 到發文後台。 | **發布就緒**：代表可對外公開發表的正式文章。 |
-| **`reviews/`** | **審查辯論與終審報告室 (Audit Room)**<br/>存放 18 位頂尖審查員的深層思維鏈挑惕、Main Agent 駁回/採納辯論與大檢察官簽核。 | **歷史審計存檔**：永久留存審查軌跡，正文 0 人名，所有審查員人名與辯論完整留存於此。 |
+| **`reviews/`** | **審查辯論與終審報告室 (Audit Room)**<br/>存放 19 位頂尖審查員的深層思維鏈挑惕、Main Agent 駁回/採納辯論與大檢察官簽核。 | **歷史審計存檔**：永久留存審查軌跡，正文 0 人名，所有審查員人名與辯論完整留存於此。 |
 
 ---
 
@@ -24,17 +24,18 @@
 ### 1. [[02_wiki/01_theory/index|⚡ 01_theory: 推論物理與數學模型 (認知起點)]]
 * [[01_Transformer_Prefill_vs_Decode]]：推論兩階段 GEMM 算力密集 vs. GEMV 顯存帶寬密集深度剖析（附 3-Token 極簡演繹）。
 * [[02_KV_Cache_Mechanics]]：自回歸 KV Cache 顯存大小數學推導、GQA 演進與 128k OOM 實例計算 ($40GB)。
-* [[03_Prompt_Caching_Lifecycle]]：前綴快取生命週期時序轉換、TTL 顯存淘汰與同族變體快取共享（附 2 輪快取突變演繹）。
+* [[03_Prompt_Caching_Lifecycle]]：前綴快取生命週期時序轉換、Full Hit vs Partial Hit 稀釋機制、TTL 顯存淘汰與同族變體快取共享（附 2 輪快取突變演繹）。
 * [[04_Context_Compaction_and_Summarization]]：雙水位線非同步壓縮管線與「摘要的摘要」$O(1)$ 常數空間收斂數學模型（附實機壓測演繹）。
 
 ### 2. [[02_wiki/02_architecture/index|🏛️ 02_architecture: 通用架構與演算法模式 (系統落地)]]
 * [[01_Context_5_Dimensions]]：Agent Context 載荷 5 維度模型、對話輪次膨脹趨勢與壓縮戰略（附 3 輪 5 維度數值變遷演繹）。
 * [[02_Token_Calculation_and_LCP]]：TikToken (BPE) 分詞與 LCP 最長公共前綴快取演算法 Go 實作（附 Token ID 陣列逐位比對演繹）。
-* [[03_Agent_Storage_and_State_Machine]]：工業級 Agent 雙層 SQLite 7 表結構、Protobuf 官方遙測與 100KB 滾動切片雙軌日誌。
+* [[03_Agent_Storage_and_State_Machine]]：工業級 Agent 雙層 SQLite 7 表結構、六角架構適配器、WAL 直讀與 100KB 滾動切片雙軌日誌。
 * [[04_Service_Plan_Agent_Observer]]：`agent-observer` Go 觀測服務 Clean Architecture 系統架構設計書。
 * [[05_Model_Payload_and_API_Traces]]：Context 4 大板塊（System, Tools, Trajectory, Active）組裝順序與底層 API 通訊 JSON Schema。
-* [[06_Dual_Track_Telemetry_and_Window_Accounting]]：雙軌遙測引擎（Track 1 官方帳單 vs Track 2 本地解剖）與倒推滑動窗口會計演算法。
-* [[07_TUI_Engine_and_Terminal_Layout_Mechanics]]：全螢幕 TUI 引擎架構、Lipgloss 盒模型內外算術、中文字元（CJK）2 倍列寬與軟換行虛擬緩衝區。
+* [[06_Dual_Track_Telemetry_and_Window_Accounting]]：雙軌遙測引擎（Track 1 官方帳單 vs Track 2 本地解剖）、中間步驟非遞增基線與倒推滑動窗口會計演算法。
+* [[07_TUI_Engine_and_Terminal_Layout_Mechanics]]：全螢幕 TUI 引擎架構、ANSI 感知狀態機、全寬懸掛縮排、零過度滾動與嵌入式多語言 Markdown。
+* [[08_Interactive_Session_Switching_and_Anti_Jitter]]：全域會話快切中樞（`Ctrl+p`）、動態目錄發現與歷史步驟防抖動鎖定機制（Anti-Jitter Lock）。
 
 ### 3. [[02_wiki/03_planning/index|🏆 03_planning: 系列藍圖與規劃規格 (產品全景)]]
 * [[01_Master_Plan]]：系列總體企劃書、核心價值主張與四大模組進程圖。

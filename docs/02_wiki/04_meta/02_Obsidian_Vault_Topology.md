@@ -32,7 +32,7 @@ docs/
 │   │   ├── 03_Prompt_Caching_Lifecycle.md
 │   │   ├── 04_Context_Compaction_and_Summarization.md
 │   │   └── index.md
-│   ├── 02_architecture/      #    🏛️ [系統落地] Context 5 維度、LCP 快取演算法、雙層 SQLite 狀態機、雙軌遙測、TUI 盒模型
+│   ├── 02_architecture/      #    🏛️ [系統落地] Context 5 維度、LCP 快取演算法、雙層 SQLite 狀態機、雙軌遙測、TUI 盒模型、會話快切
 │   │   ├── 01_Context_5_Dimensions.md
 │   │   ├── 02_Token_Calculation_and_LCP.md
 │   │   ├── 03_Agent_Storage_and_State_Machine.md
@@ -40,6 +40,7 @@ docs/
 │   │   ├── 05_Model_Payload_and_API_Traces.md
 │   │   ├── 06_Dual_Track_Telemetry_and_Window_Accounting.md
 │   │   ├── 07_TUI_Engine_and_Terminal_Layout_Mechanics.md
+│   │   ├── 08_Interactive_Session_Switching_and_Anti_Jitter.md
 │   │   └── index.md
 │   ├── 03_planning/          #    🏆 [系列藍圖] 30 天大綱拆解、Go vs Python 選型權衡、分期實作路線圖
 │   │   ├── 01_Master_Plan.md
@@ -47,20 +48,26 @@ docs/
 │   │   ├── 03_Tech_Stack_Tradeoffs.md
 │   │   ├── 04_Phased_Implementation_Roadmap.md
 │   │   └── index.md
-│   ├── 04_meta/              #    🤖 [協同工程] 18 位審查官雙輪對抗審查、Obsidian 拓撲與協同憲法
+│   ├── 04_meta/              #    🤖 [協同工程] 19 位審查官雙輪對抗審查、Obsidian 拓撲與協同憲法
 │   │   ├── 01_Multi_Agent_Adversarial_Review_Pattern.md
 │   │   ├── 02_Obsidian_Vault_Topology.md
+│   │   └── index.md
+│   ├── 05_troubleshooting/   #    🛠️ [實戰手冊] SRE 四段式故障覆盤、QA 問答與 Runbook 診斷 SOP
+│   │   ├── 01_Context_Inflation_and_Intermediate_Compounding.md
+│   │   ├── 02_Startup_Warmup_Double_Ingestion_and_Cache_Lag.md
+│   │   ├── 03_TUI_ANSI_Escape_Truncation_and_Overscroll_Lag.md
 │   │   └── index.md
 │   └── index.md              #    🧭 Wiki 根目錄全景導覽 (Wiki Root MOC)
 ├── ithome_draft/             # ✍️ [專案工作區] 鐵人賽 30 天文章草稿撰寫區與寫作進度看板
 │   └── README.md
 ├── ithome_ready/             # 🚀 [發布定稿區] 完稿並排版完畢、可直接複製發布至 iThome 的定稿庫
 │   └── README.md
-├── reviews/                  # 📜 [審查報告室] 雙輪地毯式對抗審查報告書、思維鏈挑惕紀錄與終審簽核
+├── reviews/                  # 📜 [審查報告室] 19 角色雙輪深層對抗審查報告書、思維鏈挑惕紀錄與終審簽核
 │   ├── 2026-08-26_02-15-00_two_round_audit_report.md
 │   ├── 2026-08-26_02-28-53_meta_module_audit_report.md
 │   ├── 2026-08-26_15-11-37_concrete_walkthrough_audit_report.md
-│   └── 2026-08-26_23-13-21_wiki_distillation_comprehensive_audit_report.md
+│   ├── 2026-08-26_23-13-21_wiki_distillation_comprehensive_audit_report.md
+│   └── 2026-08-27_02-15-00_multi_agent_adversarial_review_audit_report.md
 ├── schema.md                 # 📐 [知識庫憲法] Obsidian 拓撲原則、三權分立與卡片規範
 ├── log.md                    # ⏱️ [時序變更日誌] 全庫 Append-Only 操作與提煉紀錄
 └── index.md                  # 🗺️ [全域總導覽] 最高導覽中樞 (Global MOC)
@@ -75,10 +82,10 @@ docs/
 | 目錄路徑 | 核心職責與功能定位 | 生命週期與治理規則 (Lifecycle Policy) | 存儲內容範例 |
 | :--- | :--- | :--- | :--- |
 | **`01_raw/`** | **臨時素材收集池 (Intake Pool)**<br/>存放未加工的 API Traces、逆向日誌、臨時截圖與靈感碎片。 | **Digest & Delete**：一旦經 `wiki-distiller` 100% 提煉進 `02_wiki/`，原始檔案立即安全清理刪除，保持素材池極致乾淨。 | 原始 JSONL 日誌、API payload 截圖、發想草案。 |
-| **`02_wiki/`** | **永久核心知識資產庫 (Permanent Asset Hub)**<br/>世界級、排版精美、結構自洽、具備 4 維度圖解導讀的永久資產。 | **永不刪除 / 持續迭代**：嚴禁存放未完成的草稿。依大腦認知演進（`01_` $\to$ `02_` $\to$ `03_` $\to$ `04_`）嚴密編號。 | 16 篇經過雙輪審查的長效技術卡片。 |
+| **`02_wiki/`** | **永久核心知識資產庫 (Permanent Asset Hub)**<br/>世界級、排版精美、結構自洽、具備 4 維度圖解導讀與極簡演繹實例的永久資產。 | **永不刪除 / 持續迭代**：嚴禁存放未完成的草稿。依大腦認知演進（`01_` $\to$ `02_` $\to$ `03_` $\to$ `04_` $\to$ `05_`）嚴密編號。 | 20 篇經過 19 角色雙輪審查的長效技術卡片與排查 Runbook。 |
 | **`ithome_draft/`** | **文章草稿工作區 (Writing Workspace)**<br/>以 Wiki 為武器庫，專門用於撰寫 iThome 鐵人賽 30 天連載草稿。 | **短期專案週期**：與底層 Wiki 完全解耦，專注於文章受眾節奏、開場 Hook 與章節編排。 | Day 01 ~ Day 30 連載文章草稿。 |
 | **`ithome_ready/`** | **定稿發布庫 (Production Release)**<br/>完成最終潤稿、排版校對，隨時可直接複製 Po 到發文後台。 | **發布就緒**：代表可對外公開發表的正式文章。 | 排版完畢的最終發布 Markdown。 |
-| **`reviews/`** | **審查辯論與終審報告室 (Audit Room)**<br/>存放 18 位頂尖審查員的深層思維鏈挑惕、Main Agent 駁回/採納辯論與大檢察官簽核。 | **歷史審計存檔**：永久留存審查軌跡，正文 0 人名，所有審查員人名與辯論完整留存於此。 | 各模組雙輪審查全景報告書。 |
+| **`reviews/`** | **審查辯論與終審報告室 (Audit Room)**<br/>存放 19 位頂尖審查員的深層思維鏈挑惕、Main Agent 駁回/採納辯論與大檢察官簽核。 | **歷史審計存檔**：永久留存審查軌跡，正文 0 人名，所有審查員人名與辯論完整留存於此。 | 各模組雙輪審查全景報告書。 |
 
 ---
 
@@ -97,6 +104,7 @@ flowchart TD
         W1["⚡ 01_theory/<br/>(推論物理與數學模型 - 認知起點)"] --> W2["🏛️ 02_architecture/<br/>(通用系統與演算法模式 - 系統落地)"]
         W2 --> W3["🏆 03_planning/<br/>(系列藍圖與規格規劃 - 產品全景)"]
         W3 --> W4["🤖 04_meta/<br/>(AI 協同工程與知識庫方法論)"]
+        W2 --> W5["🛠️ 05_troubleshooting/<br/>(實戰故障排查與 Runbook 手冊)"]
     end
 
     subgraph OutputProject ["3. ✍️ 專案輸出空間 (Writing Workspace)"]
@@ -117,7 +125,7 @@ flowchart TD
 1. **【核心視野】**：本圖展示了資訊從「Raw 原始雜訊」流入「Wiki 長效資產」，再賦能於「短期寫作專案」的單向高熵轉低熵流程。
 2. **【看圖路徑 (Step-by-Step)】**：
    * **步驟 1 (素材池 01_raw/)**：收集暫存日誌。透過 `wiki-distiller` 提煉完成後，**原始檔案立即刪除**，保持輸入池乾淨。
-   * **步驟 2 (知識庫 02_wiki/)**：這是知識庫的核心終點（Destination）。內部劃分為 4 個模組，彼此以 `[[WikiLinks]]` 緊密互連，形成無孤島知識圖譜。
+   * **步驟 2 (知識庫 02_wiki/)**：這是知識庫的核心終點（Destination）。內部劃分為 5 個模組，彼此以 `[[WikiLinks]]` 緊密互連，形成無孤島知識圖譜。
    * **步驟 3 (專案區 ithome_*)**：寫作專案從 Wiki 汲取結構化的素材與深度見解進行輸出，專案結束後，Wiki 本身不受任何污染。
 
 ---
@@ -155,6 +163,7 @@ docs/.obsidian/*
 ---
 
 ## 🔗 六、相關概念與延伸閱讀
-* [[01_Multi_Agent_Adversarial_Review_Pattern]]：18 位審查官雙輪對抗審查架構。
+* [[01_Multi_Agent_Adversarial_Review_Pattern]]：19 位審查官雙輪對抗審查架構。
+* [[05_troubleshooting/index|05_troubleshooting: 實戰故障排查與 Runbook 手冊]]：SRE 實戰覆盤與排查武器庫。
 * [[03_planning/01_Master_Plan]]：2026 iThome 鐵人賽總策劃案。
 * [[schema|知識庫規範與卡片結構書]]：Obsidian 知識庫規範書。

@@ -201,9 +201,10 @@ func wrapVisualLines(text string, maxWidth int) []string {
 1. **過度滾動硬性約束 (Zero-Overscroll Clamping)**：
    * 透過 `m.getDocsMaxScroll()` 動態計算總行數與視窗高度差額，將滾動變數 `docsScroll` 嚴格約束在 `[0, maxScroll]` 範圍內；
    * 徹底杜絕連按 `j` 到底後按 `k` 需連敲數十下才動的數值溢出延遲。
-2. **Go `embed.FS` 嵌入式雙語辭典**：
+2. **Go `embed.FS` 嵌入式雙語辭典與無衝突快捷鍵體系 (Conflict-Free Navigation)**：
    * 採用 `//go:embed docs/*.md` 將 `docs_en.md` 與 `docs_zh.md` 靜態編譯進二進制檔；
-   * 預設英文，在 Docs 視圖中按下小寫 **`[l]`** 或 **`Tab`** 即可即時無縫切換繁中與英文。
+   * 預設英文，在 Docs 視圖中按下小寫 **`[t]`** (Translate) 即可即時無縫切換繁中與英文辭典；
+   * 全域支援 **`Tab`** (順時針) 與 **`Shift+Tab`** (逆時針) 循環切換分頁，並以 Vim **`h / l`** 自然切換 History 雙欄焦點，徹底根除熱鍵衝突。
 3. **職責分離**：
    * **`?` Shortcuts Modal**：輕量全域浮動快捷鍵面板；
    * **`[3] Docs` 獨立頁面**：具備 `/` 即時搜尋、多語言切換與全寬懸掛縮排的完整架構辭典。
