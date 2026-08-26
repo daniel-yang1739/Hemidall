@@ -387,15 +387,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					return m, nil
 				case "j", "down":
-					m.docsScroll++
+					maxScroll := m.getDocsMaxScroll()
+					if m.docsScroll < maxScroll {
+						m.docsScroll++
+					}
 					return m, nil
 				case "k", "up":
+					maxScroll := m.getDocsMaxScroll()
+					if m.docsScroll > maxScroll {
+						m.docsScroll = maxScroll
+					}
 					if m.docsScroll > 0 {
 						m.docsScroll--
 					}
 					return m, nil
 				case "ctrl+d":
+					maxScroll := m.getDocsMaxScroll()
 					m.docsScroll += 10
+					if m.docsScroll > maxScroll {
+						m.docsScroll = maxScroll
+					}
 					return m, nil
 				case "ctrl+u":
 					m.docsScroll -= 10
@@ -407,7 +418,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.docsScroll = 0
 					return m, nil
 				case "G", "end":
-					m.docsScroll = 9999
+					m.docsScroll = m.getDocsMaxScroll()
 					return m, nil
 				case "1", "d":
 					m.activeView = ViewDashboard

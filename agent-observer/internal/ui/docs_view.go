@@ -60,6 +60,62 @@ func loadDocDefinitions(lang string) []DocDefinitionItem {
 	return items
 }
 
+// getDocsMaxScroll calculates the maximum allowable scroll offset to prevent over-scrolling
+func (m Model) getDocsMaxScroll() int {
+	boxInnerWidth := m.width - 2
+	if boxInnerWidth < 40 {
+		boxInnerWidth = 40
+	}
+	contentWidth := boxInnerWidth - 2
+	innerRowsLimit := m.height - 4
+	if innerRowsLimit < 4 {
+		innerRowsLimit = 4
+	}
+
+	currentLang := m.docsLang
+	if currentLang == "" {
+		currentLang = "zh"
+	}
+	defs := loadDocDefinitions(currentLang)
+	query := strings.ToLower(strings.TrimSpace(m.docsSearchQuery))
+
+	rawLinesCount := 3 // title, searchBar, divider
+	currentCategory := ""
+	matchedCount := 0
+
+	for _, item := range defs {
+		if query != "" {
+			if !strings.Contains(strings.ToLower(item.Category), query) &&
+				!strings.Contains(strings.ToLower(item.Key), query) &&
+				!strings.Contains(strings.ToLower(item.Desc), query) {
+				continue
+			}
+		}
+		matchedCount++
+		if item.Category != currentCategory {
+			if currentCategory != "" {
+				rawLinesCount++
+			}
+			currentCategory = item.Category
+			rawLinesCount++
+		}
+		paddedKey := fmt.Sprintf("%-24s", item.Key)
+		entryLine := "  " + paddedKey + " : " + item.Desc
+		wrapped := wrapVisualLines(entryLine, contentWidth-2)
+		rawLinesCount += len(wrapped)
+	}
+
+	if matchedCount == 0 {
+		rawLinesCount += 3
+	}
+
+	maxScroll := rawLinesCount - innerRowsLimit
+	if maxScroll < 0 {
+		return 0
+	}
+	return maxScroll
+}
+
 func (m Model) renderDocsView() string {
 	boxInnerWidth := m.width - 2
 	if boxInnerWidth < 40 {

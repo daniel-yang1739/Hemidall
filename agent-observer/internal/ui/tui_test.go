@@ -148,6 +148,23 @@ func TestView3DocsPageRenderingAndSearch(t *testing.T) {
 	if m.docsSearchQuery != "" {
 		t.Errorf("Expected docsSearchQuery to be cleared, got '%s'", m.docsSearchQuery)
 	}
+
+	// 6. Test overscroll prevention on 'j' and 'G'
+	for i := 0; i < 200; i++ {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+		m = updated.(Model)
+	}
+	maxScroll := m.getDocsMaxScroll()
+	if m.docsScroll != maxScroll {
+		t.Errorf("Expected docsScroll to be clamped to maxScroll %d, got %d", maxScroll, m.docsScroll)
+	}
+
+	// Immediate response on pressing 'k' once
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	m = updated.(Model)
+	if m.docsScroll != maxScroll-1 {
+		t.Errorf("Expected docsScroll to immediately decrement to %d on first 'k', got %d", maxScroll-1, m.docsScroll)
+	}
 }
 
 func TestAllViewsZeroHeightVariationAcrossSizes(t *testing.T) {
