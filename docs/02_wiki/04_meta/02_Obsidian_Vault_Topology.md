@@ -42,12 +42,10 @@ docs/
 │   │   ├── 07_TUI_Engine_and_Terminal_Layout_Mechanics.md
 │   │   ├── 08_Interactive_Session_Switching_and_Anti_Jitter.md
 │   │   └── index.md
-│   ├── 03_planning/          #    🏆 [系列藍圖] 30 天大綱拆解、Go vs Python 選型權衡、分期實作路線圖
-│   │   ├── 01_Master_Plan.md
-│   │   ├── 02_30_Days_Breakdown.md
-│   │   ├── 03_Tech_Stack_Tradeoffs.md
-│   │   ├── 04_Phased_Implementation_Roadmap.md
-│   │   └── index.md
+│   ├── 03_planning/          #    🏆 [系列藍圖] v1/ (初版存檔) 與 v2/ (萬能觀測與極致壓縮旗艦版)
+│   │   ├── v1/               #       📜 [初版存檔] 01~04 系列企劃與 30 天大綱歷史存檔
+│   │   ├── v2/               #       🚀 [旗艦主線] 01~04 萬能觀測中樞、AI 基礎課與時代終章 (v2.0)
+│   │   └── index.md          #       🧭 規劃版本演進總導覽 (Planning MOC)
 │   ├── 04_meta/              #    🤖 [協同工程] 19 位審查官雙輪對抗審查、Obsidian 拓撲與協同憲法
 │   │   ├── 01_Multi_Agent_Adversarial_Review_Pattern.md
 │   │   ├── 02_Obsidian_Vault_Topology.md

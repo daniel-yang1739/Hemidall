@@ -1,5 +1,16 @@
 # ⏱️ LLM Wiki Chrono Log
 
+## [2026-08-27] plan | 升級 2026 鐵人賽總企劃、30 天大綱與路線圖至 v2.0 (Master Plan & 30 Days Breakdown v2.0)：
+1. **確立核心精神與首尾呼應情感錨點**：
+   * Day 01 開篇 Hook：《至少直到最後一刻，我與 AI 共舞著 —— 寫在黑盒時代前夕的工程自白》；
+   * Day 30 終章殘響：《一個軟體工程師的時代殘響：當黑盒化為透明，至少直到最後一刻，我與 AI 共舞著》；
+   * 詮釋身處 AI 典範轉移時代的軟體工程師從熱愛、抗拒、接受、擁抱到超越的心路歷程與工程驕傲；
+2. **重構 30 天四大模組架構 (v2.0)**：
+   * **模組一 (Day 01~07)**：AI 記憶與推論底層物理（新增 Day 02/03 Self-Attention QKV 幾何學與 GQA 基礎課，平緩學習坡度）；
+   * **模組二 (Day 08~15)**：打造大腦聽診器 Agent-Observer（雙軌遙測、六角架構、全螢幕雙軌 TUI、會話快切與防抖動鎖）；
+   * **模組三 (Day 16~21)**：擴充萬能 Agent 生態系（解剖與實作 Claude Code 5分鐘 TTL 斷點適配器、OpenCode/Ollama 通用適配器與三大 Agent 橫向實彈評測）；
+   * **模組四 (Day 22~30)**：極致壓縮引擎、長程任務壓測與工程師終章（語義剪枝、Diff 差分壓縮、80% Benchmark、SRE 故障手冊與開源發布）；
+3. **同步更新規劃模組**：同步升級 `03_planning/01_Master_Plan.md`、`03_planning/02_30_Days_Breakdown.md` 與 `03_planning/04_Phased_Implementation_Roadmap.md`
 ## [2026-08-27] polish | 全域 Tab/Shift+Tab 循環切頁、Docs 't' 語系切換與 History 'h/l' Vim 左右分欄導航 (Vim-First Cyclic Tabs & Conflict-Free Shortcuts v0.8.2)：
 1. **全域循環切頁 (Cyclic View Switching)**：支援按 **`Tab`** 順時針循環切換分頁 (`[1] Dashboard` $\to$ `[2] History` $\to$ `[3] Docs` $\to$ `[1] Dashboard`)，按 **`Shift+Tab`** / **`Backtab`** 逆時針切換，提供流暢的現代 TUI 瀏覽體驗；
 2. **解決 Vim 左右鍵衝突**：

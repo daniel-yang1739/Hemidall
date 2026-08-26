@@ -1,18 +1,19 @@
 ---
-title: 2026 iThome 鐵人賽總體企劃書 (Master Plan)
+title: 2026 iThome 鐵人賽總體企劃書 (Master Plan v1.0 歷史存檔)
 type: planning
 created: 2026-08-18
 updated: 2026-08-26
-status: completed
-tags: [planning, ithome2026, roadmap, overview, master-plan]
-aliases: [Master Plan, 總體企劃書, 鐵人賽企劃]
+status: archived
+tags: [planning, ithome2026, roadmap, overview, master-plan, legacy, v1]
+aliases: [Master Plan v1, 第一版企劃, v1企劃存檔]
 ---
 
-# 🏆 2026 iThome 鐵人賽總體企劃書 (Master Plan)
+# 🏆 2026 iThome 鐵人賽總體企劃書 (Master Plan v1.0 初版存檔)
 
 > [!IMPORTANT]
 > **🌟 主題名稱**：《深入 LLM 記憶中樞：從 Transformer KV Cache 底層、Agent Context 觀測到手刻極致壓縮引擎》
 > **🎯 核心定位**：全網第一份貫通 **底層算力物理（Prefill/Decode）**、**實時代理觀測（Agent-Observer）** 與 **極致演算法壓縮（手刻壓縮引擎）** 的端到端技術專題。
+> **📜 版本說明**：此為專案初期擬定之 **v1.0 初版總體企劃書**。最新進化版請參見：[[03_planning/v2/01_Master_Plan|總體企劃書 (v2.0 旗艦版)]]。
 
 ---
 
@@ -31,7 +32,7 @@ aliases: [Master Plan, 總體企劃書, 鐵人賽企劃]
 
 ```mermaid
 gantt
-    title 30 天四大模組循序進程圖
+    title 30 天四大模組循序進程圖 (v1.0)
     dateFormat  X
     axisFormat  Day %d
     
@@ -60,6 +61,7 @@ gantt
 ---
 
 ## 🔗 三、相關企劃與模組導航
-* [[02_30_Days_Breakdown]]：30 天每日詳細產出與配圖規劃。
-* [[03_Tech_Stack_Tradeoffs]]：Go vs. Python 技術選型權衡。
-* [[04_Phased_Implementation_Roadmap]]：Phase 1 ~ 5 實作里程碑。
+* [[03_planning/v1/02_30_Days_Breakdown|30 天每日詳細拆解 (v1.0 初版)]]
+* [[03_planning/v1/03_Tech_Stack_Tradeoffs|Go vs. Python 技術選型權衡 (v1.0)]]
+* [[03_planning/v1/04_Phased_Implementation_Roadmap|Phase 1 ~ 5 實作里程碑 (v1.0)]]
+* [[03_planning/v2/01_Master_Plan|總體企劃書 (v2.0 旗艦版)]]

@@ -1,14 +1,14 @@
 ---
-title: 分階段實作路線圖與驗收標準 (Phased Implementation Roadmap)
+title: 分階段實作路線圖與驗收標準 (Phased Implementation Roadmap v1.0 歷史存檔)
 type: planning
 created: 2026-08-18
 updated: 2026-08-26
-status: completed
-tags: [planning, roadmap, phased-plan, milestones, definition-of-done]
-aliases: [Roadmap, 分階段計畫, 實作路線圖, 里程碑驗收]
+status: archived
+tags: [planning, roadmap, phased-plan, milestones, definition-of-done, legacy, v1]
+aliases: [Roadmap v1, 分階段計畫 v1, 實作路線圖 v1]
 ---
 
-# 🚀 分階段實作路線圖與驗收標準 (Roadmap)
+# 🚀 分階段實作路線圖與驗收標準 (v1.0 初版存檔)
 
 ---
 

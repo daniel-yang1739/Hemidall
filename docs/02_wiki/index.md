@@ -26,12 +26,10 @@ docs/02_wiki/
 │   ├── 07_TUI_Engine_and_Terminal_Layout_Mechanics.md
 │   ├── 08_Interactive_Session_Switching_and_Anti_Jitter.md
 │   └── index.md
-├── 03_planning/          # 🏆 [系列藍圖] 30 天大綱拆解、Go vs Python 選型權衡、分期實作路線圖
-│   ├── 01_Master_Plan.md
-│   ├── 02_30_Days_Breakdown.md
-│   ├── 03_Tech_Stack_Tradeoffs.md
-│   ├── 04_Phased_Implementation_Roadmap.md
-│   └── index.md
+├── 03_planning/          # 🏆 [系列藍圖] v1/ (初版存檔) 與 v2/ (萬能觀測與極致壓縮旗艦版)
+│   ├── v1/                   #    📜 [初版存檔] 單一 Agent 原型企劃與初版 30 天大綱
+│   ├── v2/                   #    🚀 [旗艦主線] 萬能多 Agent 觀測中樞、AI 基礎課與時代終章 (v2.0)
+│   └── index.md              #    🧭 規劃版本演進總導覽 (Planning MOC)
 ├── 04_meta/              # 🤖 [協同工程] 19 位審查官雙輪對抗審查、Obsidian 拓撲與協同憲法
 │   ├── 01_Multi_Agent_Adversarial_Review_Pattern.md
 │   ├── 02_Obsidian_Vault_Topology.md
@@ -85,10 +83,10 @@ flowchart LR
 * [[08_Interactive_Session_Switching_and_Anti_Jitter]]：全域會話快切中樞（`Ctrl+p`）、動態目錄發現與歷史步驟防抖動鎖定機制（Anti-Jitter Lock）。
 
 ### 3. [[02_wiki/03_planning/index|🏆 03_planning: 系列藍圖與規格規劃]]
-* [[01_Master_Plan]]：系列總體企劃書、核心價值主張與四大模組進程圖。
-* [[02_30_Days_Breakdown]]：30 天每日詳細大綱、程式碼交付物與 Wiki 武器庫映射。
-* [[03_Tech_Stack_Tradeoffs]]：Go vs. Python 跨維度客觀選型矩陣與權衡分析。
-* [[04_Phased_Implementation_Roadmap]]：Phase 1 至 Phase 5 循序漸進實作路線圖。
+* [[03_planning/v2/index|🚀 v2/ 旗艦版企劃與 30 天大綱 (當前主線)]]：萬能多 Agent 觀測中樞、開篇與終章「共舞」自白與極致壓縮。
+  * [[03_planning/v2/01_Master_Plan|01_Master_Plan (v2.0)]]、[[03_planning/v2/02_30_Days_Breakdown|02_30_Days_Breakdown (v2.0)]]、[[03_planning/v2/03_Tech_Stack_Tradeoffs|03_Tech_Stack_Tradeoffs (v2.0)]]、[[03_planning/v2/04_Phased_Implementation_Roadmap|04_Phased_Implementation_Roadmap (v2.0)]]
+* [[03_planning/v1/index|📜 v1/ 初版企劃與大綱存檔 (歷史存檔)]]：單一 Agent CLI 觀測原型與初版 30 天大綱。
+  * [[03_planning/v1/01_Master_Plan|01_Master_Plan (v1.0)]]、[[03_planning/v1/02_30_Days_Breakdown|02_30_Days_Breakdown (v1.0)]]、[[03_planning/v1/03_Tech_Stack_Tradeoffs|03_Tech_Stack_Tradeoffs (v1.0)]]、[[03_planning/v1/04_Phased_Implementation_Roadmap|04_Phased_Implementation_Roadmap (v1.0)]]
 
 ### 4. [[02_wiki/04_meta/index|🤖 04_meta: AI 協同工程與知識庫方法論]]
 * [[01_Multi_Agent_Adversarial_Review_Pattern]]：19 位世界前 1% 審查矩陣、雙輪對抗審查、Main Agent 批判性過濾與自我進化閉環。

@@ -1,14 +1,14 @@
 ---
-title: 技術選型評估與權衡分析 (Tech Stack Tradeoffs)
+title: 技術選型評估與權衡分析 (Tech Stack Tradeoffs v1.0 歷史存檔)
 type: planning
 created: 2026-08-18
 updated: 2026-08-26
-status: completed
-tags: [planning, tech-stack, golang, python, tradeoffs, architecture-decision]
-aliases: [Tech Stack Tradeoffs, 技術選型決策, 語言權衡分析]
+status: archived
+tags: [planning, tech-stack, golang, python, tradeoffs, legacy, v1]
+aliases: [Tech Stack Tradeoffs v1, 技術選型決策 v1]
 ---
 
-# ⚖️ 技術選型評估與權衡分析 (Tech Stack Tradeoffs)
+# ⚖️ 技術選型評估與權衡分析 (Tech Stack Tradeoffs v1.0)
 
 > [!NOTE]
 > **⚡ 30 秒核心精華 (Key Takeaway)**

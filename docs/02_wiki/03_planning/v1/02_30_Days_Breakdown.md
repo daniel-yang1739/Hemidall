@@ -1,22 +1,22 @@
 ---
-title: 30 天每日詳細拆解與交付物矩陣 (30 Days Breakdown)
+title: 30 天每日詳細拆解與交付物矩陣 (30 Days Breakdown v1.0 歷史存檔)
 type: planning
 created: 2026-08-18
 updated: 2026-08-26
-status: completed
-tags: [planning, ithome2026, breakdown, schedule, syllabus]
-aliases: [30 Days Breakdown, 每日詳細拆解, 30天大綱清單]
+status: archived
+tags: [planning, ithome2026, breakdown, schedule, syllabus, legacy, v1]
+aliases: [30 Days Breakdown v1, 第一版大綱, v1存檔]
 ---
 
-# 📅 30 天每日詳細拆解與交付物矩陣 (30 Days Breakdown)
+# 📅 30 天每日詳細拆解與交付物矩陣 (v1.0 初版規劃存檔)
 
 > [!NOTE]
-> **⚡ 30 秒核心精華 (Key Takeaway)**
-> 本文件規劃了 Day 01 至 Day 30 每一天的核心論點、實作交付物、視覺化配圖與 `02_wiki/` 知識卡片映射。每篇文章均以獨立且自洽的技術小品形式呈現，同時在宏觀上形成完整的系統工程閉環。
+> **📜 版本說明**：此為專案初期擬定之 **v1.0 初版 30 天規劃**。
+> 最新進化版請參見：[[03_planning/v2/02_30_Days_Breakdown|30 天每日詳細拆解與交付物矩陣 (v2.0 旗艦版)]]。
 
 ---
 
-## 📑 30 天詳細大綱與知識武器庫映射表
+## 📑 30 天詳細大綱與知識武器庫映射表 (v1.0)
 
 ### ⚡ 第一週：解構 LLM 記憶底層 —— Transformer KV Cache 的物理極限
 * **Day 01**：為什麼百萬上下文是個「美麗的謊言」？—— 算力與顯存的殘酷現實 $\to$ 引用 [[01_theory/02_KV_Cache_Mechanics]]
