@@ -1,5 +1,8 @@
 # ⏱️ LLM Wiki Chrono Log
 
+## [2026-08-27] docs | 建立開機預熱管線雙重分析漏洞排查篇並標準化 Raw 檔名至「秒」 (Startup Warmup Pipeline & Second-Precision Raw Naming v0.7.2)：
+1. 在 `docs/01_raw/2026-08-27_01-48-00_startup_warmup_pipeline_and_double_ingestion_bug.md` 深度記錄開機預熱（Warmup）階段因 `main.go` 與 `watcher.go` 雙重調用 `AnalyzeStep` 導致基線混亂、開機瞬間暫存未就緒與全局最新遙測誤用之四重連鎖根因排查；
+2. 將 `docs/01_raw/` 下全體 8 篇技術文件檔名全面標準化升級為包含精確至「秒」的時序命名（`YYYY-MM-DD_HH-MM-SS_<topic>.md`），與 `docs/reviews/` 審查報告命名規範達成完美統一
 ## [2026-08-27] bugfix | 徹底修復歷史步驟遙測載入與中間步驟非遞增基線 (Historical SQLite Telemetry Linking & Non-Compounding Intermediate Baseline v0.7.1)：
 1. **抓出固定 256,000 的根本原因**：
    - 在 `NewWatcher` 初始化時未呼叫 `sqliteReader.PollLatest()`，導致全量 2,300+ 歷史步驟在回放時全部走 Fallback 模式；
@@ -14,9 +17,10 @@
 1. **抓出根本原因**：當步驟屬於未觸發 LLM Generation 的中間事件時（`IsOfficialData == false`），系統走 Fallback 增量計算；先前在 Fallback 區塊中 `event.Tokens.HistoryTokens` 誤直接賦值當前步驟大小 `stepTokens`（152 Tokens），而未扣除 Baseline 計算累積歷史，導致 Track 2 五維度總和驟降至 5,335 Tokens，與 Track 1 的 18.4 萬字產生斷層；
 2. **完整推導修復**：在 Fallback 模式計算 `HistoryTokens = totalTokens - (BaseSystem + BaseToolsDef + currentStep)`，並消除 Model 預設值的 `(Official API)` 後綴，使所有步驟的 Track 1 與 Track 2 五維度數據 100% 嚴格守恆！
 ## [2026-08-27] raw | 沉澱五大主題技術實戰與排查文檔至 docs/01_raw/ (Comprehensive Raw Ingestion v0.6.8)：
-1. `2026-08-27_agent_session_storage_architecture_hexagonal_and_ttl.md`: Session 存儲、六角架構適配器模式、WAL 直讀 vs 分析型 Sink DB，以及本地無 TTL vs GPU 顯存 5 分鐘 TTL 冷啟動淘汰機制；
-2. `2026-08-27_session_quick_switcher_and_dynamic_discovery.md`: 全域會話快切浮動面板、動態目錄發現、Vim-First 鍵盤巡覽與即時掛載切換管線；
-3. `2026-08-27_history_inspection_anti_jitter_lock.md`: 歷史步驟防抖動鎖定機制 (Anti-Jitter Lock) 狀態機與物理索引不變性數學推導；
-4. `2026-08-27_tui_lipgloss_box_model_and_ansi_escape_pitfalls.md`: 終端機 UI 排版四大黑天鵝排查實錄（ANSI 轉義序列污染、父容器背景色重置、分隔線過長折行與面板右邊界間隙）；
-5. `2026-08-27_shortcuts_modal_and_searchable_docs_page_decoupling.md`: Shortcuts 浮動面板與 View 3 Docs 獨立頁面的職責分離、`/` 即時搜尋與定高盒模型；
-6. `2026-08-27_terminal_minimalism_and_layout_polishing.md`: 極簡無 Emoji 終端美學、Header 尾端時間序列排版與 Recent Events 自適應貼合
+1. `2026-08-27_01-29-15_agent_session_storage_architecture_hexagonal_and_ttl.md`: Session 存儲、六角架構適配器模式、WAL 直讀 vs 分析型 Sink DB，以及本地無 TTL vs GPU 顯存 5 分鐘 TTL 冷啟動淘汰機制；
+2. `2026-08-27_01-31-00_session_quick_switcher_and_dynamic_discovery.md`: 全域會話快切浮動面板、動態目錄發現、Vim-First 鍵盤巡覽與即時掛載切換管線；
+3. `2026-08-27_01-32-00_history_inspection_anti_jitter_lock.md`: 歷史步驟防抖動鎖定機制 (Anti-Jitter Lock) 狀態機與物理索引不變性數學推導；
+4. `2026-08-27_01-33-00_tui_lipgloss_box_model_and_ansi_escape_pitfalls.md`: 終端機 UI 排版四大黑天鵝排查實錄（ANSI 轉義序列污染、父容器背景色重置、分隔線過長折行與面板右邊界間隙）；
+5. `2026-08-27_01-34-00_shortcuts_modal_and_searchable_docs_page_decoupling.md`: Shortcuts 浮動面板與 View 3 Docs 獨立頁面的職責分離、`/` 即時搜尋與定高盒模型；
+6. `2026-08-27_01-35-00_terminal_minimalism_and_layout_polishing.md`: 極簡無 Emoji 終端美學、Header 尾端時間序列排版與 Recent Events 自適應貼合；
+7. `2026-08-27_01-42-00_ground_truth_context_accounting_and_fallback_inflation_bug.md`: 官方 SQLite 遙測 (21 萬) vs Fallback 累積膨脹 (89 萬) 深度排查
