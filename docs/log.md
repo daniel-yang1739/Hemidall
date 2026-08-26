@@ -1,5 +1,9 @@
 # ⏱️ LLM Wiki Chrono Log
 
+## [2026-08-27] skill | 升級 wiki-distiller 審查體系：擴充 QA/Runbook 專家與明確雙輪對抗審查閉環 (Two-Round Adversarial Review & Incident Runbook Role v0.8.0)：
+1. **新增角色 10**：建立 `roles/10_qa_runbook_incident_troubleshooting_expert.md` (實戰排查、QA 問答與 Runbook 知識化專家)，審查所有 Bug 排查與 QA 卡片是否符合「現象定義 $\to$ 根因代碼溯源 $\to$ 架構修復 $\to$ 總結與 Runbook SOP」四段式標準，並強制與核心概念頁面建立雙向鏈接；
+2. **新增反饋記憶庫 05**：在 `feedbacks/05_qa_troubleshooting_and_runbooks.md` 沉澱排查四段式結構、診斷 SOP 與防孤島抗體規範；
+3. **明確雙輪對抗審查閉環 (2-Round Loop)**：在 `SKILL.md` 正式定型 Round 1 (19 位審查官初審) $\to$ Main Agent Triage $\to$ Fix 1 (首輪修訂) $\to$ Round 2 (19 位原班人馬 Delta 差量複驗) $\to$ 大檢察官終審簽核之完整閉環流水線
 ## [2026-08-27] config | Docs 頁面預設語言切換為英文 (Default English for Docs Page v0.7.9)：將 Docs 視圖之預設語系初始化為 English (`docsLang: "en"`)，預設載入 `docs_en.md`，並可隨時按下 `[l]` 鍵即時無縫切換為繁體中文辭典 (`docs_zh.md`)
 ## [2026-08-27] polish | 統一多語言切換提示為小寫 `[l]` 鍵與 Shortcuts 說明補齊 (Lowercase Language Toggle Hint & Shortcuts Docs v0.7.8)：
 1. **提示字元統一為小寫 `l`**：將 Docs 標題列 `[l: 繁體中文]`、搜尋狀態提示 `[按 l 切換中英]` 及底部狀態列 `[l] Lang (繁中)` 全面統一為小寫 `l`，符合終端機鍵盤操作習慣；

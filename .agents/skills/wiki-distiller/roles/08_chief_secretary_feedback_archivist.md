@@ -29,9 +29,10 @@
 
 ---
 
-## 📂 秘書長維護的四大反饋記憶庫 (`feedbacks/`)
+## 📂 秘書長維護的五大反饋記憶庫 (`feedbacks/`)
 
 1. `01_theory_and_math.md`：推論物理、GEMM/GEMV、顯存公式、算術強度、微架構瓶頸。
 2. `02_architecture_and_code.md`：5 維度模型、LCP 演算法、Clean Architecture、Go AST 代碼對齊。
 3. `03_narrative_and_diagrams.md`：圖表 4 維度深度導讀、因果過渡、背景鋪墊、正文 0 人名純淨性。
 4. `04_vault_topology_and_numbering.md`：大腦認知學習編號邏輯、目錄正交性（MECE）與 Merge 判定。
+5. `05_qa_troubleshooting_and_runbooks.md`：四段式排查結構、Runbook 診斷 SOP、雙向拓撲鏈接與防孤島規則。
