@@ -29,5 +29,12 @@ func TestDiscoverAllSessions(t *testing.T) {
 		t.Logf("LoadSessionHistory info/warning: %v", err)
 	} else {
 		t.Logf("✅ Successfully loaded %d historical steps for session %s", len(events), topSession.SessionID)
+		for _, idx := range []int{100, 500, 1000, 1500, 2000, 2291, 2330, len(events) - 1} {
+			if idx >= 0 && idx < len(events) {
+				ev := events[idx]
+				t.Logf("Step %d (Index %d): Type=%v, Total=%d, Cached=%d, New=%d, HitRate=%.2f%%, Hist=%d, Official=%v",
+					ev.StepIndex, idx, ev.Type, ev.Tokens.TotalTokens, ev.Tokens.CachedTokens, ev.Tokens.NewTokens, ev.Tokens.CacheHitRate, ev.Tokens.HistoryTokens, ev.Tokens.IsOfficialData)
+			}
+		}
 	}
 }

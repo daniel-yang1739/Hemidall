@@ -251,7 +251,7 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 			event.Tokens.NewTokens = newTokens
 			event.Tokens.CacheHitRate = hitRate
 			event.CacheStatus = determineCacheStatus(cachedTokens, totalTokens, hitRate)
-			state.PrevTotalTokens = totalTokens
+			// Do NOT overwrite state.PrevTotalTokens on intermediate steps so they don't compound
 
 			hist := totalTokens - (state.BaseSystem + state.BaseToolsDef + currentStepTokens)
 			if hist < 0 {

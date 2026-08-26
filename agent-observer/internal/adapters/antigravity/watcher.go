@@ -44,6 +44,7 @@ func NewWatcher(filePath string, sessionID string, analyzer *core.PayloadAnalyze
 	var sqliteReader *SQLiteTelemetryReader
 	if sqlitePath != "" {
 		sqliteReader = NewSQLiteTelemetryReader(sqlitePath)
+		_ = sqliteReader.PollLatest()
 	}
 
 	return &Watcher{
@@ -253,16 +254,6 @@ func (w *Watcher) parseLine(line string) (core.UnifiedAgentEvent, error) {
 			event.Tokens.CacheHitRate = meta.CacheHitRate
 			event.Tokens.OfficialModel = meta.ModelName
 			event.Tokens.OfficialContextLimit = meta.ContextLimit
-		} else if raw.Type == "PLANNER_RESPONSE" {
-			if latest := w.sqliteReader.GetLatestTelemetry(); latest != nil && latest.TotalTokens > 0 {
-				event.Tokens.IsOfficialData = true
-				event.Tokens.TotalTokens = latest.TotalTokens
-				event.Tokens.CachedTokens = latest.CachedTokens
-				event.Tokens.NewTokens = latest.TotalTokens - latest.CachedTokens
-				event.Tokens.CacheHitRate = latest.CacheHitRate
-				event.Tokens.OfficialModel = latest.ModelName
-				event.Tokens.OfficialContextLimit = latest.ContextLimit
-			}
 		}
 	}
 

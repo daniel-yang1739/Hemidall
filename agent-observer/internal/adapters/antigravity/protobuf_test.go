@@ -27,4 +27,6 @@ func TestSQLiteTelemetryReader_RealDB(t *testing.T) {
 				step, m.TotalTokens, m.CachedTokens, m.TotalTokens-m.CachedTokens, m.CacheHitRate, m.ModelName)
 		}
 	}
+
+	t.Logf("Total matched records in SQLite reader: %d", len(reader.records))
 }
