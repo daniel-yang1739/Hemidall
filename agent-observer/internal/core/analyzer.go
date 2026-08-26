@@ -224,9 +224,22 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 			state.PrevTotalTokens = event.Tokens.TotalTokens
 		} else {
 			// Hot Cache Incremental Turn
+			maxContextLimit := event.Tokens.OfficialContextLimit
+			if maxContextLimit == 0 {
+				maxContextLimit = 256000
+			}
+
 			cachedTokens := state.PrevTotalTokens
 			newTokens := stepTokens
 			totalTokens := cachedTokens + newTokens
+
+			if totalTokens > maxContextLimit {
+				totalTokens = maxContextLimit
+				cachedTokens = totalTokens - newTokens
+				if cachedTokens < 0 {
+					cachedTokens = 0
+				}
+			}
 
 			hitRate := 0.0
 			if totalTokens > 0 {
