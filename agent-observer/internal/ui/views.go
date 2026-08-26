@@ -110,31 +110,57 @@ func (m Model) renderDashboardView() string {
 	p2.WriteString(fmt.Sprintf("  5. Active Turn / CoT  : %-8d Tokens (%5.1f%%)  [%s]",
 		t.ActiveTurnTokens+t.ThinkingTokens, activePct, renderColorBar(activePct, 15, ColorWarning)))
 
+	hasRawLogLine := false
 	if t.RawLocalAccumulated > total && m.height >= 34 {
 		truncated := t.RawLocalAccumulated - total
 		p2.WriteString(fmt.Sprintf("\n  Raw Log Accumulated   : %d Tokens (%d Tokens Truncated by Cloud Window)",
 			t.RawLocalAccumulated, truncated))
+		hasRawLogLine = true
 	}
 
 	panel2Box := PanelStyle.Width(panelInnerWidth).Render(p2.String())
 
-	if m.height >= 33 {
+	// ==================== PANEL 3: RECENT LIVE EVENTS (ROUNDED BOX) ====================
+	p1LinesCount := 8 // 1 title + 5 items + 2 border
+	p2LinesCount := 8 // 1 title + 5 items + 2 border
+	if hasRawLogLine {
+		p2LinesCount = 9
+	}
+	usedLines := 2 + p1LinesCount + p2LinesCount // 2 for header + footer
+	remainingLines := m.height - usedLines
+
+	// If at least 5 lines remaining (1 title + 2 events + 2 borders = 5), render Panel 3 in a rounded box
+	if remainingLines >= 5 {
+		maxEventLines := remainingLines - 3 // reserve 1 for title, 2 for top/bottom borders
+		if maxEventLines > 6 {
+			maxEventLines = 6
+		}
+
 		var p3 strings.Builder
-		p3.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render("RECENT LIVE EVENTS (Press [Enter] or [2] to inspect history):") + "\n")
-		eventsCount := 2
-		if m.height >= 38 {
-			eventsCount = 4
+		p3Title := TitleStyle.Render("RECENT LIVE EVENTS (Press [Enter] or [2] to inspect history)")
+		p3.WriteString(p3Title + "\n")
+
+		if len(m.history) == 0 {
+			p3.WriteString("  No events recorded yet...")
+		} else {
+			startIdx := len(m.history) - maxEventLines
+			if startIdx < 0 {
+				startIdx = 0
+			}
+			for i := startIdx; i < len(m.history); i++ {
+				ev := m.history[i]
+				typeBadge := fmt.Sprintf("[%03d|%-5s]", ev.StepIndex, shortenType(string(ev.Type)))
+				timeStr := ev.Timestamp.Format("15:04:05")
+				eventLine := fmt.Sprintf("  %s %s  %s", typeBadge, timeStr, ev.Summary)
+				if i == len(m.history)-1 {
+					p3.WriteString(truncateVisualWidth(eventLine, panelInnerWidth-2))
+				} else {
+					p3.WriteString(truncateVisualWidth(eventLine, panelInnerWidth-2) + "\n")
+				}
+			}
 		}
-		startIdx := len(m.history) - eventsCount
-		if startIdx < 0 {
-			startIdx = 0
-		}
-		for i := startIdx; i < len(m.history); i++ {
-			ev := m.history[i]
-			p3.WriteString(fmt.Sprintf("  [%s] [Step %03d | %-12s] %s\n",
-				ev.Timestamp.Format("15:04:05"), ev.StepIndex, ev.Type, truncateVisualWidth(ev.Summary, panelInnerWidth-30)))
-		}
-		panel3Box := lipgloss.NewStyle().Padding(0, 1).Render(p3.String())
+
+		panel3Box := PanelStyle.Width(panelInnerWidth).Render(p3.String())
 		return lipgloss.JoinVertical(lipgloss.Left, panel1Box, panel2Box, panel3Box)
 	}
 

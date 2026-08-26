@@ -1,5 +1,6 @@
 # ⏱️ LLM Wiki Chrono Log
 
+## [2026-08-27] style | 將 Recent Live Events 整合進標準圓角外框 (Consistent Rounded Box for Live Events v0.6.1)：在 Live Dashboard 視圖中，將底部 `RECENT LIVE EVENTS` 列表封裝進與 Track 1/Track 2 相同寬度與圓角風格的標準面板框線 (`PanelStyle.Width(panelInnerWidth)`)，使整個儀表板上下 3 個面板框線視覺完全一致、排版緊湊大氣且零高度溢出
 ## [2026-08-27] feature | 重構 Help & Docs 為獨立第 3 頁並支援 `/` 即時搜尋與 ANSI 冒號對齊修復 (View 3 Searchable Docs & Zero-Height Layout v0.6.0)：
 1. **升級為獨立第 3 視圖 (View 3: `[3] Help & Docs`)**：將原本高度易受限制的浮動面板徹底升級為全螢幕第 3 頁面；框體高度嚴格鎖定 `innerRowsLimit = m.height - 4`，與 Dashboard/History 完美 100% 等高，永不因內容增長推擠或改變外框大小；
 2. **支援 `/` 即時關鍵字搜尋與虛擬滾動 (Vim Search & Virtual Buffer)**：按下 `/` 即可輸入關鍵字即時過濾全域快捷鍵、5 大 Context 維度與架構術語（如 `/accumulated`、`/cot`、`/compaction`），按 `Enter/Esc` 返回 `j/k/Ctrl+d/u` 順暢虛擬滾動瀏覽；
