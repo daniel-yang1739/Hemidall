@@ -768,20 +768,23 @@ func (m Model) renderHeader() string {
 	}
 
 	viewTabs := tab1 + tab2 + tab3
+	left := lipgloss.JoinHorizontal(lipgloss.Center, title, viewTabs)
 
-	sessionBadge := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf(" [Ctrl+P] %s ", truncateStr(m.sessionID, 8)))
+	shortHash := m.sessionID
+	if len(shortHash) > 8 {
+		shortHash = shortHash[:8]
+	}
+	sessionTag := lipgloss.NewStyle().Foreground(ColorHighlight).Render(fmt.Sprintf("(%s)", shortHash))
+	statusInfo := lipgloss.NewStyle().Foreground(ColorLightText).Render(fmt.Sprintf("Events: %d | %s", m.eventCount, time.Now().Format("15:04:05")))
+	right := fmt.Sprintf("%s  %s", statusInfo, sessionTag)
 
-	statusText := fmt.Sprintf("Events: %d | %s", m.eventCount, time.Now().Format("15:04:05"))
-	status := lipgloss.NewStyle().Foreground(ColorLightText).Render(statusText)
-
-	left := lipgloss.JoinHorizontal(lipgloss.Center, title, viewTabs, sessionBadge)
-	gapWidth := m.width - lipgloss.Width(left) - lipgloss.Width(status) - 1
+	gapWidth := m.width - lipgloss.Width(left) - lipgloss.Width(right) - 1
 	if gapWidth < 1 {
 		gapWidth = 1
 	}
 	gap := strings.Repeat(" ", gapWidth)
 
-	headerLine := lipgloss.JoinHorizontal(lipgloss.Center, left, gap, status)
+	headerLine := lipgloss.JoinHorizontal(lipgloss.Center, left, gap, right)
 	return lipgloss.NewStyle().MaxWidth(m.width).Render(headerLine)
 }
 
