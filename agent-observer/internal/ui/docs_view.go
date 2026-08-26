@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 //go:embed docs/*.md
@@ -60,6 +61,65 @@ func loadDocDefinitions(lang string) []DocDefinitionItem {
 	return items
 }
 
+// formatDocItem renders a glossary definition with hanging indent across the full terminal width
+func formatDocItem(key, desc string, contentWidth int) []string {
+	paddedKey := fmt.Sprintf("%-24s", key)
+	keyStyled := KeyStyle.Render(paddedKey)
+	sepStyled := lipgloss.NewStyle().Foreground(ColorBorder).Render(" : ")
+	prefixVisualWidth := 2 + 24 + 3 // 2 spaces + 24 chars + " : " (3 chars) = 29
+
+	descMaxWidth := contentWidth - prefixVisualWidth
+	if descMaxWidth < 20 {
+		descMaxWidth = 20
+	}
+
+	// Wrap plain description text cleanly by visual terminal column width (CJK & ASCII aware)
+	descChunks := wrapPlainText(desc, descMaxWidth)
+	if len(descChunks) == 0 {
+		return []string{"  " + keyStyled + sepStyled}
+	}
+
+	var lines []string
+	// Line 1: "  " + Key + " : " + first chunk
+	firstLine := "  " + keyStyled + sepStyled + lipgloss.NewStyle().Foreground(ColorLightText).Render(descChunks[0])
+	lines = append(lines, firstLine)
+
+	// Line 2+: 29 spaces hanging indent + subsequent chunks
+	indentSpaces := strings.Repeat(" ", prefixVisualWidth)
+	for i := 1; i < len(descChunks); i++ {
+		lines = append(lines, indentSpaces+lipgloss.NewStyle().Foreground(ColorLightText).Render(descChunks[i]))
+	}
+
+	return lines
+}
+
+func wrapPlainText(text string, maxWidth int) []string {
+	if maxWidth <= 0 {
+		return []string{text}
+	}
+	var chunks []string
+	runes := []rune(text)
+	var current []rune
+	currW := 0
+
+	for _, r := range runes {
+		rw := runewidth.RuneWidth(r)
+		if currW+rw > maxWidth {
+			if len(current) > 0 {
+				chunks = append(chunks, string(current))
+				current = nil
+				currW = 0
+			}
+		}
+		current = append(current, r)
+		currW += rw
+	}
+	if len(current) > 0 {
+		chunks = append(chunks, string(current))
+	}
+	return chunks
+}
+
 // getDocsMaxScroll calculates the maximum allowable scroll offset to prevent over-scrolling
 func (m Model) getDocsMaxScroll() int {
 	boxInnerWidth := m.width - 2
@@ -99,10 +159,8 @@ func (m Model) getDocsMaxScroll() int {
 			currentCategory = item.Category
 			rawLinesCount++
 		}
-		paddedKey := fmt.Sprintf("%-24s", item.Key)
-		entryLine := "  " + paddedKey + " : " + item.Desc
-		wrapped := wrapVisualLines(entryLine, contentWidth-2)
-		rawLinesCount += len(wrapped)
+		lines := formatDocItem(item.Key, item.Desc, contentWidth)
+		rawLinesCount += len(lines)
 	}
 
 	if matchedCount == 0 {
@@ -200,14 +258,9 @@ func (m Model) renderDocsView() string {
 			rawLines = append(rawLines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(" ["+item.Category+"]"))
 		}
 
-		// Pre-pad key before styling to ensure exact width
-		paddedKey := fmt.Sprintf("%-24s", item.Key)
-		keyRendered := KeyStyle.Render(paddedKey)
-		sepRendered := lipgloss.NewStyle().Foreground(ColorBorder).Render(" : ")
-		descRendered := lipgloss.NewStyle().Foreground(ColorLightText).Render(item.Desc)
-
-		entryLine := "  " + keyRendered + sepRendered + descRendered
-		rawLines = append(rawLines, wrapVisualLines(entryLine, contentWidth-2)...)
+		// Render with hanging indent and full terminal width wrapping
+		formattedLines := formatDocItem(item.Key, item.Desc, contentWidth)
+		rawLines = append(rawLines, formattedLines...)
 	}
 
 	if matchedCount == 0 {
