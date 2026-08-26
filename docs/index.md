@@ -2,60 +2,11 @@
 
 > [!NOTE]
 > 歡迎來到 **LLM 記憶中樞 (LLM Memory Hub) 永久知識庫**。
-> 本目錄作為整個 Obsidian Vault 的最高導覽中樞 (MOC)，提供全景檔案拓撲結構、High-Level 各目錄職責定義、以及永久 Wiki 核心卡片的認知索引。
+> 本目錄作為整個 Obsidian Vault 的最高導覽中樞 (MOC)，提供 High-Level 各目錄職責定義、永久 Wiki 核心卡片的認知索引與全景審查報告書。
 
 ---
 
-## 🌲 一、全域檔案拓撲結構樹 (Global Vault Tree)
-
-```text
-docs/
-├── 01_raw/                   # 📥 [素材收集池] 臨時原始資料池 (遵循 Digest & Delete 原則，提煉後即刪除)
-│   └── README.md
-├── 02_wiki/                  # 🧠 [核心資產庫] 永久長效知識中樞 (面向人類好讀好學、極致精煉、嚴密編號)
-│   ├── 01_theory/            #    ⚡ [推論物理] Attention 數學、KV Cache 顯存大小、Prompt Caching 物理時序、雙水位線壓縮
-│   │   ├── 01_Transformer_Prefill_vs_Decode.md
-│   │   ├── 02_KV_Cache_Mechanics.md
-│   │   ├── 03_Prompt_Caching_Lifecycle.md
-│   │   ├── 04_Context_Compaction_and_Summarization.md
-│   │   └── index.md
-│   ├── 02_architecture/      #    🏛️ [系統落地] Context 5 維度、LCP 快取演算法、雙層 SQLite 狀態機、雙軌遙測、TUI 盒模型
-│   │   ├── 01_Context_5_Dimensions.md
-│   │   ├── 02_Token_Calculation_and_LCP.md
-│   │   ├── 03_Agent_Storage_and_State_Machine.md
-│   │   ├── 04_Service_Plan_Agent_Observer.md
-│   │   ├── 05_Model_Payload_and_API_Traces.md
-│   │   ├── 06_Dual_Track_Telemetry_and_Window_Accounting.md
-│   │   ├── 07_TUI_Engine_and_Terminal_Layout_Mechanics.md
-│   │   └── index.md
-│   ├── 03_planning/          #    🏆 [系列藍圖] 30 天大綱拆解、Go vs Python 選型權衡、分期實作路線圖
-│   │   ├── 01_Master_Plan.md
-│   │   ├── 02_30_Days_Breakdown.md
-│   │   ├── 03_Tech_Stack_Tradeoffs.md
-│   │   ├── 04_Phased_Implementation_Roadmap.md
-│   │   └── index.md
-│   ├── 04_meta/              #    🤖 [協同工程] 18 位審查官雙輪對抗審查、Obsidian 拓撲與協同憲法
-│   │   ├── 01_Multi_Agent_Adversarial_Review_Pattern.md
-│   │   ├── 02_Obsidian_Vault_Topology.md
-│   │   └── index.md
-│   └── index.md              #    🧭 Wiki 根目錄全景導覽
-├── ithome_draft/             # ✍️ [專案工作區] 鐵人賽 30 天文章草稿撰寫區與寫作進度看板
-│   └── README.md
-├── ithome_ready/             # 🚀 [發布定稿區] 完稿並排版完畢、可直接複製發布至 iThome 的定稿庫
-│   └── README.md
-├── reviews/                  # 📜 [審查報告室] 雙輪地毯式對抗審查報告書、思維鏈挑惕紀錄與終審簽核
-│   ├── 2026-08-26_wiki_distillation_comprehensive_audit_report.md
-│   ├── 2026-08-26_concrete_walkthrough_audit_report.md
-│   ├── 2026-08-26_meta_module_audit_report.md
-│   └── 2026-08-26_two_round_audit_report.md
-├── schema.md                 # 📐 [知識庫憲法] Obsidian 拓撲原則、三權分立與卡片規範
-├── log.md                    # ⏱️ [時序變更日誌] 全庫 Append-Only 操作與提煉紀錄
-└── index.md                  # 🗺️ [全域總導覽] 本文件 (Global MOC)
-```
-
----
-
-## 🏛️ 二、High-Level 頂層目錄職責與定位 (Directory Mandates)
+## 🏛️ 一、High-Level 頂層目錄職責與定位 (Directory Mandates)
 
 | 目錄路徑 | 核心職責與功能定位 | 生命週期與治理規則 |
 | :--- | :--- | :--- |
@@ -67,8 +18,8 @@ docs/
 
 ---
 
-## 🧠 三、永久知識資產庫導覽 (`02_wiki/`)
-👉 **開啟 Wiki 總導覽：[[02_wiki/index|02_wiki 知識庫首頁]]**
+## 🧠 二、永久知識資產庫導覽 (`02_wiki/`)
+👉 **開啟 Wiki 總導覽：[[02_wiki/index|02_wiki 知識庫首頁 (含完整模組結構樹)]]**
 
 ### 1. [[02_wiki/01_theory/index|⚡ 01_theory: 推論物理與數學模型 (認知起點)]]
 * [[01_Transformer_Prefill_vs_Decode]]：推論兩階段 GEMM 算力密集 vs. GEMV 顯存帶寬密集深度剖析（附 3-Token 極簡演繹）。
@@ -97,8 +48,8 @@ docs/
 
 ---
 
-## 📜 四、審查委員會全景報告書 (`docs/reviews/`)
-* **👉 [[reviews/2026-08-26_wiki_distillation_comprehensive_audit_report|🏛️ 2026-08-26 全量 16 篇 Wiki 卡片深度提煉、雙軌遙測、TUI 盒模型與雙水位線壓縮審查報告書]]**
-* **👉 [[reviews/2026-08-26_concrete_walkthrough_audit_report|🏛️ 2026-08-26 具體演繹實例升級雙輪審查全景報告書]]**
-* **👉 [[reviews/2026-08-26_meta_module_audit_report|🏛️ 2026-08-26 04_meta 模組雙輪審查全景報告書]]**
-* **👉 [[reviews/2026-08-26_two_round_audit_report|🏛️ 2026-08-26 全量 12 篇卡片雙輪審查、意見採納與駁回裁決全景報告書]]**
+## 📜 三、審查委員會全景報告書 (`docs/reviews/`)
+* **👉 [[reviews/2026-08-26_23-13-21_wiki_distillation_comprehensive_audit_report|🏛️ 2026-08-26 23:13:21 全量 16 篇 Wiki 卡片深度提煉、雙軌遙測、TUI 盒模型與雙水位線壓縮審查報告書]]**
+* **👉 [[reviews/2026-08-26_15-11-37_concrete_walkthrough_audit_report|🏛️ 2026-08-26 15:11:37 具體演繹實例升級雙輪審查全景報告書]]**
+* **👉 [[reviews/2026-08-26_02-28-53_meta_module_audit_report|🏛️ 2026-08-26 02:28:53 04_meta 模組雙輪審查全景報告書]]**
+* **👉 [[reviews/2026-08-26_02-15-00_two_round_audit_report|🏛️ 2026-08-26 02:15:00 全量 12 篇卡片雙輪審查、意見採納與駁回裁決全景報告書]]**

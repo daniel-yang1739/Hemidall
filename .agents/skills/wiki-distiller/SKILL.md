@@ -20,7 +20,7 @@ description: >-
 > 7. **🧬 反饋記憶與自我進化閉環 (Continuous Learning & Feedbacks)**：
 >    * **⚡ 強制第一步 (Step 0)**：每次寫作**開局必須先讀取 `feedbacks/` 中的 ACCEPTED 規範與 REJECTED 警示**，主動避開已知陷阱；
 >    * 審查結束後，**由「秘書長 (Chief Secretary)」執行智能去重、標註 ACCEPTED/REJECTED 與累犯記錄**，沉澱入 `feedbacks/`！
-> 8. **📜 強制輸出全景審查報告書 (Mandatory Audit Report Output)**：每次雙輪審查後，**必須在 `docs/reviews/YYYY-MM-DD_<topic>_audit_report.md` 產出全景審查報告書**。
+> 8. **📜 強制輸出全景審查報告書 (Mandatory Audit Report Output)**：每次雙輪審查後，**必須在 `docs/reviews/YYYY-MM-DD_HH-MM-SS_<topic>_audit_report.md` 產出全景審查報告書**（檔名精確至秒，開頭強制標註 `> **建立時間**：YYYY-MM-DD HH:MM:SS`）。
 > 9. **🔍 代碼真相溯源鐵律 (Codebase Truth-Tracing)**：必須主動 Trace 專案當前的實際代碼（`agent-observer/`）核驗事實。
 
 ---
@@ -51,9 +51,9 @@ flowchart TD
     E --> F{"6. ⚖️ 00_chief_inquisitor (大檢察官終審裁決院)"}
     F -- "❌ 存在代碼矛盾 / 拓撲缺陷 / 演繹缺失" --> G1["🚫 大檢察官行使否決權裁定修正"]
     G1 --> D2
-    F -- "終審通過 ✅" --> G2["7. 標記 completed，更新 docs/index.md 與各層 index<br/>(按標準更新 ASCII 檔案樹與 High-Level 目錄職責表)"]
+    F -- "終審通過 ✅" --> G2["7. 標記 completed，更新 docs/index.md 與各層 index<br/>(按標準維護 High-Level 目錄職責表)"]
     
-    G2 --> H["8. 📜 【強制輸出】生成 docs/reviews/YYYY-MM-DD_audit_report.md"]
+    G2 --> H["8. 📜 【強制輸出】生成 docs/reviews/YYYY-MM-DD_HH-MM-SS_<topic>_audit_report.md (含建立時間)"]
     
     H --> I["9. 📋 【秘書長智能沉澱】更新 feedbacks/ 記憶庫<br/>(分類記錄 🟢 ACCEPTED / 🔴 REJECTED 與 ⚠️ 累犯標註)"]
     
