@@ -4,7 +4,7 @@ type: concept
 created: 2026-08-26
 updated: 2026-08-26
 status: completed
-tags: [theory, transformer, inference, prefill, decode, kv-cache, memory-bandwidth, flop-bound]
+tags: [theory, transformer, inference, prefill, decode, kv-cache, memory-bandwidth, flop-bound, concrete-walkthrough]
 aliases: [Prefill vs Decode, 推論兩階段物理, 自回歸推論本質, GEMM vs GEMV]
 ---
 
@@ -67,7 +67,43 @@ flowchart LR
 
 ---
 
-## 📊 三、底層硬體與運算特徵全方位對比矩陣
+## 🎯 三、極簡 3-Token 輸入 $\to$ 2-Token 生成之端到端演繹 (Concrete Trace)
+
+為了徹底看清微架構底層資料流，我們帶入極簡真實輸入，精確演繹資料與顯存的變遷：
+
+* **極簡輸入 (Input Prompt)**：`["What", "is", "Go"]`（長度 $N = 3$ Tokens）
+* **目標生成 (Target Tokens)**：`["Go", "is"]`，隨後輸出 `<EOS>` 終止。
+
+```text
+════════════════════════════════════════════════════════════════════════════════
+【階段 1：Prefill 預填充 (GEMM 矩陣乘法，單次批處理)】
+  輸入張量 : Shape [1, 3, 4096] (一次性吞入 ["What", "is", "Go"])
+  運算特性 : 算力密集 (Compute-Bound)，Tensor Cores 滿載並行相乘
+  顯存寫入 : 同時為 Token 0, 1, 2 計算 Key/Value 矩陣並寫入 HBM
+            KV Cache 增量 = 3 × 320 KB = 960 KB
+  階段產出 : 產出第 1 個 Token -> "Go" (耗時即為 TTFT 首字延遲)
+════════════════════════════════════════════════════════════════════════════════
+【階段 2：Decode Step 1 (GEMV 矩陣-向量相乘，自回歸第 1 輪)】
+  輸入張量 : Shape [1, 1, 4096] (僅傳入單一 Token "Go")
+  顯存搬移 : 為了這 1 個字，從 HBM 讀取 140GB 權重 + 960 KB 歷史 KV (Tokens 0..2)
+  運算特性 : 帶寬密集 (Memory-Bound)，算力核心 95% 時間處於等待資料搬移
+  顯存寫入 : 為 Token 3 ("Go") 計算 Key/Value，追加至顯存尾端 (KV 總量 = 1,280 KB)
+  階段產出 : 產出第 2 個 Token -> "is"
+════════════════════════════════════════════════════════════════════════════════
+【階段 3：Decode Step 2 (GEMV 矩陣-向量相乘，自回歸第 2 輪)】
+  輸入張量 : Shape [1, 1, 4096] (僅傳入單一 Token "is")
+  顯存搬移 : 再次從 HBM 完整搬移 140GB 權重 + 1,280 KB 歷史 KV (Tokens 0..3)
+  階段產出 : 採樣命中 <EOS> 結束符號，宣告生成完畢！
+════════════════════════════════════════════════════════════════════════════════
+【最終 Output 結算】
+  * 總生成內容 : "Go is"
+  * Prefill 耗時 : 1 次 GEMM (高算術強度)
+  * Decode 耗時  : 2 次 140GB 權重全量顯存搬移 (受限於 HBM 帶寬)
+```
+
+---
+
+## 📊 四、底層硬體與運算特徵全方位對比矩陣
 
 | 比較維度 | ⚡ **Prefill 階段 (預填充)** | ⏳ **Decode 階段 (自回歸解碼)** |
 | :--- | :--- | :--- |
@@ -81,9 +117,7 @@ flowchart LR
 
 ---
 
-## 🔬 四、深入微架構：為什麼 Decode 階段受限於顯存帶寬？
-
-許多工程師常誤以為「生成文字慢是因為 GPU 算力不夠」，這在計算機體系結構上是一個常見的誤區。
+## 🔬 五、深入微架構：為什麼 Decode 階段受限於顯存帶寬？
 
 * **運算強度的數學定義**：
   $$\text{Arithmetic Intensity} = \frac{\text{總計算量 (FLOPs)}}{\text{顯存搬移量 (Bytes)}}$$
@@ -94,7 +128,7 @@ flowchart LR
 
 ---
 
-## 🔗 五、相關概念與延伸閱讀
+## 🔗 六、相關概念與延伸閱讀
 * [[02_KV_Cache_Mechanics]]：深入了解 KV Cache 在顯存中的矩陣結構與顯存暴增公式。
 * [[03_Prompt_Caching_Lifecycle]]：解析為什麼 Model Response 在當前回合是 Uncached，而下一輪會變成 Cached。
 * [[02_architecture/01_Context_5_Dimensions|Context 5 維度模型]]：探討 Agent 如何在 Prefill 階段塞滿 128k 上下文。

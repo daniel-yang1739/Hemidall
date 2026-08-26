@@ -1,7 +1,7 @@
 ---
 name: wiki-distiller
 description: >-
-  Andrej Karpathy LLM Wiki 知識提煉專家。專門負責掃描 docs/01_raw/ 原始素材，主動 Trace 專案原始代碼 (agent-observer/) 驗證技術事實，進行極致深度提煉與二次編譯，產出世界級 02_wiki/ 卡片後自動刪除/歸檔已消化的 raw 檔案。透過 roles/ 內由 17 位「全球前 1% 頂級專家與好奇心工程師讀者」進行「雙輪深層地毯式對抗審查 (Two-Round Adversarial Review)」，並由秘書長在 feedbacks/ 執行智能去重與累犯沉澱作為長效抗體，在 docs/reviews/ 自動生成全景審查報告書，最後同步維護 docs/index.md 與 docs/log.md。
+  Andrej Karpathy LLM Wiki 知識提煉專家。專門負責掃描 docs/01_raw/ 原始素材，主動 Trace 專案原始代碼 (agent-observer/) 驗證技術事實，進行極致深度提煉與二次編譯，產出世界級 02_wiki/ 卡片後自動刪除/歸檔已消化的 raw 檔案。透過 roles/ 內由 18 位「全球前 1% 頂級專家與好奇心工程師讀者」進行「雙輪深層地毯式對抗審查 (Two-Round Adversarial Review)」，並由秘書長在 feedbacks/ 執行智能去重與累犯沉澱作為長效抗體，在 docs/reviews/ 自動生成全景審查報告書，最後同步維護 docs/index.md 與 docs/log.md。
 ---
 
 # 🧠 LLM Wiki Distiller (全球前 1% 頂尖多角色深層對抗審查、真相溯源與自我進化 Skill)
@@ -11,14 +11,17 @@ description: >-
 > 1. `docs/02_wiki/` 是面向全人類好讀、好學、深度抽象且高度互連的 **「長效知識中樞」**。
 > 2. **嚴禁在 Wiki 筆記內文中出現審查角色的名字**！Wiki 是純粹、客觀、沉穩的世界級技術資產。
 > 3. **每張架構圖/時序圖/流程圖下方，必須配備手把手的「圖表深度精讀指南」**。
-> 4. **🗑️ Raw 素材消化即刪除 (Digest & Delete Policy)**：一旦 `01_raw/` 內的素材被 100% 提煉、核實並整合進 `02_wiki/`，**該 Raw 檔案必須立即刪除**，絕不留存冗餘過渡檔案！
-> 5. **🗺️ 全景拓撲與 MOC 呈現標準 (Mandatory MOC Tree & Directory Mandates)**：
+> 4. **🎯 強制配備「極簡 Input $\to$ 逐輪演繹 (Step 1..n) $\to$ Final Output」硬核實例**：
+>    * **嚴禁擬人擬物童話比喻**；
+>    * 遇到抽象演算法、快取生命週期、狀態機與協議，必須帶入極簡真實 Input，展示逐輪狀態機突變與最終 Output！
+> 5. **🗑️ Raw 素材消化即刪除 (Digest & Delete Policy)**：一旦 `01_raw/` 內的素材被 100% 提煉、核實並整合進 `02_wiki/`，**該 Raw 檔案必須立即刪除**，絕不留存冗餘過渡檔案！
+> 6. **🗺️ 全景拓撲與 MOC 呈現標準 (Mandatory MOC Tree & Directory Mandates)**：
 >    * `docs/index.md` 與 `docs/02_wiki/index.md` 必須包含 **全景 ASCII 檔案結構樹** 與 **各 High-Level 目錄/模組的核心職責與生命週期定位表**！
-> 6. **🧬 反饋記憶與自我進化閉環 (Continuous Learning & Feedbacks)**：
+> 7. **🧬 反饋記憶與自我進化閉環 (Continuous Learning & Feedbacks)**：
 >    * **⚡ 強制第一步 (Step 0)**：每次寫作**開局必須先讀取 `feedbacks/` 中的 ACCEPTED 規範與 REJECTED 警示**，主動避開已知陷阱；
 >    * 審查結束後，**由「秘書長 (Chief Secretary)」執行智能去重、標註 ACCEPTED/REJECTED 與累犯記錄**，沉澱入 `feedbacks/`！
-> 7. **📜 強制輸出全景審查報告書 (Mandatory Audit Report Output)**：每次雙輪審查後，**必須在 `docs/reviews/YYYY-MM-DD_<topic>_audit_report.md` 產出全景審查報告書**。
-> 8. **🔍 代碼真相溯源鐵律 (Codebase Truth-Tracing)**：必須主動 Trace 專案當前的實際代碼（`agent-observer/`）核驗事實。
+> 8. **📜 強制輸出全景審查報告書 (Mandatory Audit Report Output)**：每次雙輪審查後，**必須在 `docs/reviews/YYYY-MM-DD_<topic>_audit_report.md` 產出全景審查報告書**。
+> 9. **🔍 代碼真相溯源鐵律 (Codebase Truth-Tracing)**：必須主動 Trace 專案當前的實際代碼（`agent-observer/`）核驗事實。
 
 ---
 
@@ -30,9 +33,9 @@ flowchart TD
     
     A["1. 掃描 docs/01_raw/ 素材池<br/>+ 🔍 Trace 專案最新源碼 (agent-observer/)"] --> B["2. 規劃認知演進編號與初版二次提煉"]
     
-    subgraph Round1 ["🔄 【Round 1：17 位世界前 1% 專家與讀者深層地毯式審查】"]
+    subgraph Round1 ["🔄 【Round 1：18 位世界前 1% 專家與讀者深層地毯式審查】"]
         direction TB
-        R1A["🎓 專家組 (7位)<br/>(物理官、架構官、教育講師、圖譜官、技術作家、資訊架構大師、代碼清道夫)"]
+        R1A["🎓 專家組 (8位)<br/>(物理官、架構官、教育講師、圖譜官、技術作家、資訊架構大師、代碼清道夫、演繹追蹤專家)"]
         R1B["👶 Junior 天賦組 (4位)<br/>(直覺天才、實戰駭客、邏輯偵探、背景因果審查官)"]
         R1C["🧓 Senior 首席組 (5位)<br/>(首席架構師、建模大師、體系結構權威、深度推導官、認知路徑大師)"]
         R1A --- R1B --- R1C
@@ -41,12 +44,12 @@ flowchart TD
     B --> Round1
     Round1 --> C{"3. 🛡️ Main Agent 批判性評估與過濾<br/>(Triage & Filter - 拒絕照單全收)"}
     C -- "❌ 瑣碎挑刺 / 偏離主題 (REJECTED)" --> D1["🚫 記錄駁回原因至 Veto Log"]
-    C -- "🟢 高價值實質建議 (ACCEPTED)" --> D2["4. 🛠️ 【Fix 1：首輪深度修訂與代碼對齊】<br/>修正過時資訊、補齊圖解導讀、對齊 Codebase 最新實作"]
+    C -- "🟢 高價值實質建議 (ACCEPTED)" --> D2["4. 🛠️ 【Fix 1：首輪深度修訂與代碼對齊】<br/>修正過時資訊、補齊圖解導讀、置入極簡 Input 逐輪演繹實例、對齊 Codebase 最新實作"]
     
-    D2 --> E["5. 🔄 【Round 2：次輪回歸複查 (Re-verification)】<br/>原班人馬覆審：代碼是否 100% 吻合、因果是否極致順暢"]
+    D2 --> E["5. 🔄 【Round 2：次輪回歸複查 (Re-verification)】<br/>原班人馬覆審：代碼是否 100% 吻合、演繹實例是否清晰閉環、因果是否極致順暢"]
     
     E --> F{"6. ⚖️ 00_chief_inquisitor (大檢察官終審裁決院)"}
-    F -- "❌ 存在代碼矛盾 / 拓撲缺陷" --> G1["🚫 大檢察官行使否決權裁定修正"]
+    F -- "❌ 存在代碼矛盾 / 拓撲缺陷 / 演繹缺失" --> G1["🚫 大檢察官行使否決權裁定修正"]
     G1 --> D2
     F -- "終審通過 ✅" --> G2["7. 標記 completed，更新 docs/index.md 與各層 index<br/>(按標準更新 ASCII 檔案樹與 High-Level 目錄職責表)"]
     
@@ -79,6 +82,7 @@ flowchart TD
 ### 🎓 1. 頂尖領域專家與架構大師 (World-Class Experts & Ontologists)
 * **⚖️ 大檢察官** ([`00_chief_inquisitor.md`](./roles/00_chief_inquisitor.md))：全局仲裁院院長、代碼真實性驗收、建議否決權行使、審查報告簽署與終審簽核。
 * **📋 秘書長 / 反饋記憶官** ([`08_chief_secretary_feedback_archivist.md`](./roles/08_chief_secretary_feedback_archivist.md))：**【自我進化核心】** 統整所有建議，查重聚合，更新 `feedbacks/`（標註 ACCEPTED/REJECTED 與累犯記錄）。
+* **🎯 具體演繹與端到端追蹤專家** ([`09_concrete_trace_walkthrough_specialist.md`](./roles/09_concrete_trace_walkthrough_specialist.md))：**【實證演繹核心】** 審查技術卡片是否具備極簡真實 Input、Step 1..n 逐輪演繹、狀態機突變與最終 Output。
 * **🔍 實證代碼驗證官** ([`07_code_fact_checker_and_pruner.md`](./roles/07_code_fact_checker_and_pruner.md))：Trace `agent-observer/` 實際代碼核對事實，揪出過時假說。
 * **🏛️ 資訊架構師與知識本體論專家·維克多** ([`06_information_architect_vault_ontologist.md`](./roles/06_information_architect_vault_ontologist.md))：審查目錄正交性（MECE）、評估同類概念合併（Merge）與目錄層級。
 * **✍️ 首席技術作家與細節審查官** ([`05_technical_writer_detail_auditor.md`](./roles/05_technical_writer_detail_auditor.md))：審查敘述厚度、每張圖的手把手導讀、杜絕正文人名。

@@ -43,12 +43,18 @@ type TokenBreakdown struct {
 	HistoryTokens    int     `json:"history_tokens"`     // Prior conversation turns
 	ActiveTurnTokens int     `json:"active_turn_tokens"` // Latest user prompt or active assistant output
 	ThinkingTokens   int     `json:"thinking_tokens"`    // Chain-of-Thought (CoT) tokens
-	TotalTokens      int     `json:"total_tokens"`       // Total context tokens
+	TotalTokens      int     `json:"total_tokens"`       // Total context tokens (Active Window)
 	
 	// Prefix Caching analytical metrics
-	CachedTokens     int     `json:"cached_tokens"`      // Theoretical prefix cache hit tokens
+	CachedTokens     int     `json:"cached_tokens"`      // Prefix cache hit tokens
 	NewTokens        int     `json:"new_tokens"`         // New uncached tokens in this step
 	CacheHitRate     float64 `json:"cache_hit_rate"`     // Cache hit rate percentage (%)
+	
+	// Official Google API telemetry fields
+	IsOfficialData       bool    `json:"is_official_data"`       // True if fetched directly from SQLite gen_metadata
+	OfficialModel        string  `json:"official_model"`         // Actual backend model (e.g. gemini-3.7-flash-high)
+	OfficialContextLimit int     `json:"official_context_limit"` // e.g. 256,000
+	RawLocalAccumulated  int     `json:"raw_local_accumulated"`  // Raw uncompressed log tokens (e.g. ~400k)
 }
 
 // UnifiedAgentEvent is the standardized domain event model across agent backends
@@ -69,5 +75,5 @@ type UnifiedAgentEvent struct {
 	
 	// 5-dimension breakdown (injected by Analyzer)
 	Tokens      TokenBreakdown   `json:"tokens"`
-	CacheStatus string           `json:"cache_status"` // HIT, MISS, WRITE, UNKNOWN
+	CacheStatus string           `json:"cache_status"` // HIT, MISS, WRITE, EXPIRED, UNKNOWN
 }

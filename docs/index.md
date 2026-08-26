@@ -16,13 +16,14 @@ docs/
 │   ├── 01_theory/            #    ⚡ [推論物理] Attention 數學、KV Cache 顯存大小、Prompt Caching 物理時序
 │   ├── 02_architecture/      #    🏛️ [系統落地] Context 5 維度、LCP 快取演算法、雙層 SQLite 狀態機、API 載荷
 │   ├── 03_planning/          #    🏆 [系列藍圖] 30 天大綱拆解、Go vs Python 選型權衡、分期實作路線圖
-│   ├── 04_meta/              #    🤖 [協同工程] 17 位審查官雙輪對抗審查、Obsidian 拓撲與協同憲法
+│   ├── 04_meta/              #    🤖 [協同工程] 18 位審查官雙輪對抗審查、Obsidian 拓撲與協同憲法
 │   └── index.md              #    🧭 Wiki 根目錄全景導覽
 ├── ithome_draft/             # ✍️ [專案工作區] 鐵人賽 30 天文章草稿撰寫區與寫作進度看板
 │   └── README.md
 ├── ithome_ready/             # 🚀 [發布定稿區] 完稿並排版完畢、可直接複製發布至 iThome 的定稿庫
 │   └── README.md
 ├── reviews/                  # 📜 [審查報告室] 雙輪地毯式對抗審查報告書、思維鏈挑惕紀錄與終審簽核
+│   ├── 2026-08-26_concrete_walkthrough_audit_report.md
 │   ├── 2026-08-26_meta_module_audit_report.md
 │   └── 2026-08-26_two_round_audit_report.md
 ├── schema.md                 # 📐 [知識庫憲法] Obsidian 拓撲原則、三權分立與卡片規範
@@ -37,10 +38,10 @@ docs/
 | 目錄路徑 | 核心職責與功能定位 | 生命週期與治理規則 |
 | :--- | :--- | :--- |
 | **`01_raw/`** | **臨時素材收集池 (Intake Pool)**<br/>存放未加工的 API Traces、逆向日誌、臨時截圖與靈感碎片。 | **Digest & Delete**：一旦經 `wiki-distiller` 100% 提煉進 `02_wiki/`，原始檔案立即安全清理刪除，保持素材池極致乾淨。 |
-| **`02_wiki/`** | **永久核心知識資產庫 (Permanent Asset Hub)**<br/>世界級、排版精美、結構自洽、具備 4 維度圖解導讀的永久資產。 | **永不刪除 / 持續迭代**：嚴禁存放未完成的草稿。依大腦認知演進（`01_` $\to$ `02_` $\to$ `03_` $\to$ `04_`）嚴密編號。 |
+| **`02_wiki/`** | **永久核心知識資產庫 (Permanent Asset Hub)**<br/>世界級、排版精美、結構自洽、具備 4 維度圖解導讀與極簡演繹實例的永久資產。 | **永不刪除 / 持續迭代**：嚴禁存放未完成的草稿。依大腦認知演進（`01_` $\to$ `02_` $\to$ `03_` $\to$ `04_`）嚴密編號。 |
 | **`ithome_draft/`** | **文章草稿工作區 (Writing Workspace)**<br/>以 Wiki 為武器庫，專門用於撰寫 iThome 鐵人賽 30 天連載草稿。 | **短期專案週期**：與底層 Wiki 完全解耦，專注於文章受眾節奏、開場 Hook 與章節編排。 |
 | **`ithome_ready/`** | **定稿發布庫 (Production Release)**<br/>完成最終潤稿、排版校對，隨時可直接複製 Po 到發文後台。 | **發布就緒**：代表可對外公開發表的正式文章。 |
-| **`reviews/`** | **審查辯論與終審報告室 (Audit Room)**<br/>存放 17 位頂尖審查員的深層思維鏈挑惕、Main Agent 駁回/採納辯論與大檢察官簽核。 | **歷史審計存檔**：永久留存審查軌跡，正文 0 人名，所有審查員人名與辯論完整留存於此。 |
+| **`reviews/`** | **審查辯論與終審報告室 (Audit Room)**<br/>存放 18 位頂尖審查員的深層思維鏈挑惕、Main Agent 駁回/採納辯論與大檢察官簽核。 | **歷史審計存檔**：永久留存審查軌跡，正文 0 人名，所有審查員人名與辯論完整留存於此。 |
 
 ---
 
@@ -48,13 +49,13 @@ docs/
 👉 **開啟 Wiki 總導覽：[[02_wiki/index|02_wiki 知識庫首頁]]**
 
 ### 1. [[02_wiki/01_theory/index|⚡ 01_theory: 推論物理與數學模型 (認知起點)]]
-* [[01_Transformer_Prefill_vs_Decode]]：推論兩階段 GEMM 算力密集 vs. GEMV 顯存帶寬密集深度剖析。
+* [[01_Transformer_Prefill_vs_Decode]]：推論兩階段 GEMM 算力密集 vs. GEMV 顯存帶寬密集深度剖析（附 3-Token 極簡演繹）。
 * [[02_KV_Cache_Mechanics]]：自回歸 KV Cache 顯存大小數學推導、GQA 演進與 128k OOM 實例計算 ($40GB)。
-* [[03_Prompt_Caching_Lifecycle]]：前綴快取生命週期時序轉換、快取固化與破壞邊界條件。
+* [[03_Prompt_Caching_Lifecycle]]：前綴快取生命週期時序轉換、快取固化與破壞邊界條件（附 2 輪快取突變演繹）。
 
 ### 2. [[02_wiki/02_architecture/index|🏛️ 02_architecture: 通用架構與演算法模式 (系統落地)]]
-* [[01_Context_5_Dimensions]]：Agent Context 載荷 5 維度模型、對話輪次膨脹趨勢與壓縮戰略。
-* [[02_Token_Calculation_and_LCP]]：TikToken (BPE) 分詞與 LCP 最長公共前綴快取演算法 Go 實作。
+* [[01_Context_5_Dimensions]]：Agent Context 載荷 5 維度模型、對話輪次膨脹趨勢與壓縮戰略（附 3 輪 5 維度數值變遷演繹）。
+* [[02_Token_Calculation_and_LCP]]：TikToken (BPE) 分詞與 LCP 最長公共前綴快取演算法 Go 實作（附 Token ID 陣列逐位比對演繹）。
 * [[03_Agent_Storage_and_State_Machine]]：工業級 Agent 雙層 SQLite 狀態機、Protobuf 與 100KB 滾動切片雙軌日誌。
 * [[04_Service_Plan_Agent_Observer]]：`agent-observer` Go 觀測服務 Clean Architecture 系統架構設計書。
 * [[05_Model_Payload_and_API_Traces]]：Context 4 大板塊（System, Tools, Trajectory, Active）組裝順序與底層 API 通訊 JSON Schema。
@@ -66,11 +67,12 @@ docs/
 * [[04_Phased_Implementation_Roadmap]]：Phase 1 至 Phase 5 循序漸進實作路線圖。
 
 ### 4. [[02_wiki/04_meta/index|🤖 04_meta: AI 協同工程與知識庫方法論 (元架構與體系)]]
-* [[01_Multi_Agent_Adversarial_Review_Pattern]]：17 位世界前 1% 審查矩陣、雙輪對抗審查、Main Agent 批判性過濾與自我進化閉環。
+* [[01_Multi_Agent_Adversarial_Review_Pattern]]：18 位世界前 1% 審查矩陣、雙輪對抗審查、Main Agent 批判性過濾與自我進化閉環。
 * [[02_Obsidian_Vault_Topology]]：全域檔案結構樹、High-Level 目錄職責對照表、Wiki 終點論、三權分立拓撲、.obsidian 嚴格 Git 白名單與 AGENTS.md 協同憲法。
 
 ---
 
 ## 📜 四、審查委員會全景報告書 (`docs/reviews/`)
+* **👉 [[reviews/2026-08-26_concrete_walkthrough_audit_report|🏛️ 2026-08-26 具體演繹實例升級雙輪審查全景報告書]]**
 * **👉 [[reviews/2026-08-26_meta_module_audit_report|🏛️ 2026-08-26 04_meta 模組雙輪審查全景報告書]]**
 * **👉 [[reviews/2026-08-26_two_round_audit_report|🏛️ 2026-08-26 全量 12 篇卡片雙輪審查、意見採納與駁回裁決全景報告書]]**

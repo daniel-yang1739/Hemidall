@@ -4,7 +4,7 @@ type: concept
 created: 2026-08-26
 updated: 2026-08-26
 status: completed
-tags: [theory, prompt-caching, kv-cache, memory, inference, prefix-caching, ttft-optimization]
+tags: [theory, prompt-caching, kv-cache, memory, inference, prefix-caching, ttft-optimization, concrete-walkthrough]
 aliases: [Prompt Caching, 快取生命週期, Prefix Caching, 前綴快取原理, Cache Invalidation]
 ---
 
@@ -65,7 +65,44 @@ sequenceDiagram
 
 ---
 
-## 🔍 三、快取命中與破壞的物理條件 (Cache Invalidation)
+## 🎯 三、極簡 2 輪對話快取狀態機與數值演繹 (Concrete Walkthrough)
+
+帶入極簡真實輸入，演繹資料由「新生算力」轉化為「固化快取前綴」的完整過程：
+
+* **靜態系統前綴 (System Instruction)**：`"You are a helpful assistant."` (5 Tokens)
+* **Turn 0 使用者輸入**：`"Hi"` (1 Token)
+* **Turn 1 使用者輸入**：`"How are you?"` (3 Tokens)
+
+```text
+════════════════════════════════════════════════════════════════════════════════
+【第 0 輪：首次請求 (Turn 0 - Cache Write / Initial)】
+  輸入上下文 : [System (5 Tokens)] + [User0: "Hi" (1 Token)] = 6 Tokens
+  快取比對   : 首次建立會話，無歷史前綴可復用
+  狀態結算   : 
+    * Cached Tokens : 0 Tokens
+    * New Tokens    : 6 Tokens (100% 執行全量 Prefill 運算)
+    * Cache Status  : 🔵 [CACHE WRITE] (快取命中率: 0.0%)
+  模型輸出   : 生成 "Hello! How can I help you?" (8 Tokens)
+  顯存固化   : 回合結束，整串 6 + 8 = 14 Tokens 固化為不可變前綴 (Frozen Prefix)
+════════════════════════════════════════════════════════════════════════════════
+【第 1 輪：後續請求 (Turn 1 - Cache Hit 躍遷)】
+  輸入上下文 : [System (5)] + [User0 (1)] + [Assistant0 (8)] + [User1: "How are you?" (3)]
+               = 總計 17 Tokens
+  快取比對   : 前 14 Tokens 與顯存中已固化的前綴 100% 嚴格吻合！
+  狀態結算   :
+    * Cached Tokens : 14 Tokens (直接復用現成 KV Cache，跳過 Prefill！)
+    * New Tokens    : 3 Tokens (僅對新問題 "How are you?" 做 Prefill)
+    * Cache Status  : 🟢 [CACHE HIT] (快取命中率: 14 / 17 = 82.4%)
+  模型輸出   : 生成 "I am doing great!" (5 Tokens)
+════════════════════════════════════════════════════════════════════════════════
+【最終 Output 收益對比】
+  * 若無快取 : Turn 1 需計算全量 17 Tokens (耗費原價 100% 算力與延遲)
+  * 有前綴快取 : Turn 1 僅計算 3 Tokens，算力與費用直接節省 82.4%！
+```
+
+---
+
+## 🔍 四、快取命中與破壞的物理條件 (Cache Invalidation)
 
 Prompt Caching 依賴於 **嚴格最長公共前綴 (LCP - Longest Common Prefix)** 機制。任何在上下文頂部或中途的微小變更，都會引發雪崩式的快取失效：
 
@@ -97,7 +134,7 @@ flowchart TD
 
 ---
 
-## 🔗 四、相關概念與延伸閱讀
+## 🔗 五、相關概念與延伸閱讀
 * [[01_Transformer_Prefill_vs_Decode]]：推論兩階段之 Prefill 與 Decode 物理對照。
 * [[02_KV_Cache_Mechanics]]：KV Cache 顯存大小推導與 GQA 架構。
 * [[02_architecture/02_Token_Calculation_and_LCP|Token 計算與 LCP 演算法]]：手刻 LCP 前綴比對演算法實作。

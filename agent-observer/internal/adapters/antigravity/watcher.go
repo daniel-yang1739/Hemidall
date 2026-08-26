@@ -13,47 +13,54 @@ import (
 	"agent-observer/internal/core"
 )
 
-// RawTranscriptLine represents a single JSON record in transcript_full.jsonl
+// RawTranscriptLine matches the JSONL schema from ~/.gemini/.../transcript_full.jsonl
 type RawTranscriptLine struct {
-	StepIndex int           `json:"step_index"`
-	Source    string        `json:"source"`
-	Type      string        `json:"type"`
-	Status    string        `json:"status"`
-	CreatedAt string        `json:"created_at"`
-	Content   string        `json:"content,omitempty"`
-	Thinking  string        `json:"thinking,omitempty"`
-	ToolCalls []RawToolCall `json:"tool_calls,omitempty"`
+	StepIndex int                      `json:"step_index"`
+	Source    string                   `json:"source"`
+	Type      string                   `json:"type"`
+	Status    string                   `json:"status"`
+	CreatedAt string                   `json:"created_at"`
+	Content   string                   `json:"content"`
+	Thinking  string                   `json:"thinking,omitempty"`
+	ToolCalls []RawToolCall            `json:"tool_calls,omitempty"`
 }
 
-// RawToolCall represents individual tool call payloads in transcript
 type RawToolCall struct {
 	Name string                 `json:"name"`
-	Args map[string]interface{} `json:"args"`
+	Args map[string]interface{} `json:"args,omitempty"`
 }
 
-// Watcher implements the adapters.AgentAdapter interface for Antigravity CLI logs
+// Watcher monitors the transcript_full.jsonl file and local SQLite database
 type Watcher struct {
-	filePath    string
-	sessionID   string
-	lastStepIdx int
-	analyzer    *core.PayloadAnalyzer
+	filePath     string
+	sessionID    string
+	analyzer     *core.PayloadAnalyzer
+	sqliteReader *SQLiteTelemetryReader
+	lastStepIdx  int
 }
 
-// NewWatcher creates an Antigravity Transcript Watcher
-func NewWatcher(filePath string, sessionID string, analyzer *core.PayloadAnalyzer) *Watcher {
+// NewWatcher creates a new Antigravity log and telemetry file watcher
+func NewWatcher(filePath string, sessionID string, analyzer *core.PayloadAnalyzer, sqlitePath string) *Watcher {
+	var sqliteReader *SQLiteTelemetryReader
+	if sqlitePath != "" {
+		sqliteReader = NewSQLiteTelemetryReader(sqlitePath)
+	}
+
 	return &Watcher{
-		filePath:    filePath,
-		sessionID:   sessionID,
-		lastStepIdx: -1,
-		analyzer:    analyzer,
+		filePath:     filePath,
+		sessionID:    sessionID,
+		analyzer:     analyzer,
+		sqliteReader: sqliteReader,
+		lastStepIdx:  -1,
 	}
 }
 
+// Name returns the adapter identifier
 func (w *Watcher) Name() string {
 	return "antigravity"
 }
 
-// Start begins tailing transcript_full.jsonl and streams new events
+// Start opens the transcript file, preloads history into channel, and monitors tail
 func (w *Watcher) Start(ctx context.Context, out chan<- core.UnifiedAgentEvent) error {
 	file, err := os.Open(w.filePath)
 	if err != nil {
@@ -63,28 +70,31 @@ func (w *Watcher) Start(ctx context.Context, out chan<- core.UnifiedAgentEvent) 
 
 	reader := bufio.NewReader(file)
 
-	// 1. Silent Warmup: fast-forward existing history to initialize context token state without flooding output
+	// 1. Initial SQLite polling to connect official telemetry
+	if w.sqliteReader != nil {
+		_ = w.sqliteReader.PollLatest()
+	}
+
+	// 2. Warmup: fast-forward existing history and push to out channel so TUI receives all historical events
 	warmupCount := 0
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
 				if len(line) > 0 {
-					w.warmupLine(line)
+					w.warmupLine(line, ctx, out)
 					warmupCount++
 				}
 				break
 			}
 			return fmt.Errorf("error reading initial lines: %w", err)
 		}
-		w.warmupLine(line)
+		w.warmupLine(line, ctx, out)
 		warmupCount++
 	}
 
-	fmt.Printf("✅ History warm-up complete! Pre-loaded %d steps. Watching for LIVE events...\n\n", warmupCount)
-
-	// 2. Poll file tail periodically for new live steps
-	ticker := time.NewTicker(300 * time.Millisecond)
+	// 3. Poll file tail and SQLite periodically for new live steps
+	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
@@ -92,6 +102,10 @@ func (w *Watcher) Start(ctx context.Context, out chan<- core.UnifiedAgentEvent) 
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
+			if w.sqliteReader != nil {
+				_ = w.sqliteReader.PollLatest()
+			}
+
 			for {
 				line, err := reader.ReadString('\n')
 				if err != nil {
@@ -106,7 +120,7 @@ func (w *Watcher) Start(ctx context.Context, out chan<- core.UnifiedAgentEvent) 
 	}
 }
 
-func (w *Watcher) warmupLine(line string) {
+func (w *Watcher) warmupLine(line string, ctx context.Context, out chan<- core.UnifiedAgentEvent) {
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" {
 		return
@@ -120,9 +134,13 @@ func (w *Watcher) warmupLine(line string) {
 	}
 	w.lastStepIdx = event.StepIndex
 
-	// Quietly initialize context state baseline
 	if w.analyzer != nil {
 		w.analyzer.AnalyzeStep(&event)
+	}
+
+	select {
+	case out <- event:
+	case <-ctx.Done():
 	}
 }
 
@@ -137,7 +155,6 @@ func (w *Watcher) handleLiveLine(line string, ctx context.Context, out chan<- co
 		return
 	}
 
-	// Deduplication protection
 	if event.StepIndex <= w.lastStepIdx && event.StepIndex != 0 {
 		return
 	}
@@ -149,7 +166,6 @@ func (w *Watcher) handleLiveLine(line string, ctx context.Context, out chan<- co
 	}
 }
 
-// parseLine converts raw Antigravity JSON into domain UnifiedAgentEvent
 func (w *Watcher) parseLine(line string) (core.UnifiedAgentEvent, error) {
 	var raw RawTranscriptLine
 	if err := json.Unmarshal([]byte(line), &raw); err != nil {
@@ -161,14 +177,15 @@ func (w *Watcher) parseLine(line string) (core.UnifiedAgentEvent, error) {
 		t = time.Now()
 	}
 
-	stepType := core.StepTypeUnknown
+	var stepType core.StepType
 	var summary string
 
 	switch raw.Type {
 	case "USER_INPUT":
 		stepType = core.StepTypeUserInput
-		cleanContent := cleanUserRequest(raw.Content)
-		summary = fmt.Sprintf("👤 User: %s", truncate(cleanContent, 60))
+		clean := strings.TrimPrefix(raw.Content, "<USER_REQUEST>")
+		clean = strings.TrimSuffix(clean, "</USER_REQUEST>")
+		summary = fmt.Sprintf("👤 User: %s", truncate(clean, 60))
 	case "PLANNER_RESPONSE":
 		if len(raw.ToolCalls) > 0 {
 			stepType = core.StepTypeToolCall
@@ -226,13 +243,30 @@ func (w *Watcher) parseLine(line string) (core.UnifiedAgentEvent, error) {
 		CacheStatus: "UNKNOWN",
 	}
 
-	return event, nil
-}
+	// Check if official telemetry from SQLite is available for this step
+	if w.sqliteReader != nil {
+		if meta := w.sqliteReader.GetTelemetryForStep(raw.StepIndex); meta != nil && meta.TotalTokens > 0 {
+			event.Tokens.IsOfficialData = true
+			event.Tokens.TotalTokens = meta.TotalTokens
+			event.Tokens.CachedTokens = meta.CachedTokens
+			event.Tokens.NewTokens = meta.TotalTokens - meta.CachedTokens
+			event.Tokens.CacheHitRate = meta.CacheHitRate
+			event.Tokens.OfficialModel = meta.ModelName
+			event.Tokens.OfficialContextLimit = meta.ContextLimit
+		} else if raw.Type == "PLANNER_RESPONSE" {
+			if latest := w.sqliteReader.GetLatestTelemetry(); latest != nil && latest.TotalTokens > 0 {
+				event.Tokens.IsOfficialData = true
+				event.Tokens.TotalTokens = latest.TotalTokens
+				event.Tokens.CachedTokens = latest.CachedTokens
+				event.Tokens.NewTokens = latest.TotalTokens - latest.CachedTokens
+				event.Tokens.CacheHitRate = latest.CacheHitRate
+				event.Tokens.OfficialModel = latest.ModelName
+				event.Tokens.OfficialContextLimit = latest.ContextLimit
+			}
+		}
+	}
 
-func cleanUserRequest(s string) string {
-	s = strings.ReplaceAll(s, "<USER_REQUEST>", "")
-	s = strings.ReplaceAll(s, "</USER_REQUEST>", "")
-	return strings.TrimSpace(s)
+	return event, nil
 }
 
 func truncate(s string, maxLen int) string {
@@ -241,5 +275,5 @@ func truncate(s string, maxLen int) string {
 	if len(runes) <= maxLen {
 		return s
 	}
-	return string(runes[:maxLen]) + "..."
+	return string(runes[:maxLen-3]) + "..."
 }

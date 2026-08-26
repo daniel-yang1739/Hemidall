@@ -4,7 +4,7 @@ type: architecture
 created: 2026-08-26
 updated: 2026-08-26
 status: completed
-tags: [architecture, agent, context, token-breakdown, model-payload, prompt-engineering, context-bloat]
+tags: [architecture, agent, context, token-breakdown, model-payload, prompt-engineering, context-bloat, concrete-walkthrough]
 aliases: [Context 5 Dimensions, 5 維度模型, Context 解剖, 上下文 5 維度, 載荷膨脹動力學]
 ---
 
@@ -50,7 +50,61 @@ pie title 對話進行至第 20 輪時 Context Token 典型佔比 (總量約 51,
 
 ---
 
-## 📊 三、Context 5 維度特徵矩陣全解析
+## 🎯 三、極簡 3 輪對話 5 維度數值變遷演繹 (Concrete Trace Walkthrough)
+
+帶入極簡真實編程對話，演繹 5 大維度 Token 如何逐輪疊加與突變：
+
+* **基準環境**：System Instruction = 4,618 Tokens, MCP Tools Schema = 3,200 Tokens (固定基底 7,818 Tokens)。
+* **Turn 0 (使用者發問)**：`"Please list project files."` (10 Tokens)
+* **Turn 1 (工具呼叫與輸出)**：Model 呼叫 `list_dir`，回傳目錄清單 (50 Tokens)。
+* **Turn 2 (讀取源碼)**：Model 呼叫 `view_file("main.go")`，回傳 300 行代碼 (1,500 Tokens)。
+
+```text
+════════════════════════════════════════════════════════════════════════════════
+【Turn 0：開局發問】
+  輸入事件 : User: "Please list project files." (10 Tokens)
+  5 維度數值變遷 :
+    ├─ 1. System Instruction : 4,618 Tokens  (58.9%)
+    ├─ 2. MCP Tools Schema   : 3,200 Tokens  (40.9%)
+    ├─ 3. Tool Results / Diff:     0 Tokens  ( 0.0%)
+    ├─ 4. Conversation Hist  :     0 Tokens  ( 0.0%)
+    └─ 5. Active Turn / CoT  :    10 Tokens  ( 0.1%)
+  總上下文 (Total Context)   : 7,828 Tokens
+  快取結算 : 🔵 [CACHE WRITE] (命中: 0 Tokens | 命中率: 0.0%)
+════════════════════════════════════════════════════════════════════════════════
+【Turn 1：目錄掃描結果注入】
+  輸入事件 : ToolResult: "main.go, go.mod, README.md..." (50 Tokens)
+  5 維度數值變遷 :
+    ├─ 1. System Instruction : 4,618 Tokens  (58.6%)
+    ├─ 2. MCP Tools Schema   : 3,200 Tokens  (40.6%)
+    ├─ 3. Tool Results / Diff:    50 Tokens  ( 0.6%)  <-- 工具輸出首次沉澱！
+    ├─ 4. Conversation Hist  :    10 Tokens  ( 0.1%)  <-- 上輪 User 發問固化為歷史！
+    └─ 5. Active Turn / CoT  :     5 Tokens  ( 0.1%)  (Model 發起 view_file 參數)
+  總上下文 (Total Context)   : 7,883 Tokens
+  快取結算 : 🟢 [CACHE HIT] (命中: 7,828 Tokens | 命中率: 99.3%)
+════════════════════════════════════════════════════════════════════════════════
+【Turn 2：讀取 300 行源代碼】
+  輸入事件 : ToolResult: 300 行 main.go 代碼全文 (1,500 Tokens)
+  5 維度數值變遷 :
+    ├─ 1. System Instruction : 4,618 Tokens  (49.2%)
+    ├─ 2. MCP Tools Schema   : 3,200 Tokens  (34.1%)
+    ├─ 3. Tool Results / Diff: 1,550 Tokens  (16.5%)  <-- 暴增 30 倍！(膨脹主因)
+    ├─ 4. Conversation Hist  :    15 Tokens  ( 0.2%)
+    └─ 5. Active Turn / CoT  :     5 Tokens  ( 0.1%)
+  總上下文 (Total Context)   : 9,388 Tokens
+  快取結算 : 🟢 [CACHE HIT] (命中: 7,883 Tokens | 命中率: 84.0%)
+════════════════════════════════════════════════════════════════════════════════
+【最終 Output: agent-observer 結構體生成】
+  TokenBreakdown{
+      SystemTokens: 4618, ToolsDefTokens: 3200, ToolResultTokens: 1550,
+      HistoryTokens: 15, ActiveTurnTokens: 5, TotalTokens: 9388,
+      CachedTokens: 7883, NewTokens: 1505, CacheHitRate: 84.0
+  }
+```
+
+---
+
+## 📊 四、Context 5 維度特徵矩陣全解析
 
 | 維度名稱 | 內容特徵與資料來源 | 典型 Token 水位 | 快取特性 (Cacheability) | 膨脹複雜度 | 壓縮與優化戰略 (Optimization Priority) |
 | :--- | :--- | :---: | :---: | :---: | :--- |
@@ -62,12 +116,12 @@ pie title 對話進行至第 20 輪時 Context Token 典型佔比 (總量約 51,
 
 ---
 
-## 📈 四、真實 Agent 對話輪次膨脹動力學實測
+## 📈 五、真實 Agent 對話輪次膨脹動力學實測
 
-以下為模擬典型 AI Agent 在解決一個實際編程任務（包含 3 次讀檔、2 次終端機測試、1 次代碼重構）時的 Token 水位增長實測數據：
+以下為模擬典型 AI Agent 在解決一個實際編程任務時的 Token 水位增長實測數據：
 
 | 任務進程階段 | 輪次 (Turn) | 1. System | 2. Tools | 3. Tool Results | 4. History | 5. Active | **總 Token 水位** | **前綴快取命中率** |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | **開局初始化** | Turn 1 | 4,618 | 3,200 | 0 | 0 | 350 | **8,168** | **0.0% (Cache Write)** |
 | **探索目錄與讀檔** | Turn 5 | 4,618 | 3,200 | 5,200 | 1,800 | 480 | **15,298** | **94.8% (Cache Hit)** |
 | **大規模修改代碼** | Turn 15 | 4,618 | 3,200 | 28,400 | 9,100 | 650 | **45,968** | **98.2% (Cache Hit)** |
@@ -75,7 +129,7 @@ pie title 對話進行至第 20 輪時 Context Token 典型佔比 (總量約 51,
 
 ---
 
-## 🔗 五、相關概念與延伸閱讀
+## 🔗 六、相關概念與延伸閱讀
 * [[02_Token_Calculation_and_LCP]]：5 維度 Token 的 BPE 計數與 LCP 快取演算法。
 * [[01_theory/03_Prompt_Caching_Lifecycle|Prompt Caching 生命周期]]：前綴快取命中與破壞機制。
 * [[03_Agent_Storage_and_State_Machine]]：底層日誌與 Context JSON 的組裝模式。

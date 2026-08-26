@@ -4,7 +4,7 @@ type: algorithm
 created: 2026-08-26
 updated: 2026-08-26
 status: completed
-tags: [algorithm, tokenizer, bpe, tiktoken, lcp, prefix-caching, golang, zero-dependency]
+tags: [algorithm, tokenizer, bpe, tiktoken, lcp, prefix-caching, golang, zero-dependency, concrete-walkthrough]
 aliases: [Token Calculation, LCP Algorithm, 快取命中演算法, BPE 分詞實作, 最長公共前綴]
 ---
 
@@ -69,7 +69,48 @@ flowchart TD
 
 ---
 
-## 💻 三、完整可執行 Go 程式碼實作
+## 🎯 三、極簡 Token ID 陣列逐位比對演繹 (Minimal Token ID Walkthrough)
+
+帶入一組極簡 Token ID 陣列，精確演繹 LCP 命中與快取雪崩失效的底層陣列比對過程：
+
+```text
+════════════════════════════════════════════════════════════════════════════════
+【情境 A：完美追加 (Append-Only) -> 🟢 CACHE HIT】
+  第 0 輪陣列 (Prev) : [1532,  25, 14821,    13] (長度 = 4 Tokens)
+  第 1 輪陣列 (Curr) : [1532,  25, 14821,    13,   882,  25, 6223] (長度 = 7 Tokens)
+  
+  [逐位比對演繹] :
+    Index 0: 1532 == 1532 (✅ Match)
+    Index 1:   25 ==   25 (✅ Match)
+    Index 2: 14821 == 14821 (✅ Match)
+    Index 3:   13 ==   13 (✅ Match)
+    Index 4: Prev 陣列終止 -> LCP 最長公共前綴長度 = 4！
+  
+  [狀態機結算] :
+    * Cached Tokens : 4 (命中率: 4 / 7 = 57.1%)
+    * New Tokens    : 3 ([882, 25, 6223])
+    * 狀態判定      : 🟢 [CACHE HIT / PARTIAL]
+════════════════════════════════════════════════════════════════════════════════
+【情境 B：頂部插入動態時間戳 -> 🔴 全域快取破壞 (Cache Invalidation)】
+  第 1 輪陣列 (Prev) : [1532,  25, 14821,    13,   882,  25, 6223] (長度 = 7)
+  第 2 輪陣列 (Curr) : [1532,  25,  1023,    13,   882,  25, 6223] (Index 2 突變為 1023)
+  
+  [逐位比對演繹] :
+    Index 0: 1532 == 1532 (✅ Match)
+    Index 1:   25 ==   25 (✅ Match)
+    Index 2: 14821 != 1023 (❌ Mismatch! 快取在此斷裂！)
+    後續所有 Index 3..6 哪怕內容一模一樣，因前綴已破壞，全部失效！
+    LCP 最長公共前綴長度 = 2！
+  
+  [狀態機結算] :
+    * Cached Tokens : 2 (命中率: 2 / 7 = 28.6% -> 暴跌 50%！)
+    * New Tokens    : 5 (必須重新花錢計算 5 個 Token)
+    * 狀態判定      : 🔴 [CACHE BROKEN / INVALIDATED]
+```
+
+---
+
+## 💻 四、完整可執行 Go 程式碼實作
 
 以下為抽取自 `internal/core/analyzer.go` 的完整可執行 Go 代碼範例：
 
@@ -168,17 +209,12 @@ func main() {
 	turn3 := AnalyzeLCPCache(session, 45968)
 	fmt.Printf("[Turn 3] 狀態: %-5s | 總量: %6d | 命中: %6d | 新生: %6d | 命中率: %5.1f%%\n",
 		turn3.CacheStatus, turn3.TotalTokens, turn3.CachedTokens, turn3.NewTokens, turn3.CacheHitRate)
-
-	// 輸出驗證
-	// [Turn 1] 狀態: WRITE | 總量:   8168 | 命中:      0 | 新生:   8168 | 命中率:   0.0%
-	// [Turn 2] 狀態: HIT   | 總量:  15298 | 命中:   8168 | 新生:   7130 | 命中率:  53.4%
-	// [Turn 3] 狀態: HIT   | 總量:  45968 | 命中:  15298 | 新生:  30670 | 命中率:  33.3%
 }
 ```
 
 ---
 
-## ⚖️ 四、技術選型決策：Watcher 模式 vs. Proxy 模式深度對照
+## ⚖️ 五、技術選型決策：Watcher 模式 vs. Proxy 模式深度對照
 
 | 評估維度 | 🔍 **Watcher 模式 (本地日誌物理推導 - 本專案核心選型)** | 🌐 **Proxy 模式 (HTTP 逆向代理攔截)** |
 | :--- | :--- | :--- |
@@ -189,7 +225,7 @@ func main() {
 
 ---
 
-## 🔗 五、相關概念與延伸閱讀
+## 🔗 六、相關概念與延伸閱讀
 * [[01_Context_5_Dimensions]]：5 維度上下文模型定義。
 * [[01_theory/03_Prompt_Caching_Lifecycle|Prompt Caching 生命周期]]：前綴快取時序轉換。
 * [[03_Agent_Storage_and_State_Machine]]：雙軌日誌之儲存架構。

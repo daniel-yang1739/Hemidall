@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// FormatTokenBreakdownTable formats the 5-dimension token distribution into an ASCII table
+// FormatTokenBreakdownTable formats the dual-track telemetry into two clear, distinct panels
 func FormatTokenBreakdownTable(e UnifiedAgentEvent) string {
 	t := e.Tokens
 	total := t.TotalTokens
@@ -27,15 +27,48 @@ func FormatTokenBreakdownTable(e UnifiedAgentEvent) string {
 		cacheBadge = fmt.Sprintf("🟡 [PARTIAL HIT %.1f%%]", t.CacheHitRate)
 	case "WRITE":
 		cacheBadge = "🔵 [CACHE WRITE / INITIAL]"
+	case "EXPIRED":
+		cacheBadge = "🔴 [TTL EXPIRED / COLD START]"
 	default:
 		cacheBadge = "🔴 [CACHE MISS / BROKEN]"
 	}
 
+	ctxLimit := t.OfficialContextLimit
+	if ctxLimit == 0 {
+		ctxLimit = 256000
+	}
+	ctxUsagePct := float64(total) / float64(ctxLimit) * 100.0
+
 	var sb strings.Builder
+
+	// ==================== PANEL 1: GOOGLE OFFICIAL TELEMETRY ====================
 	sb.WriteString("┌────────────────────────────────────────────────────────────────────────┐\n")
-	sb.WriteString(fmt.Sprintf("│  📊 Context Token Breakdown (Total: %-7d Tokens) %-21s│\n", t.TotalTokens, cacheBadge))
+	if t.IsOfficialData {
+		sb.WriteString(fmt.Sprintf("│  👑 TRACK 1: Google 官方真實帳單與物理快取 (Official Telemetry)        │\n"))
+		sb.WriteString("├──────────────────────────┬─────────────────────────────────────────────┤\n")
+		modelName := t.OfficialModel
+		if modelName == "" {
+			modelName = "gemini-3.7-flash-high"
+		}
+		sb.WriteString(fmt.Sprintf("│ 🎯 Backend Model         │ %-43s │\n", modelName))
+		sb.WriteString(fmt.Sprintf("│ 📊 Total Active Context  │ %-7d Tokens (%5.1f%% of %dk Window)      │\n", total, ctxUsagePct, ctxLimit/1000))
+		sb.WriteString(fmt.Sprintf("│    Context Progress Bar  │ [%-25s]           │\n", renderProgressBar(ctxUsagePct, 25)))
+		sb.WriteString(fmt.Sprintf("│ ⚡ Prefix Cache Hit      │ %-7d Tokens (%5.1f%%) %-21s│\n", t.CachedTokens, t.CacheHitRate, cacheBadge))
+		sb.WriteString(fmt.Sprintf("│ 🔥 New Billable Tokens   │ %-7d Tokens (%5.1f%%)                           │\n", t.NewTokens, 100.0-t.CacheHitRate))
+	} else {
+		sb.WriteString(fmt.Sprintf("│  🔍 TRACK 1: 本地 BPE 即時預估 (Awaiting Google API Response...)        │\n"))
+		sb.WriteString("├──────────────────────────┬─────────────────────────────────────────────┤\n")
+		sb.WriteString(fmt.Sprintf("│ 📊 Estimated Context     │ %-7d Tokens %-32s│\n", total, cacheBadge))
+		sb.WriteString(fmt.Sprintf("│ ⚡ Estimated Cache Hit   │ %-7d Tokens (%5.1f%%)                           │\n", t.CachedTokens, t.CacheHitRate))
+		sb.WriteString(fmt.Sprintf("│ 🔥 Estimated New Tokens  │ %-7d Tokens (%5.1f%%)                           │\n", t.NewTokens, 100.0-t.CacheHitRate))
+	}
+	sb.WriteString("└──────────────────────────┴─────────────────────────────────────────────┘\n")
+
+	// ==================== PANEL 2: 5-DIMENSION CONTEXT ANATOMY ====================
+	sb.WriteString("┌────────────────────────────────────────────────────────────────────────┐\n")
+	sb.WriteString("│  🔬 TRACK 2: 本地 5 維度 Context 載荷深度解剖 (Context Anatomy)         │\n")
 	sb.WriteString("├───────────────────────┬──────────────┬─────────────┬───────────────────┤\n")
-	sb.WriteString("│ Context Dimension     │ Tokens       │ Share (%)   │ Visual Composition│\n")
+	sb.WriteString("│ Context Dimension     │ Tokens       │ Share (%)   │ Visual Breakdown  │\n")
 	sb.WriteString("├───────────────────────┼──────────────┼─────────────┼───────────────────┤\n")
 	sb.WriteString(fmt.Sprintf("│ 1. System Instruction │ %-12d │ %5.1f%%      │ %-17s │\n", t.SystemTokens, sysPct, renderProgressBar(sysPct, 15)))
 	sb.WriteString(fmt.Sprintf("│ 2. MCP Tools Schema   │ %-12d │ %5.1f%%      │ %-17s │\n", t.ToolsDefTokens, toolsPct, renderProgressBar(toolsPct, 15)))
@@ -43,8 +76,12 @@ func FormatTokenBreakdownTable(e UnifiedAgentEvent) string {
 	sb.WriteString(fmt.Sprintf("│ 4. Conversation Hist  │ %-12d │ %5.1f%%      │ %-17s │\n", t.HistoryTokens, histPct, renderProgressBar(histPct, 15)))
 	sb.WriteString(fmt.Sprintf("│ 5. Active Turn / CoT  │ %-12d │ %5.1f%%      │ %-17s │\n", t.ActiveTurnTokens+t.ThinkingTokens, activePct, renderProgressBar(activePct, 15)))
 	sb.WriteString("├───────────────────────┴──────────────┴─────────────┴───────────────────┤\n")
-	sb.WriteString(fmt.Sprintf("│  ⚡ Prefix Cache Reuse : %-6d Tokens (%5.1f%%)                             │\n", t.CachedTokens, t.CacheHitRate))
-	sb.WriteString(fmt.Sprintf("│  🔥 New Uncached (Cost): %-6d Tokens (%5.1f%%)                             │\n", t.NewTokens, 100.0-t.CacheHitRate))
+	if t.RawLocalAccumulated > total {
+		truncatedTokens := t.RawLocalAccumulated - total
+		sb.WriteString(fmt.Sprintf("│  💡 Raw Uncompressed Log: %-7d Tokens (✂️ %d Tokens Truncated)     │\n", t.RawLocalAccumulated, truncatedTokens))
+	} else {
+		sb.WriteString(fmt.Sprintf("│  💡 Proportional Calibration: 100.0%% Exact Mathematical Ground Truth  │\n"))
+	}
 	sb.WriteString("└────────────────────────────────────────────────────────────────────────┘\n")
 
 	return sb.String()

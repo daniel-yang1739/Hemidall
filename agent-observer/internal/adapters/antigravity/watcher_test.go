@@ -7,7 +7,7 @@ import (
 )
 
 func TestParseLineUserInput(t *testing.T) {
-	watcher := NewWatcher("test.jsonl", "test-session", nil)
+	watcher := NewWatcher("test.jsonl", "test-session", nil, "")
 	line := `{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-08-19T01:00:00Z","content":"<USER_REQUEST>Hello! Please write code for me</USER_REQUEST>"}`
 
 	event, err := watcher.parseLine(line)
@@ -30,7 +30,7 @@ func TestParseLineUserInput(t *testing.T) {
 }
 
 func TestParseLinePlannerWithToolCalls(t *testing.T) {
-	watcher := NewWatcher("test.jsonl", "test-session", nil)
+	watcher := NewWatcher("test.jsonl", "test-session", nil, "")
 	line := `{"step_index":2,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-08-19T01:00:05Z","content":"Let me check files","tool_calls":[{"name":"list_dir","args":{"path":"/workspace"}}]}`
 
 	event, err := watcher.parseLine(line)
