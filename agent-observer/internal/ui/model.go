@@ -135,13 +135,22 @@ func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) [
 		lines = append(lines, strings.Repeat("─", sepWidth))
 	}
 
-	lines = append(lines, "📄 Content Payload:")
-	content := e.RawContent
-	if content == "" {
-		content = e.Summary
+	if e.Thinking != "" {
+		lines = append(lines, "🧠 Thinking (Chain of Thought):")
+		lines = append(lines, wrapVisualLines(e.Thinking, maxWidth)...)
+		lines = append(lines, strings.Repeat("─", sepWidth))
 	}
-	wrappedPayload := wrapVisualLines(content, maxWidth)
-	lines = append(lines, wrappedPayload...)
+
+	lines = append(lines, "📄 Content Payload:")
+	if strings.TrimSpace(e.RawContent) != "" {
+		wrappedPayload := wrapVisualLines(e.RawContent, maxWidth)
+		lines = append(lines, wrappedPayload...)
+	} else if len(e.ToolCalls) > 0 {
+		lines = append(lines, "  (No conversational text; pure tool call invocation)")
+	} else {
+		wrappedPayload := wrapVisualLines(e.Summary, maxWidth)
+		lines = append(lines, wrappedPayload...)
+	}
 
 	return lines
 }
