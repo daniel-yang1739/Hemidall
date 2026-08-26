@@ -4,16 +4,17 @@ type: concept
 created: 2026-08-26
 updated: 2026-08-26
 status: completed
-tags: [theory, prompt-caching, kv-cache, memory, inference, prefix-caching, ttft-optimization, concrete-walkthrough]
-aliases: [Prompt Caching, 快取生命週期, Prefix Caching, 前綴快取原理, Cache Invalidation]
+tags: [theory, prompt-caching, kv-cache, memory, inference, prefix-caching, ttft-optimization, model-routing, ttl-eviction, concrete-walkthrough]
+aliases: [Prompt Caching, 快取生命週期, Prefix Caching, 前綴快取原理, Cache Invalidation, TTL Eviction]
 ---
 
 # ⚡ Prompt Caching 前綴快取生命週期與物理機制
 
 > [!NOTE]
 > **⚡ 30 秒核心精華 (Key Takeaway)**
-> 現代 LLM API（如 Gemini 1.5, Claude 3.5, GPT-4o）之所以能對長上下文提供高達 **50% ~ 90% 的費用折扣** 並將首字延遲（TTFT）降低一個數量級，核心技術正是 **Prompt Caching (前綴快取)**。
-> 其底層物理機制為：**在多輪對話中，上一輪生成的回覆文字在當下是新生算力（Uncached），但一旦回合結束，整段歷史即固化為不可變前綴（Immutable Prefix）；在下一輪請求中，伺服器直接復用已儲存在 GPU 顯存中的 [[02_KV_Cache_Mechanics|KV Cache]] 矩陣，完全跳過重複的 Prefill 矩陣計算**。
+> 現代 LLM API（如 Google Gemini, Anthropic Claude, OpenAI GPT-4o）之所以能對長上下文提供高達 **50% ~ 90% 的費用折扣** 並將首字延遲（TTFT）降低一個數量級，核心技術正是 **Prompt Caching (前綴快取)**。
+> 其底層物理機制為：**在多輪對話中，上一輪生成的回覆文字在當下是新生算力（Uncached），但一旦回合結束，整段歷史即固化為不可變前綴（Immutable Prefix）；在下一輪請求中，伺服器直接復用已儲存在 GPU 顯存中的 [[02_KV_Cache_Mechanics|KV Cache]] 矩陣，完全跳過重複的 Prefill 矩陣相乘**。
+> 本篇進一步解密生產環境中 **TTL 顯存淘汰機制** 與 **同族模型變體（如 `safety-le`）共享底層前綴快取池** 的前沿架構。
 
 ---
 
@@ -62,6 +63,11 @@ sequenceDiagram
    * **步驟 3 (Turn N Decode)**：模型開始逐字吐字。由於未來文字是動態創造的，此階段必定是 **Uncached (紅色)**，同時將新向量逐字 Append 到隊列尾端。
    * **步驟 4 (Turn N Finalize)**：連線結束瞬間，整段對話被標記為唯讀固化（Cache Frozen）。
    * **步驟 5 ~ 6 (Turn N+1 躍遷)**：當下一輪請求進來時，上一輪的 500 字已自然融入歷史前綴中，直接享受下一輪的 100% 快取命中！
+3. **【色彩與符號物理意義】**：
+   * 🟢 **綠色 (Cache Read)**：顯存記憶體直讀，帶寬極高，零 FLOPs 開銷。
+   * 🔥 **紅色 (Uncached)**：矩陣乘法運算，消耗 GPU Tensor Core 算力。
+4. **【底層隱藏工程細節】**：
+   * 現代叢集採用 PagedAttention 與 Radix Tree 樹狀索引管理顯存塊，不同會話若開頭 Prompt 相同，亦可跨 Session 共享根節點 KV Cache。
 
 ---
 
@@ -102,7 +108,45 @@ sequenceDiagram
 
 ---
 
-## 🔍 四、快取命中與破壞的物理條件 (Cache Invalidation)
+## ⏳ 四、TTL 顯存淘汰與冷啟動物理 (TTL Eviction & Cold Starts)
+
+快取並非永久存在。在雲端推論叢集中，GPU HBM 屬於稀缺資源，系統透過 **TTL (Time To Live，如 Gemini 叢集預設約 5 分鐘)** 與 LRU 機制管理顯存：
+
+```mermaid
+flowchart LR
+    A["Turn N 完成<br/>(顯存鎖定 165k Tokens)"] -->|閒置時間 < 5 分鐘| B["🟢 顯存維持活躍<br/>(Cache Hit: 99.2%)"]
+    A -->|閒置時間 > 5 分鐘| C["🔴 TTL 超時顯存釋放<br/>(Evicted by LRU)"]
+    C --> D["❄️ 冷啟動 (Cold Start)<br/>發送全量 165k 上下文<br/>Cached = 0, New = 165k (全額 Prefill 帳單)"]
+    
+    style B fill:#d4edda,stroke:#28a745
+    style C fill:#f8d7da,stroke:#dc3545
+    style D fill:#ffeaa7,stroke:#fdcb6e
+```
+
+### 實測驗證：
+當使用者在對話長度達 16.5 萬字時離開座位超過 5 分鐘再發送下一則訊息：
+* **現象**：發送的新 Prompt 依然包含這 16.5 萬字歷史，但 API 回傳的官方 Telemetry 顯示 `Cached Tokens: 0`；
+* **物理代價**：伺服器必須重新執行 16.5 萬字的 Prefill 矩陣相乘，產生高昂的冷啟動計算延遲與費用。
+
+---
+
+## 🔬 五、模型動態路由與同族變體快取共享 (`safety-le`)
+
+在複雜的 Agentic Coding 場景中，系統會依任務性質動態切換後端模型變體：
+
+| 模型名稱 | 使用時機與場景 | 安全性設定 (Safety Filter) |
+| :--- | :--- | :--- |
+| `gemini-3.7-flash` | 通用對話、架構設計、日常分析 | 標準嚴格安全審查 |
+| `gemini-3.7-flash-safety-le` | 終端命令執行 (`rm`, `kill`)、代碼 Diff、二進制操作 | **Safety Low Enforcement (寬鬆審查)** |
+| `gemini-3.7-flash-high` | 極限推理、深層思維鏈 (Thinking) 模式 | 高強度思考預算 |
+
+### 💡 關鍵快取機制：
+許多開發者擔心「切換 Model 會導致 Prompt Cache 破壞」。然而實證表明：
+**`flash`、`flash-safety-le` 與 `flash-high` 屬於同一模型家族，共享完全相同的 Tokenizer 與基礎 Transformer 權重結構。雲端叢集的 Prefix Cache Manager 在比對 KV Cache 時，只要前綴字串一致，跨變體的請求依然可以命中同一個 KV Cache 區塊！**
+
+---
+
+## 🔍 六、快取命中與破壞的物理條件 (Cache Invalidation)
 
 Prompt Caching 依賴於 **嚴格最長公共前綴 (LCP - Longest Common Prefix)** 機制。任何在上下文頂部或中途的微小變更，都會引發雪崩式的快取失效：
 
@@ -134,7 +178,9 @@ flowchart TD
 
 ---
 
-## 🔗 五、相關概念與延伸閱讀
+## 🔗 七、相關概念與延伸閱讀
 * [[01_Transformer_Prefill_vs_Decode]]：推論兩階段之 Prefill 與 Decode 物理對照。
 * [[02_KV_Cache_Mechanics]]：KV Cache 顯存大小推導與 GQA 架構。
+* [[04_Context_Compaction_and_Summarization]]：上下文雙水位線壓縮與遞迴摘要機制。
 * [[02_architecture/02_Token_Calculation_and_LCP|Token 計算與 LCP 演算法]]：手刻 LCP 前綴比對演算法實作。
+* [[02_architecture/06_Dual_Track_Telemetry_and_Window_Accounting|雙軌遙測架構與窗口會計]]：官方 Protobuf 帳單與本地 5 維度分析。

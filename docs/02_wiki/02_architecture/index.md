@@ -1,6 +1,6 @@
 # 🏛️ 02_architecture: 通用架構與演算法模式 (Architectures & Algorithms)
 
-> 本模組建立在 `01_theory/` 的底層物理基石之上，深入剖析自主 AI Agent 的 **上下文結構、快取推導演算法、工業級儲存模式、載荷組裝協議與觀測系統設計**。
+> 本模組建立在 `01_theory/` 的底層物理基石之上，深入剖析自主 AI Agent 的 **上下文結構、快取推導演算法、工業級儲存模式、雙軌遙測會計、載荷組裝協議與全螢幕 TUI 引擎設計**。
 
 ---
 
@@ -11,11 +11,15 @@
 2. **[[02_Token_Calculation_and_LCP]]**：
    * *演算法實作*：利用原生 BPE 分詞器與最長公共前綴（LCP）演算法，在本地零侵入式推導快取命中率。
 3. **[[03_Agent_Storage_and_State_Machine]]**：
-   * *工業級儲存*：解密商業級 Agent 如何運用雙層 SQLite、Protobuf 二進制與 100KB 滾動切片雙軌日誌實現高並發與零鎖競爭。
+   * *工業級儲存*：解密商業級 Agent 如何運用雙層 SQLite 7 表結構、Protobuf 二進制與 100KB 滾動切片雙軌日誌實現高並發與零鎖競爭。
 4. **[[04_Service_Plan_Agent_Observer]]**：
    * *系統落地*：遵循 Clean Architecture 設計原則，將上述理論落地為極致輕量（< 15MB RSS）的 `agent-observer` 觀測服務。
 5. **[[05_Model_Payload_and_API_Traces]]**：
    * *通訊協議與載荷*：解剖 Context 4 大板塊（System, Tools, Trajectory, Active）的物理拼裝順序與底層 API 通訊 JSON Schema。
+6. **[[06_Dual_Track_Telemetry_and_Window_Accounting]]**：
+   * *雙軌遙測與會計*：實作 Track 1 官方物理帳單與 Track 2 本地 5 維度解剖，透過倒推滑動窗口（Reverse Sliding Window）消除本地與雲端截斷失真。
+7. **[[07_TUI_Engine_and_Terminal_Layout_Mechanics]]**：
+   * *終端機佈局物理*：以 Bubbletea 與 Lipgloss 打造全螢幕互動介面，攻克盒模型幾何陷阱、中文字元（CJK）2 倍列寬與軟換行虛擬緩衝區。
 
 ---
 

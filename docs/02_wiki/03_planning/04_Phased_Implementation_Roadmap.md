@@ -17,7 +17,7 @@ aliases: [Roadmap, 分階段計畫, 實作路線圖, 里程碑驗收]
 ```mermaid
 flowchart LR
     P1["🟢 Phase 1: 基礎 Watcher<br/>(已驗收 100%)"] --> P2["🟢 Phase 2: 5維度 Token 分析<br/>(已驗收 100%)"]
-    P2 --> P3["⏳ Phase 3: RingBuffer & SSE 廣播<br/>(準備啟動)"]
+    P2 --> P3["🟢 Phase 3: 雙軌遙測與全螢幕 TUI<br/>(已驗收 100%)"]
     P3 --> P4["📅 Phase 4: 嵌入式 Web 儀表板<br/>(//go:embed 單頁 UI)"]
     P4 --> P5["📅 Phase 5: 手刻極致壓縮引擎<br/>(語義剪枝與 Diff 狀態機)"]
 ```
@@ -28,8 +28,8 @@ flowchart LR
 2. **【各階段進度與依賴關係】**：
    * **Phase 1 (綠燈 - 已完成)**：打通底層日誌 Tailing 管道與靜默預熱機制。
    * **Phase 2 (綠燈 - 已完成)**：建立 BPE Token 計數與 LCP 前綴快取推導核心。
-   * **Phase 3 (進行中)**：實作無鎖環形記憶體快取（RingBuffer）與 SSE 即時事件串流廣播。
-   * **Phase 4 (規劃中)**：以 `//go:embed` 打包單頁 Vue/Tailwind 視覺化面板。
+   * **Phase 3 (綠燈 - 已完成)**：打通 SQLite `gen_metadata` Protobuf 官方遙測直解，開發 Bubbletea & Lipgloss 全螢幕雙軌 TUI 介面。
+   * **Phase 4 (規劃中)**：以 `//go:embed` 打包單頁 Web 視覺化面板。
    * **Phase 5 (規劃中)**：整合語義剪枝與差分壓縮，達成 80% 壓縮率。
 
 ---
@@ -40,6 +40,6 @@ flowchart LR
 | :--- | :--- | :---: | :--- | :--- |
 | **Phase 1** | 最小可行 Watcher 與事件通道 | 🟢 **已驗收** | `adapters/antigravity/watcher.go`, `Makefile` | 成功非阻塞追蹤 `transcript_full.jsonl`，實現啟動靜默預熱（Silent Warmup）。 |
 | **Phase 2** | Context 5 維度解構與 LCP 快取分析 | 🟢 **已驗收** | `core/tokenizer.go`, `core/analyzer.go`, ASCII 表格 | BPE 編碼精確計算，LCP 演算法即時推導 Cache Hit Rate，ASCII 進度條渲染。 |
-| **Phase 3** | 狀態儲存庫 (RingBuffer) 與 SSE 串流管道 | ⏳ **進行中** | `/api/records`, `/api/events`, Go SSE Hub | 高並發環形快取，支援多個 Web 客戶端同時監聽 SSE 事件流。 |
+| **Phase 3** | 雙軌官方遙測引擎與全螢幕互動 TUI | 🟢 **已驗收** | `adapters/antigravity/sqlite_telemetry.go`, `ui/` | 直解 SQLite Protobuf 官方帳單（Track 1），倒推滑動窗口 5 維度解剖（Track 2），k9s 風格 TUI 支援時光機回放與 Vim 複製。 |
 | **Phase 4** | 嵌入式 Web 儀表板 (`//go:embed`) | 📅 規劃中 | 單頁響應式 UI (Vue/Tailwind) | 單一 Binary 啟動時自動於 `http://localhost:8080` 開啟堆疊視覺化儀表板。 |
 | **Phase 5** | 手刻 Context 極致壓縮引擎 | 📅 規劃中 | 語義剪枝、分層摘要、壓縮評測基準 | 實現 Tool Results 與 Diff 自動剪枝，達成 80% 壓縮率且 0 語義遺失。 |
