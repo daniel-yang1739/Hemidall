@@ -62,7 +62,34 @@ type Model struct {
 	isDocsSearching       bool
 	docsScroll            int
 	docsLang              string
+	historyTypeFilter     TypeFilter
+	historyCacheFilter    CacheFilter
+	historyStepQuery      string
+	isHistorySearching    bool
 }
+
+// TypeFilter defines step category filter in History Explorer
+type TypeFilter string
+
+const (
+	TypeFilterAll     TypeFilter = "All"
+	TypeFilterTool    TypeFilter = "Tool"
+	TypeFilterModel   TypeFilter = "Model"
+	TypeFilterUser    TypeFilter = "User"
+	TypeFilterCode    TypeFilter = "Code"
+	TypeFilterGeneric TypeFilter = "Generic"
+)
+
+// CacheFilter defines cache status filter in History Explorer
+type CacheFilter string
+
+const (
+	CacheFilterAll     CacheFilter = "All"
+	CacheFilterHit     CacheFilter = "Hit"
+	CacheFilterPartial CacheFilter = "Partial"
+	CacheFilterMiss    CacheFilter = "Miss"
+	CacheFilterBroken  CacheFilter = "Broken"
+)
 
 // nextAgentTab cycles agent filter tab: Antigravity -> ClaudeCode -> OpenCode -> Antigravity
 func (m *Model) nextAgentTab() {
@@ -92,9 +119,106 @@ func (m *Model) prevAgentTab() {
 	m.switcherSelectedIdx = 0
 }
 
+func (m *Model) cycleTypeFilter() {
+	switch m.historyTypeFilter {
+	case TypeFilterAll:
+		m.historyTypeFilter = TypeFilterTool
+	case TypeFilterTool:
+		m.historyTypeFilter = TypeFilterModel
+	case TypeFilterModel:
+		m.historyTypeFilter = TypeFilterUser
+	case TypeFilterUser:
+		m.historyTypeFilter = TypeFilterCode
+	case TypeFilterCode:
+		m.historyTypeFilter = TypeFilterGeneric
+	default:
+		m.historyTypeFilter = TypeFilterAll
+	}
+	m.selectedIdx = 0
+	m.historyOffset = 0
+	m.detailScroll = 0
+}
+
+func (m *Model) cycleCacheFilter() {
+	switch m.historyCacheFilter {
+	case CacheFilterAll:
+		m.historyCacheFilter = CacheFilterHit
+	case CacheFilterHit:
+		m.historyCacheFilter = CacheFilterPartial
+	case CacheFilterPartial:
+		m.historyCacheFilter = CacheFilterMiss
+	case CacheFilterMiss:
+		m.historyCacheFilter = CacheFilterBroken
+	default:
+		m.historyCacheFilter = CacheFilterAll
+	}
+	m.selectedIdx = 0
+	m.historyOffset = 0
+	m.detailScroll = 0
+}
+
+func (m Model) getFilteredHistory() []core.UnifiedAgentEvent {
+	if m.historyTypeFilter == TypeFilterAll && m.historyCacheFilter == CacheFilterAll && m.historyStepQuery == "" {
+		return m.history
+	}
+
+	var result []core.UnifiedAgentEvent
+	for _, e := range m.history {
+		if !matchTypeFilter(e.Type, m.historyTypeFilter) {
+			continue
+		}
+		if !matchCacheFilter(e, m.historyCacheFilter) {
+			continue
+		}
+		if m.historyStepQuery != "" {
+			stepStr := fmt.Sprintf("%d", e.StepIndex)
+			if !strings.Contains(stepStr, m.historyStepQuery) {
+				continue
+			}
+		}
+		result = append(result, e)
+	}
+	return result
+}
+
+func matchTypeFilter(stepType core.StepType, filter TypeFilter) bool {
+	switch filter {
+	case TypeFilterAll:
+		return true
+	case TypeFilterTool:
+		return stepType == core.StepTypeToolCall || stepType == core.StepTypeToolResult || stepType == core.StepTypeRunCommand || stepType == core.StepTypeViewFile || stepType == core.StepTypeListDirectory || stepType == core.StepTypeAskQuestion
+	case TypeFilterModel:
+		return stepType == core.StepTypeModelResponse
+	case TypeFilterUser:
+		return stepType == core.StepTypeUserInput
+	case TypeFilterCode:
+		return stepType == core.StepTypeCodeAction
+	case TypeFilterGeneric:
+		return stepType == core.StepTypeSystemInit || stepType == core.StepTypeUnknown || stepType == ""
+	}
+	return true
+}
+
+func matchCacheFilter(e core.UnifiedAgentEvent, filter CacheFilter) bool {
+	switch filter {
+	case CacheFilterAll:
+		return true
+	case CacheFilterHit:
+		return e.CacheStatus == "HIT" || e.Tokens.CacheHitRate >= 70.0
+	case CacheFilterPartial:
+		return e.CacheStatus == "PARTIAL" || (e.Tokens.CacheHitRate > 0 && e.Tokens.CacheHitRate < 70.0)
+	case CacheFilterMiss:
+		return e.CacheStatus == "MISS" || (e.Tokens.CachedTokens == 0 && e.Tokens.NewTokens > 0)
+	case CacheFilterBroken:
+		return e.CacheStatus == "BROKEN" || e.CacheStatus == "EXPIRED"
+	}
+	return true
+}
+
 // nextView cycles active view clockwise: Dashboard -> History -> Docs -> Dashboard
 func (m *Model) nextView() {
 	m.isDocsSearching = false
+	m.isHistorySearching = false
 	switch m.activeView {
 	case ViewDashboard:
 		m.activeView = ViewHistory
@@ -109,6 +233,7 @@ func (m *Model) nextView() {
 // prevView cycles active view counter-clockwise: Dashboard -> Docs -> History -> Dashboard
 func (m *Model) prevView() {
 	m.isDocsSearching = false
+	m.isHistorySearching = false
 	switch m.activeView {
 	case ViewDashboard:
 		m.activeView = ViewDocs
@@ -144,6 +269,10 @@ func NewModel(sessionID string, openSwitcherOnStart bool) Model {
 		isDocsSearching:       false,
 		docsScroll:            0,
 		docsLang:              "en",
+		historyTypeFilter:     TypeFilterAll,
+		historyCacheFilter:    CacheFilterAll,
+		historyStepQuery:      "",
+		isHistorySearching:    false,
 	}
 
 	// If sessionID matches one of discovered sessions, select it in the switcher
@@ -164,10 +293,15 @@ func (m Model) getHistoryVisibleCards() int {
 	}
 	availLines := innerRowsLimit - 1 // 1 line for title
 
+	if m.isHistorySearching || m.historyStepQuery != "" {
+		availLines -= 2
+	}
+
 	if m.historyOffset > 0 {
 		availLines--
 	}
-	if len(m.history) > 0 && len(m.history) > (m.historyOffset+availLines/2) {
+	filtered := m.getFilteredHistory()
+	if len(filtered) > 0 && len(filtered) > (m.historyOffset+availLines/2) {
 		availLines--
 	}
 
@@ -183,14 +317,15 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) getSelectedEvent() (core.UnifiedAgentEvent, bool) {
-	if len(m.history) == 0 || m.selectedIdx < 0 || m.selectedIdx >= len(m.history) {
+	filtered := m.getFilteredHistory()
+	if len(filtered) == 0 || m.selectedIdx < 0 || m.selectedIdx >= len(filtered) {
 		return core.UnifiedAgentEvent{}, false
 	}
-	realIdx := len(m.history) - 1 - m.selectedIdx
-	if realIdx < 0 || realIdx >= len(m.history) {
+	realIdx := len(filtered) - 1 - m.selectedIdx
+	if realIdx < 0 || realIdx >= len(filtered) {
 		return core.UnifiedAgentEvent{}, false
 	}
-	return m.history[realIdx], true
+	return filtered[realIdx], true
 }
 
 func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) []string {
@@ -512,7 +647,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// ==================== GLOBAL VIEW CYCLING (TAB / SHIFT+TAB) ====================
-		if !(m.activeView == ViewDocs && m.isDocsSearching) {
+		if !(m.activeView == ViewDocs && m.isDocsSearching) && !(m.activeView == ViewHistory && m.isHistorySearching) {
 			switch key {
 			case "tab":
 				m.nextView()
@@ -521,25 +656,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.prevView()
 				return m, nil
 			}
-		}
 
-		// ==================== GLOBAL VIEW SWITCHING (DIRECT SHORTCUTS) ====================
-		switch key {
-		case "q", "ctrl+c":
-			return m, tea.Quit
-		case "1", "d":
-			m.activeView = ViewDashboard
-			m.isDocsSearching = false
-			return m, nil
-		case "2", "s":
-			m.activeView = ViewHistory
-			m.focusPane = FocusList
-			m.isDocsSearching = false
-			return m, nil
-		case "3", "i":
-			m.activeView = ViewDocs
-			m.isDocsSearching = false
-			return m, nil
+			// ==================== GLOBAL VIEW SWITCHING (DIRECT SHORTCUTS) ====================
+			switch key {
+			case "q", "ctrl+c":
+				return m, tea.Quit
+			case "1", "d":
+				m.activeView = ViewDashboard
+				m.isDocsSearching = false
+				m.isHistorySearching = false
+				return m, nil
+			case "2", "s":
+				m.activeView = ViewHistory
+				m.focusPane = FocusList
+				m.isDocsSearching = false
+				m.isHistorySearching = false
+				return m, nil
+			case "3", "i":
+				m.activeView = ViewDocs
+				m.isDocsSearching = false
+				m.isHistorySearching = false
+				return m, nil
+			}
 		}
 
 		// ==================== DASHBOARD VIEW KEYBINDINGS ====================
@@ -616,8 +754,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if maxScroll < 0 {
 				maxScroll = 0
 			}
+			filtered := m.getFilteredHistory()
 
-			maxVisibleCards := m.getHistoryVisibleCards()
+			// Search mode for step numbers
+			if m.isHistorySearching {
+				switch key {
+				case "esc":
+					m.isHistorySearching = false
+					m.historyStepQuery = ""
+					m.selectedIdx = 0
+					m.historyOffset = 0
+					return m, nil
+				case "enter":
+					m.isHistorySearching = false
+					return m, nil
+				case "backspace":
+					if len(m.historyStepQuery) > 0 {
+						m.historyStepQuery = m.historyStepQuery[:len(m.historyStepQuery)-1]
+						m.selectedIdx = 0
+						m.historyOffset = 0
+					}
+					return m, nil
+				default:
+					if len(msg.Runes) > 0 {
+						r := msg.Runes[0]
+						if r >= '0' && r <= '9' {
+							m.historyStepQuery += string(r)
+							m.selectedIdx = 0
+							m.historyOffset = 0
+						}
+					}
+					return m, nil
+				}
+			}
 
 			if m.focusPane == FocusDetail {
 				if key == "v" || key == "V" {
@@ -692,6 +861,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
+			// FocusList hotkeys for filter and search
+			if m.focusPane == FocusList && !m.isVisualMode {
+				if key == "/" {
+					m.isHistorySearching = true
+					return m, nil
+				}
+				if key == "t" || key == "T" {
+					m.cycleTypeFilter()
+					return m, nil
+				}
+				if key == "c" || key == "C" {
+					m.cycleCacheFilter()
+					return m, nil
+				}
+			}
+
 			switch key {
 			case "enter", "right", "l":
 				if m.focusPane == FocusList {
@@ -701,6 +886,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.focusPane == FocusDetail {
 					m.focusPane = FocusList
 					m.isVisualMode = false
+				} else if m.historyStepQuery != "" || m.historyTypeFilter != TypeFilterAll || m.historyCacheFilter != CacheFilterAll {
+					m.historyStepQuery = ""
+					m.historyTypeFilter = TypeFilterAll
+					m.historyCacheFilter = CacheFilterAll
+					m.selectedIdx = 0
+					m.historyOffset = 0
 				}
 			case "up", "k":
 				if m.focusPane == FocusList {
@@ -718,7 +909,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "down", "j":
 				if m.focusPane == FocusList {
-					if m.selectedIdx < len(m.history)-1 {
+					if m.selectedIdx < len(filtered)-1 {
 						m.selectedIdx++
 						m.detailScroll = 0
 						for m.selectedIdx >= m.historyOffset+m.getHistoryVisibleCards() {
@@ -737,6 +928,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.detailScroll = 0
 					}
 				} else if m.focusPane == FocusList {
+					maxVisibleCards := m.getHistoryVisibleCards()
 					m.selectedIdx -= maxVisibleCards
 					if m.selectedIdx < 0 {
 						m.selectedIdx = 0
@@ -753,9 +945,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.detailScroll = maxScroll
 					}
 				} else if m.focusPane == FocusList {
+					maxVisibleCards := m.getHistoryVisibleCards()
 					m.selectedIdx += maxVisibleCards
-					if m.selectedIdx >= len(m.history) {
-						m.selectedIdx = len(m.history) - 1
+					if m.selectedIdx >= len(filtered) {
+						m.selectedIdx = len(filtered) - 1
+					}
+					if m.selectedIdx < 0 {
+						m.selectedIdx = 0
 					}
 					m.detailScroll = 0
 					for m.selectedIdx >= m.historyOffset+m.getHistoryVisibleCards() {
@@ -786,8 +982,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "end", "G":
 				if m.focusPane == FocusList {
-					if len(m.history) > 0 {
-						m.selectedIdx = len(m.history) - 1
+					if len(filtered) > 0 {
+						m.selectedIdx = len(filtered) - 1
 						m.detailScroll = 0
 						for m.selectedIdx >= m.historyOffset+m.getHistoryVisibleCards() {
 							m.historyOffset++
@@ -912,15 +1108,18 @@ func (m Model) renderFooter() string {
 				KeyStyle.Render("[/]"), KeyStyle.Render(langLabel), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[q]"))
 		}
 	} else if m.activeView == ViewHistory {
-		if m.isVisualMode {
+		if m.isHistorySearching {
+			hints = fmt.Sprintf(" %s Confirm  %s Clear/Exit  [0-9] Type Step #",
+				KeyStyle.Render("[Enter]"), KeyStyle.Render("[Esc]"))
+		} else if m.isVisualMode {
 			hints = fmt.Sprintf(" %s Yank  %s Move  %s Cancel",
 				KeyStyle.Render("[y]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Esc]"))
 		} else if m.focusPane == FocusList {
-			hints = fmt.Sprintf(" %s Focus Detail  %s Select  %s Cycle  %s Shortcuts  %s Switch  %s Quit",
-				KeyStyle.Render("[l/Enter]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Type  %s Cache  %s Step #  %s Focus  %s Cycle  %s Shortcuts  %s Quit",
+				KeyStyle.Render("[t]"), KeyStyle.Render("[c]"), KeyStyle.Render("[/]"), KeyStyle.Render("[l]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"), KeyStyle.Render("[q]"))
 		} else {
-			hints = fmt.Sprintf(" %s Focus List  %s Visual  %s Scroll  %s Cycle  %s Shortcuts  %s Switch  %s Quit",
-				KeyStyle.Render("[h/Esc]"), KeyStyle.Render("[v]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"), KeyStyle.Render("[Ctrl+p]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Focus List  %s Visual  %s Scroll  %s Cycle  %s Shortcuts  %s Quit",
+				KeyStyle.Render("[h/Esc]"), KeyStyle.Render("[v]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"), KeyStyle.Render("[q]"))
 		}
 	} else {
 		if len(m.history) > 0 {

@@ -294,6 +294,95 @@ func TestHistoryStepListScrollIndicators(t *testing.T) {
 	}
 }
 
+func TestHistoryFilteringAndStepSearch(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 30
+	m.activeView = ViewHistory
+	m.focusPane = FocusList
+
+	// Seed with distinct types and cache statuses
+	m.history = []core.UnifiedAgentEvent{
+		{StepIndex: 1, Type: core.StepTypeUserInput, CacheStatus: "MISS", Summary: "User question"},
+		{StepIndex: 2, Type: core.StepTypeModelResponse, CacheStatus: "HIT", Tokens: core.TokenBreakdown{CacheHitRate: 85.0}, Summary: "Model plan"},
+		{StepIndex: 3, Type: core.StepTypeToolCall, CacheStatus: "HIT", Tokens: core.TokenBreakdown{CacheHitRate: 90.0}, Summary: "Run command"},
+		{StepIndex: 4, Type: core.StepTypeToolResult, CacheStatus: "PARTIAL", Tokens: core.TokenBreakdown{CacheHitRate: 40.0}, Summary: "Command result"},
+		{StepIndex: 14, Type: core.StepTypeToolCall, CacheStatus: "HIT", Tokens: core.TokenBreakdown{CacheHitRate: 95.0}, Summary: "Write file"},
+	}
+
+	// 1. Initial State: All 5 events
+	filtered := m.getFilteredHistory()
+	if len(filtered) != 5 {
+		t.Fatalf("Expected 5 events, got %d", len(filtered))
+	}
+
+	// 2. Cycle Type Filter: press 't' -> Tool (should match Step 3, 4, 14)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+	m = updated.(Model)
+	if m.historyTypeFilter != TypeFilterTool {
+		t.Fatalf("Expected TypeFilterTool, got %v", m.historyTypeFilter)
+	}
+	filtered = m.getFilteredHistory()
+	if len(filtered) != 3 {
+		t.Fatalf("Expected 3 tool events, got %d", len(filtered))
+	}
+
+	// 3. Cycle Cache Filter: press 'c' -> Hit (should match Step 3, 14)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	m = updated.(Model)
+	if m.historyCacheFilter != CacheFilterHit {
+		t.Fatalf("Expected CacheFilterHit, got %v", m.historyCacheFilter)
+	}
+	filtered = m.getFilteredHistory()
+	if len(filtered) != 2 {
+		t.Fatalf("Expected 2 hit events, got %d", len(filtered))
+	}
+
+	// 4. Press Esc to reset filters
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	m = updated.(Model)
+	if m.historyTypeFilter != TypeFilterAll || m.historyCacheFilter != CacheFilterAll {
+		t.Fatalf("Expected reset to All filters, got T:%v C:%v", m.historyTypeFilter, m.historyCacheFilter)
+	}
+
+	// 5. Step Search: press '/' then type '14'
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	m = updated.(Model)
+	if !m.isHistorySearching {
+		t.Fatal("Expected isHistorySearching=true after pressing '/'")
+	}
+
+	// Type '1'
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")})
+	m = updated.(Model)
+	// Type '4'
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("4")})
+	m = updated.(Model)
+	if m.historyStepQuery != "14" {
+		t.Fatalf("Expected historyStepQuery='14', got '%s'", m.historyStepQuery)
+	}
+
+	// Filtered history should match step 14 only
+	filtered = m.getFilteredHistory()
+	if len(filtered) != 1 || filtered[0].StepIndex != 14 {
+		t.Fatalf("Expected 1 filtered event for step 14, got %v", filtered)
+	}
+
+	// Press Enter to confirm search
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if m.isHistorySearching {
+		t.Fatal("Expected isHistorySearching=false after pressing Enter")
+	}
+
+	// Press Esc to clear search query
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	m = updated.(Model)
+	if m.historyStepQuery != "" {
+		t.Fatalf("Expected empty historyStepQuery after Esc, got '%s'", m.historyStepQuery)
+	}
+}
+
 func TestAllViewsZeroHeightVariationAcrossSizes(t *testing.T) {
 	for _, size := range []struct{ w, h int }{{80, 24}, {100, 30}, {120, 35}, {140, 40}} {
 		for _, view := range []ActiveView{ViewDashboard, ViewHistory, ViewDocs} {

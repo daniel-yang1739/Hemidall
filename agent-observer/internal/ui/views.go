@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"agent-observer/internal/core"
+
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 )
@@ -170,20 +172,51 @@ func (m Model) renderHistoryView() string {
 	}
 
 	// ==================== 1. Left Pane: Step List (2 Lines per Step Card) ====================
+	filtered := m.getFilteredHistory()
 	var leftLines []string
-	leftTitle := "STEPS (Newest First)"
-	if m.focusPane == FocusList {
-		leftTitle = "STEPS (Newest First <)"
-	}
-	leftLines = append(leftLines, TitleStyle.Render(truncateVisualWidth(leftTitle, listContentWidth)))
 
-	if len(m.history) == 0 {
-		leftLines = append(leftLines, truncateVisualWidth("  No events yet...", listContentWidth))
+	countStr := fmt.Sprintf("%d/%d", len(filtered), len(m.history))
+	if len(filtered) == len(m.history) {
+		countStr = fmt.Sprintf("%d", len(m.history))
+	}
+	leftTitle := fmt.Sprintf("STEPS (%s)", countStr)
+	if m.focusPane == FocusList {
+		leftTitle = fmt.Sprintf("STEPS (%s) <", countStr)
+	}
+
+	var filterBadges []string
+	if m.historyTypeFilter != TypeFilterAll {
+		filterBadges = append(filterBadges, fmt.Sprintf("[T:%s]", m.historyTypeFilter))
+	}
+	if m.historyCacheFilter != CacheFilterAll {
+		filterBadges = append(filterBadges, fmt.Sprintf("[C:%s]", m.historyCacheFilter))
+	}
+
+	titleStr := TitleStyle.Render(leftTitle)
+	if len(filterBadges) > 0 {
+		badgesStr := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(strings.Join(filterBadges, " "))
+		titleStr = titleStr + " " + badgesStr
+	}
+	leftLines = append(leftLines, truncateVisualWidth(titleStr, listContentWidth))
+
+	if m.isHistorySearching || m.historyStepQuery != "" {
+		cursorChar := ""
+		if m.isHistorySearching {
+			cursorChar = "█"
+		}
+		filterBox := fmt.Sprintf("Filter: [#%s%s]", m.historyStepQuery, lipgloss.NewStyle().Foreground(ColorHighlight).Render(cursorChar))
+		leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(truncateVisualWidth(filterBox, listContentWidth)))
+		leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", listContentWidth)))
+	}
+
+	if len(filtered) == 0 {
+		leftLines = append(leftLines, truncateVisualWidth("  No matching steps...", listContentWidth))
+		leftLines = append(leftLines, truncateVisualWidth("  Press [Esc] to reset", listContentWidth))
 	} else {
 		maxCards := m.getHistoryVisibleCards()
 		endIdx := m.historyOffset + maxCards
-		if endIdx > len(m.history) {
-			endIdx = len(m.history)
+		if endIdx > len(filtered) {
+			endIdx = len(filtered)
 		}
 
 		// Top indicator: only if there are newer steps above (m.historyOffset > 0)
@@ -192,8 +225,8 @@ func (m Model) renderHistoryView() string {
 		}
 
 		for i := m.historyOffset; i < endIdx; i++ {
-			realIdx := len(m.history) - 1 - i
-			e := m.history[realIdx]
+			realIdx := len(filtered) - 1 - i
+			e := filtered[realIdx]
 
 			prefix := "  "
 			headerStyle := DimRowStyle
@@ -213,7 +246,11 @@ func (m Model) renderHistoryView() string {
 			typeBadge := fmt.Sprintf("[%03d|%-5s]", e.StepIndex, shortenType(string(e.Type)))
 			timeStr := e.Timestamp.Format("15:04:05")
 
+			cacheTag := formatShortCache(e)
 			cardLine1 := fmt.Sprintf("%s%s %s", prefix, typeBadge, timeStr)
+			if cacheTag != "" {
+				cardLine1 = fmt.Sprintf("%s%s %s %s", prefix, typeBadge, timeStr, cacheTag)
+			}
 			leftLines = append(leftLines, headerStyle.Render(truncateVisualWidth(cardLine1, listContentWidth)))
 
 			summaryText := e.Summary
@@ -224,8 +261,8 @@ func (m Model) renderHistoryView() string {
 			leftLines = append(leftLines, summaryStyle.Render(truncateVisualWidth(cardLine2, listContentWidth)))
 		}
 
-		// Bottom indicator: only if there are older steps below (endIdx < len(m.history))
-		if endIdx < len(m.history) && len(leftLines) < innerRowsLimit {
+		// Bottom indicator: only if there are older steps below (endIdx < len(filtered))
+		if endIdx < len(filtered) && len(leftLines) < innerRowsLimit {
 			leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  ..."))
 		}
 	}
@@ -393,3 +430,22 @@ func shortenType(t string) string {
 		return t
 	}
 }
+
+func formatShortCache(e core.UnifiedAgentEvent) string {
+	switch e.CacheStatus {
+	case "HIT":
+		return lipgloss.NewStyle().Foreground(ColorSuccess).Render(fmt.Sprintf("[HIT %.0f%%]", e.Tokens.CacheHitRate))
+	case "PARTIAL":
+		return lipgloss.NewStyle().Foreground(ColorWarning).Render(fmt.Sprintf("[PART %.0f%%]", e.Tokens.CacheHitRate))
+	case "MISS":
+		return lipgloss.NewStyle().Foreground(ColorDanger).Render("[MISS]")
+	case "BROKEN":
+		return lipgloss.NewStyle().Foreground(ColorHighlight).Render("[BROKEN]")
+	default:
+		if e.Tokens.CacheHitRate >= 70.0 {
+			return lipgloss.NewStyle().Foreground(ColorSuccess).Render(fmt.Sprintf("[HIT %.0f%%]", e.Tokens.CacheHitRate))
+		}
+		return ""
+	}
+}
+
