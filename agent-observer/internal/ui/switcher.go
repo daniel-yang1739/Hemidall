@@ -32,8 +32,8 @@ func (m Model) renderSessionSwitcherModal() string {
 	modalInnerWidth := modalWidth - 4
 	contentWidth := modalInnerWidth - 2 // Account for Padding(0, 1)
 	modalHeight := m.height - 4
-	if modalHeight > 24 {
-		modalHeight = 24
+	if modalHeight > 26 {
+		modalHeight = 26
 	}
 	if modalHeight < 12 {
 		modalHeight = 12
@@ -112,7 +112,7 @@ func (m Model) renderSessionSwitcherModal() string {
 
 		if len(sessions) == 0 {
 			leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  No matching sessions."))
-			leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  Press [ / ] for other tabs."))
+			leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  Press [Tab] for other tabs."))
 		} else {
 			startIdx := m.switcherSelectedIdx - (maxCards / 2)
 			if startIdx < 0 {
@@ -125,6 +125,11 @@ func (m Model) renderSessionSwitcherModal() string {
 				if startIdx < 0 {
 					startIdx = 0
 				}
+			}
+
+			// Top indicator if more items above
+			if startIdx > 0 {
+				leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  ..."))
 			}
 
 			for i := startIdx; i < endIdx; i++ {
@@ -168,6 +173,11 @@ func (m Model) renderSessionSwitcherModal() string {
 
 				line2 := fmt.Sprintf("    %d steps | %.1fMB | %s%s", s.StepCount, s.SizeMB, relTime, statusTag)
 				leftLines = append(leftLines, cardStyle2.Render(truncateVisualWidth(line2, leftWidth)))
+			}
+
+			// Bottom indicator if more items below
+			if endIdx < len(sessions) && len(leftLines) < bodyHeight {
+				leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  ..."))
 			}
 		}
 
@@ -244,10 +254,10 @@ func (m Model) renderSessionSwitcherModal() string {
 		// ==================== VERTICAL-STACKED LAYOUT (Narrow / Half Screen) ====================
 		if len(sessions) == 0 {
 			contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  No matching sessions."))
-			contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  Press [ / ] for other tabs."))
+			contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  Press [Tab] for other tabs."))
 		} else {
-			maxCards := 2
-			startIdx := m.switcherSelectedIdx - (maxCards / 2)
+			maxCards := 3
+			startIdx := m.switcherSelectedIdx - 1
 			if startIdx < 0 {
 				startIdx = 0
 			}
@@ -258,6 +268,11 @@ func (m Model) renderSessionSwitcherModal() string {
 				if startIdx < 0 {
 					startIdx = 0
 				}
+			}
+
+			// Top indicator: only if there are items above
+			if startIdx > 0 {
+				contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  ..."))
 			}
 
 			for i := startIdx; i < endIdx; i++ {
@@ -301,6 +316,11 @@ func (m Model) renderSessionSwitcherModal() string {
 				contentLines = append(contentLines, cardStyle1.Render(truncateVisualWidth(line1, contentWidth)))
 				contentLines = append(contentLines, cardStyle2.Render(truncateVisualWidth(line2, contentWidth)))
 			}
+
+			// Bottom indicator: only if there are items below
+			if endIdx < len(sessions) {
+				contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  ..."))
+			}
 		}
 
 		// Horizontal Divider
@@ -330,18 +350,18 @@ func (m Model) renderSessionSwitcherModal() string {
 			}
 			lastWrapped := wrapVisualLines(lastText, contentWidth)
 			for _, ll := range lastWrapped {
-				if len(contentLines) >= modalHeight-2 {
+				if len(contentLines) >= modalHeight-3 {
 					break
 				}
 				contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(ll))
 			}
 		}
 
-		for len(contentLines) < modalHeight-2 {
+		for len(contentLines) < modalHeight-3 {
 			contentLines = append(contentLines, "")
 		}
-		if len(contentLines) > modalHeight-2 {
-			contentLines = contentLines[:modalHeight-2]
+		if len(contentLines) > modalHeight-3 {
+			contentLines = contentLines[:modalHeight-3]
 		}
 	}
 

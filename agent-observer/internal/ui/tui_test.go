@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -302,35 +303,47 @@ func TestSessionSwitcherHalfScreenVerticalStacking(t *testing.T) {
 	m := NewModel("test-session-1", true)
 	// Half-screen / narrow terminal width (60 cols)
 	m.width = 60
-	m.height = 24
+	m.height = 30
 
-	m.availableSessions = []core.SessionInfo{
-		{
+	var mockSessions []core.SessionInfo
+	for i := 0; i < 6; i++ {
+		mockSessions = append(mockSessions, core.SessionInfo{
 			AgentType:    core.AgentTypeAntigravity,
-			SessionID:    "session-narrow-1",
-			WorkspaceDir: "/Users/test/Documents/self/narrow-proj",
-			ShortPath:    "self/narrow-proj",
-			InitialGoal:  "Refactor CLI in narrow terminal",
-			LastPrompt:   "Fix layout bugs",
-			StepCount:    20,
-			LastModified: time.Now(),
-		},
+			SessionID:    fmt.Sprintf("session-narrow-%d", i),
+			WorkspaceDir: fmt.Sprintf("/Users/test/Documents/self/proj-%d", i),
+			ShortPath:    fmt.Sprintf("self/proj-%d", i),
+			InitialGoal:  fmt.Sprintf("Initial goal for session %d", i),
+			LastPrompt:   fmt.Sprintf("Last prompt for session %d", i),
+			StepCount:    10 * (i + 1),
+			LastModified: time.Now().Add(time.Duration(-i) * time.Hour),
+		})
 	}
+	m.availableSessions = mockSessions
 	m.selectedAgentTab = core.AgentTypeAntigravity
 	m.filteredSessions = filterSessions(m.availableSessions, "", m.selectedAgentTab)
+
+	// Case 1: At top (index 0) -> NO top '...', YES bottom '...'
 	m.switcherSelectedIdx = 0
-
-	view := m.View()
-
-	// In narrow mode, it should render vertical stacked layout with both Goal and Latest Progress
-	if !strings.Contains(view, "self/narrow-proj") {
-		t.Errorf("Expected short path 'self/narrow-proj' in narrow view, got: %s", view)
+	viewTop := m.View()
+	if strings.Contains(viewTop, "Filter: [█]\n│ ──────────────────────────────────────────────────────── │\n│   ...") {
+		t.Error("Did not expect top '...' when at the very first session")
 	}
-	if !strings.Contains(view, "INITIAL GOAL") {
-		t.Errorf("Expected 'INITIAL GOAL' in narrow stacked view, got: %s", view)
+	if !strings.Contains(viewTop, "...") {
+		t.Error("Expected bottom '...' when there are more sessions below")
 	}
-	if !strings.Contains(view, "LATEST PROGRESS") {
-		t.Errorf("Expected 'LATEST PROGRESS' in narrow stacked view, got: %s", view)
+
+	// Case 2: In middle (index 3) -> YES top '...', YES bottom '...'
+	m.switcherSelectedIdx = 3
+	viewMid := m.View()
+	if !strings.Contains(viewMid, "...") {
+		t.Error("Expected '...' indicators in middle of list")
+	}
+
+	// Case 3: At bottom (index 5) -> YES top '...', NO bottom '...'
+	m.switcherSelectedIdx = 5
+	viewBot := m.View()
+	if !strings.Contains(viewBot, "self/proj-5") {
+		t.Errorf("Expected last session 'self/proj-5' to be visible, got: %s", viewBot)
 	}
 }
 
