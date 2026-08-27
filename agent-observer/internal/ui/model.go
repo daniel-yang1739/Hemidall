@@ -519,15 +519,16 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 		} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
 			lines = append(lines, truncateVisualWidth("• Origin: Human Client Prompt", maxWidth))
-			if t.TotalTokens > 0 {
-				lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Tokens: ~%s Inbound Context", formatCompactNumber(t.TotalTokens)), maxWidth))
-				lines = append(lines, truncateVisualWidth(fmt.Sprintf("  ├ Active: ~%s prompt tokens", formatCompactNumber(t.ActiveTurnTokens)), maxWidth))
-				lines = append(lines, truncateVisualWidth(fmt.Sprintf("  └ Cached: ~%s (%.1f%%)", formatCompactNumber(t.CachedTokens), t.CacheHitRate), maxWidth))
-			} else {
-				promptTok := core.CountTokens(e.RawContent)
-				lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Tokens: ~%s Prompt Tokens", formatCompactNumber(promptTok)), maxWidth))
+			promptTok := core.CountTokens(e.RawContent)
+			if promptTok == 0 {
+				promptTok = 1
 			}
-			lines = append(lines, truncateVisualWidth("• Status: Inbound to GPU Cluster", maxWidth))
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Payload: ~%d Prompt Tokens", promptTok), maxWidth))
+			if e.PackagedInStepIdx > 0 {
+				lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Status : Staged ➔ Settled in Step #%04d", e.PackagedInStepIdx), maxWidth))
+			} else {
+				lines = append(lines, truncateVisualWidth("• Status : Inbound (Awaiting Cloud Turn)", maxWidth))
+			}
 		} else {
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Type  : %s", e.Type), maxWidth))
@@ -575,10 +576,16 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 	} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
 		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step #%04d (%s) at %s | 👤 USER INPUT", e.StepIndex, e.Status, timeStr), maxWidth))
 		lines = append(lines, truncateVisualWidth("• Origin : Human Client Prompt (Inbound to Remote GPU Cluster)", maxWidth))
-		if t.TotalTokens > 0 {
-			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Tokens : Total: %d | Cached: %d (%.1f%% HIT) | New: %d", t.TotalTokens, t.CachedTokens, t.CacheHitRate, t.NewTokens), maxWidth))
+		promptTok := core.CountTokens(e.RawContent)
+		if promptTok == 0 {
+			promptTok = 1
 		}
-		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• 5-Dims : Sys=%d | Tools=%d | Res=%d | Hist=%d | Act=%d", t.SystemTokens, t.ToolsDefTokens, t.ToolResultTokens, t.HistoryTokens, t.ActiveTurnTokens), maxWidth))
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Payload: ~%d Prompt Tokens (Local Inbound Intent)", promptTok), maxWidth))
+		if e.PackagedInStepIdx > 0 {
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Billing: Staged ➔ Official Cache & Tokens settled in Step #%04d ☁️", e.PackagedInStepIdx), maxWidth))
+		} else {
+			lines = append(lines, truncateVisualWidth("• Billing: Staged ➔ Awaiting next Cloud Inference Step for official cache settlement ⏳", maxWidth))
+		}
 	} else {
 		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step #%04d (%s) at %s | ⚙️ SYSTEM BOOTSTRAP (%s)", e.StepIndex, e.Status, timeStr, e.Type), maxWidth))
 		lines = append(lines, truncateVisualWidth("• Scope  : Local Process Context", maxWidth))

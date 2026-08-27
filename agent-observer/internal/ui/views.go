@@ -751,6 +751,10 @@ func shortenType(t string) string {
 }
 
 func formatShortCache(e core.UnifiedAgentEvent) string {
+	// USER_INPUT and Local OUTPUT are client/local operations, NOT cloud LLM generations!
+	if e.Type == core.StepTypeUserInput || e.Scope == core.ScopeUserInteraction || e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
+		return ""
+	}
 	switch e.CacheStatus {
 	case "HIT":
 		return lipgloss.NewStyle().Foreground(ColorSuccess).Render(fmt.Sprintf("[HIT %.0f%%]", e.Tokens.CacheHitRate))
