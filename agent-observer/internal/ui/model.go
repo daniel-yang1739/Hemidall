@@ -306,13 +306,13 @@ func (m Model) getHistoryVisibleCards() int {
 		if topContentRows < 8 {
 			topContentRows = 8
 		}
-		availLines = topContentRows - 1
+		availLines = topContentRows - 2
 	} else {
 		innerRowsLimit := m.height - 4
 		if innerRowsLimit < 4 {
 			innerRowsLimit = 4
 		}
-		availLines = innerRowsLimit - 1
+		availLines = innerRowsLimit - 2
 	}
 
 	if m.isHistorySearching || m.historyStepQuery != "" {

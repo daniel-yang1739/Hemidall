@@ -468,6 +468,9 @@ func TestHistoryThreePanelSplitAndZeroTruncation(t *testing.T) {
 	if !strings.Contains(renderedFull, "CONTENT PAYLOAD") {
 		t.Fatalf("Expected 'CONTENT PAYLOAD' in full-width history view, got:\n%s", renderedFull)
 	}
+	if !strings.Contains(renderedFull, "Filters:") {
+		t.Fatalf("Expected 'Filters:' line in full-width history view, got:\n%s", renderedFull)
+	}
 
 	// 2. Half-Width (width < 100)
 	m.width = 80
@@ -477,6 +480,9 @@ func TestHistoryThreePanelSplitAndZeroTruncation(t *testing.T) {
 	}
 	if !strings.Contains(renderedHalf, "CONTENT PAYLOAD") {
 		t.Fatalf("Expected 'CONTENT PAYLOAD' in half-width history view, got:\n%s", renderedHalf)
+	}
+	if !strings.Contains(renderedHalf, "Filters:") {
+		t.Fatalf("Expected 'Filters:' line in half-width history view, got:\n%s", renderedHalf)
 	}
 }
 

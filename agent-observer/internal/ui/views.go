@@ -195,6 +195,10 @@ func (m Model) renderHistoryViewVertical() string {
 		leftTitle = fmt.Sprintf("STEPS (%s) <", countStr)
 	}
 
+	// Line 1: Title
+	leftLines = append(leftLines, truncateVisualWidth(TitleStyle.Render(leftTitle), topLeftContentWidth))
+
+	// Line 2: Filters line
 	var typeBadgeStr string
 	if m.historyTypeFilter == TypeFilterAll {
 		typeBadgeStr = lipgloss.NewStyle().Foreground(ColorMuted).Render("[T:All]")
@@ -209,8 +213,9 @@ func (m Model) renderHistoryViewVertical() string {
 		cacheBadgeStr = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("[C:%s]", m.historyCacheFilter))
 	}
 
-	titleLine := fmt.Sprintf("%s %s %s", TitleStyle.Render(leftTitle), typeBadgeStr, cacheBadgeStr)
-	leftLines = append(leftLines, truncateVisualWidth(titleLine, topLeftContentWidth))
+	filterPrefix := lipgloss.NewStyle().Foreground(ColorLightText).Render("Filters:")
+	filterLine := fmt.Sprintf("%s %s %s", filterPrefix, typeBadgeStr, cacheBadgeStr)
+	leftLines = append(leftLines, truncateVisualWidth(filterLine, topLeftContentWidth))
 
 	if m.isHistorySearching || m.historyStepQuery != "" {
 		cursorChar := ""
@@ -443,6 +448,10 @@ func (m Model) renderHistoryViewHorizontal() string {
 		leftTitle = fmt.Sprintf("STEPS (%s) <", countStr)
 	}
 
+	// Line 1: Title
+	leftLines = append(leftLines, truncateVisualWidth(TitleStyle.Render(leftTitle), listContentWidth))
+
+	// Line 2: Filters line
 	var typeBadgeStr string
 	if m.historyTypeFilter == TypeFilterAll {
 		typeBadgeStr = lipgloss.NewStyle().Foreground(ColorMuted).Render("[T:All]")
@@ -457,8 +466,9 @@ func (m Model) renderHistoryViewHorizontal() string {
 		cacheBadgeStr = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("[C:%s]", m.historyCacheFilter))
 	}
 
-	titleLine := fmt.Sprintf("%s %s %s", TitleStyle.Render(leftTitle), typeBadgeStr, cacheBadgeStr)
-	leftLines = append(leftLines, truncateVisualWidth(titleLine, listContentWidth))
+	filterPrefix := lipgloss.NewStyle().Foreground(ColorLightText).Render("Filters:")
+	filterLine := fmt.Sprintf("%s %s %s", filterPrefix, typeBadgeStr, cacheBadgeStr)
+	leftLines = append(leftLines, truncateVisualWidth(filterLine, listContentWidth))
 
 	if m.isHistorySearching || m.historyStepQuery != "" {
 		cursorChar := ""
