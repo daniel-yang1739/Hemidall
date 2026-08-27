@@ -1429,9 +1429,9 @@ func (m Model) renderHeader() string {
 	}
 	timeInfo := lipgloss.NewStyle().Foreground(ColorLightText).Render(time.Now().Format("15:04:05"))
 	sep := lipgloss.NewStyle().Foreground(ColorBorder).Render(" | ")
-	eventsInfo := lipgloss.NewStyle().Foreground(ColorLightText).Render(fmt.Sprintf("Events: %d", m.eventCount))
+	stepsInfo := lipgloss.NewStyle().Foreground(ColorLightText).Render(fmt.Sprintf("Steps: %d", len(m.history)))
 	sessionTag := lipgloss.NewStyle().Foreground(ColorHighlight).Render(fmt.Sprintf("(%s)", shortHash))
-	right := timeInfo + sep + eventsInfo + sep + sessionTag
+	right := timeInfo + sep + stepsInfo + sep + sessionTag
 
 	gapWidth := m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	if gapWidth < 1 {
