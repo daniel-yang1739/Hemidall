@@ -498,6 +498,12 @@ func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) [
 		header2 := "• Origin : Human Client Prompt (Inbound to Remote GPU Cluster)"
 		lines = append(lines, wrapVisualLines(header2, maxWidth)...)
 
+		if t.TotalTokens > 0 {
+			tokensText := fmt.Sprintf("• Tokens : Total: %d | Cached: %d (%.1f%%) | New: %d",
+				t.TotalTokens, t.CachedTokens, t.CacheHitRate, t.NewTokens)
+			lines = append(lines, wrapVisualLines(tokensText, maxWidth)...)
+		}
+
 		var nextCloudTurnIdx int
 		for _, nextE := range m.history {
 			if nextE.StepIndex > e.StepIndex && (nextE.Type == core.StepTypeToolCall || nextE.Type == core.StepTypeModelResponse) {

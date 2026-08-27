@@ -507,9 +507,9 @@ func getStepDistinctiveLabel(e core.UnifiedAgentEvent) string {
 	switch e.Type {
 	case core.StepTypeToolCall:
 		if len(e.ToolCalls) == 1 {
-			return e.ToolCalls[0].ToolName
+			return shortenToolName(e.ToolCalls[0].ToolName)
 		} else if len(e.ToolCalls) > 1 {
-			return fmt.Sprintf("%s (+%d)", e.ToolCalls[0].ToolName, len(e.ToolCalls)-1)
+			return fmt.Sprintf("%s +%d", shortenToolName(e.ToolCalls[0].ToolName), len(e.ToolCalls)-1)
 		}
 		return "tool_call"
 	case core.StepTypeRunCommand:
@@ -523,23 +523,43 @@ func getStepDistinctiveLabel(e core.UnifiedAgentEvent) string {
 	case core.StepTypeAskQuestion:
 		return "ask_user"
 	case core.StepTypeGeneric, core.StepTypeToolResult:
-		return "Local Output"
+		return "Output"
 	case core.StepTypeError:
-		return "Local Error"
+		return "Error"
 	case core.StepTypeUserInput:
-		return "User Prompt"
+		return "Prompt"
 	case core.StepTypeModelResponse:
 		if e.Tokens.OfficialModel != "" {
 			return shortenModelName(e.Tokens.OfficialModel)
 		}
-		return "Model Answer"
+		return "Gemini"
 	case core.StepTypeSystemInit:
-		return "System Init"
+		return "System"
 	default:
 		if e.IsLocalStep() {
-			return "Local Output"
+			return "Output"
 		}
 		return string(e.Type)
+	}
+}
+
+func shortenToolName(n string) string {
+	switch n {
+	case "run_command":
+		return "run_cmd"
+	case "view_file":
+		return "view_file"
+	case "replace_file_content", "write_to_file":
+		return "edit_file"
+	case "list_dir":
+		return "list_dir"
+	case "grep_search", "find_by_name":
+		return "search"
+	default:
+		if len(n) > 9 {
+			return n[:9]
+		}
+		return n
 	}
 }
 
