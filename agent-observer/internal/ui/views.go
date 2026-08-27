@@ -180,13 +180,29 @@ func (m Model) renderHistoryView() string {
 	if len(m.history) == 0 {
 		leftLines = append(leftLines, truncateVisualWidth("  No events yet...", listContentWidth))
 	} else {
-		maxCards := (innerRowsLimit - 1) / 2
+		availLines := innerRowsLimit - 1
+		if m.historyOffset > 0 {
+			availLines--
+		}
+		maxCards := availLines / 2
 		if maxCards < 1 {
 			maxCards = 1
 		}
 		endIdx := m.historyOffset + maxCards
 		if endIdx > len(m.history) {
 			endIdx = len(m.history)
+		}
+		if endIdx < len(m.history) && (availLines-(endIdx-m.historyOffset)*2) <= 0 && maxCards > 1 {
+			maxCards--
+			endIdx = m.historyOffset + maxCards
+			if endIdx > len(m.history) {
+				endIdx = len(m.history)
+			}
+		}
+
+		// Top indicator: only if there are newer steps above (m.historyOffset > 0)
+		if m.historyOffset > 0 {
+			leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  ..."))
 		}
 
 		for i := m.historyOffset; i < endIdx; i++ {
@@ -220,6 +236,11 @@ func (m Model) renderHistoryView() string {
 			}
 			cardLine2 := "  " + summaryText
 			leftLines = append(leftLines, summaryStyle.Render(truncateVisualWidth(cardLine2, listContentWidth)))
+		}
+
+		// Bottom indicator: only if there are older steps below (endIdx < len(m.history))
+		if endIdx < len(m.history) && len(leftLines) < innerRowsLimit {
+			leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  ..."))
 		}
 	}
 	for len(leftLines) < innerRowsLimit {

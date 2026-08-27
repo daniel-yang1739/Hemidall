@@ -242,6 +242,42 @@ func TestHistoryVimPaneSwitchingHL(t *testing.T) {
 	}
 }
 
+func TestHistoryStepListScrollIndicators(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 24
+	m.activeView = ViewHistory
+	m.focusPane = FocusList
+
+	// Seed with 20 historical steps
+	for i := 0; i < 20; i++ {
+		m.history = append(m.history, core.UnifiedAgentEvent{
+			StepIndex: i,
+			Summary:   fmt.Sprintf("Step %d execution details", i),
+			Timestamp: time.Now(),
+		})
+	}
+
+	// Case 1: At top (historyOffset = 0) -> NO top '...', YES bottom '...'
+	m.historyOffset = 0
+	m.selectedIdx = 0
+	vTop := m.renderHistoryView()
+	if strings.Contains(vTop, "STEPS (Newest First <)\n│   ...") {
+		t.Error("Did not expect top '...' when at the newest step (historyOffset = 0)")
+	}
+	if !strings.Contains(vTop, "...") {
+		t.Error("Expected bottom '...' when there are older steps below")
+	}
+
+	// Case 2: Scrolled down (historyOffset = 5) -> YES top '...', YES bottom '...'
+	m.historyOffset = 5
+	m.selectedIdx = 5
+	vMid := m.renderHistoryView()
+	if !strings.Contains(vMid, "...") {
+		t.Error("Expected '...' scroll indicators when scrolled into the middle")
+	}
+}
+
 func TestAllViewsZeroHeightVariationAcrossSizes(t *testing.T) {
 	for _, size := range []struct{ w, h int }{{80, 24}, {100, 30}, {120, 35}, {140, 40}} {
 		for _, view := range []ActiveView{ViewDashboard, ViewHistory, ViewDocs} {
