@@ -43,12 +43,12 @@
 ╭─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ SESSION TOKEN AGGREGATES & MULTI-MODEL EFFICIENCY                                                                           │
 │                                                                                                                             │
-│   TOTAL PROCESSED        CACHE HIT VOLUME       UNCACHED INBOUND       EFFECTIVE TOKENS       TOKENS SAVED (%)              │
+│   TOTAL PROCESSED        CACHE HIT VOLUME       UNCACHED INBOUND       EFFECTIVE TOKENS       CACHED SAVED (%)              │
 │   1302.22M Tok           696.51M Tok            605.71M Tok            779.83M Tok            522.39M Tok                   │
 │   7912 Cloud Turns       53.5% Hit Rate         46.5% Cold In          59.9% of Raw           40.1% Net Saved               │
 │                                                                                                                             │
 │  MULTI-MODEL TOKEN & SAVINGS BREAKDOWN:                                                                                     │
-│  Model Name                Turns     Processed       Cached (Hit %)        Uncached    Effective (Factor)    Tokens Saved (%)   │
+│  Model Name                Turns     Processed       Cached (Hit %)        Uncached    Effective (Factor)    Cached Saved (%)   │
 │  gemini-3.7-flash           5845       916.24M      696.11M (76.0%)         220.13M       394.15M (0.25x)     522.08M (57.0%)   │
 │  gemini-3.7-flash-safety    2065       385.54M            0 ( 0.0%)         385.54M       385.54M (0.25x)           0 ( 0.0%)   │
 │  gemini-3.7-flash-high         2        443.1k       401.6k (90.6%)           41.6k        141.9k (0.25x)      301.2k (68.0%)   │
@@ -74,11 +74,11 @@
 │   TOTAL PROCESSED                     CACHE HIT VOLUME                      │
 │   1302.22M Tok (7912 Turns)           696.51M Tok (53.5% Hit)               │
 │                                                                             │
-│   UNCACHED INBOUND                    TOKENS SAVED (%)                      │
+│   UNCACHED INBOUND                    CACHED SAVED (%)                      │
 │   605.71M Tok (46.5% Cold)            522.39M Tok (40.1% Saved)             │
 │                                                                             │
 │  MULTI-MODEL TOKEN & SAVINGS BREAKDOWN:                                     │
-│  Model Name          Turns  Processed   Cached (Hit %)   Tokens Saved (%)   │
+│  Model Name          Turns  Processed   Cached (Hit %)   Cached Saved (%)   │
 │  gemini-3.7-flash     5845    916.24M  696.11M (76.0%)    522.08M (57.0%)   │
 │  gemini-3.7-flash-sa  2065    385.54M        0 ( 0.0%)          0 ( 0.0%)   │
 │  gemini-3.7-flash-hi     2     443.1k   401.6k (90.6%)     301.2k (68.0%)   │

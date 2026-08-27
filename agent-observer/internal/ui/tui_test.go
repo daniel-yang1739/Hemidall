@@ -890,8 +890,8 @@ func TestDashboardSparklinesAndKpiRendering(t *testing.T) {
 	if !strings.Contains(viewStr, "EFFECTIVE TOKENS") {
 		t.Error("Dashboard missing EFFECTIVE TOKENS card")
 	}
-	if !strings.Contains(viewStr, "TOKENS SAVED (%)") {
-		t.Error("Dashboard missing TOKENS SAVED card")
+	if !strings.Contains(viewStr, "CACHED SAVED (%)") {
+		t.Error("Dashboard missing CACHED SAVED card")
 	}
 
 	// 2. Verify Multi-Model breakdown table shows both models
