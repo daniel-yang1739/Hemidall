@@ -248,3 +248,12 @@ cd agent-observer && go test -v ./...
 * ✅ `TestHistoryThreePanelSplitAndZeroTruncation`: 驗證 3-Panel 雙模式佈局與零文字截斷。
 * ✅ `TestAllViewsZeroHeightVariationAcrossSizes`: 驗證 `80x24` 至 `140x40` 全尺寸零高度抖動。
 * ✅ `TestHistoryTreeAndDistinctiveLabels`: 驗證樹狀前綴與 Type Emoji 圖示。
+
+---
+
+## 💡 八、 USER_INPUT 狀態呈現語意校正實作 (Semantic Alignment)
+
+### 📌 物理不變量 (Physical Invariant)：
+* 使用者剛鍵入 Prompt 時，本地客戶端**不可能預知遠端 Google GPU 顯存的快取命中數字**。
+* `USER_INPUT` 本身是待發送的 Intent（離線 0 Token 或純 Prompt 字數），不屬於 LLM Generation。
+* 因此，在 `formatShortCache()` 中，`USER_INPUT` 與 `OUTPUT (Local)` **一律不展示 [MISS] 標籤**；官方快取指標統一交由後續的 `MODEL_RESPONSE` / `TOOL_CALL` 官方結算並呈現。
