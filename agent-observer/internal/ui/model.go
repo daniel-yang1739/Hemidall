@@ -302,9 +302,9 @@ func (m Model) getHistoryVisibleCards() int {
 		if bodyHeight < 8 {
 			bodyHeight = 8
 		}
-		topContentRows := (bodyHeight - 4) * 4 / 10
-		if topContentRows < 8 {
-			topContentRows = 8
+		topContentRows := (bodyHeight - 4) * 45 / 100
+		if topContentRows < 11 {
+			topContentRows = 11
 		}
 		availLines = topContentRows - 2
 	} else {
@@ -467,12 +467,9 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Tokens: %s Total Context", formatCompactNumber(t.TotalTokens)), maxWidth))
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("  ├ Cached: %s (%.1f%% HIT)", formatCompactNumber(t.CachedTokens), t.CacheHitRate), maxWidth))
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("  └ New   : %s new tokens", formatCompactNumber(t.NewTokens)), maxWidth))
-			fiveDimsStr := fmt.Sprintf("• 5-Dims: Sys %s | Tools %s | Hist %s",
-				formatCompactNumber(t.SystemTokens),
-				formatCompactNumber(t.ToolsDefTokens),
-				formatCompactNumber(t.HistoryTokens),
-			)
-			lines = append(lines, truncateVisualWidth(fiveDimsStr, maxWidth))
+			lines = append(lines, truncateVisualWidth("• 5-Dims:", maxWidth))
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("  ├ Sys: %s | Tools: %s", formatCompactNumber(t.SystemTokens), formatCompactNumber(t.ToolsDefTokens)), maxWidth))
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("  └ Hist: %s | Act: %s", formatCompactNumber(t.HistoryTokens), formatCompactNumber(t.ActiveTurnTokens)), maxWidth))
 			if e.ParentStepIdx > 0 {
 				lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Parent: Step #%04d (User Prompt)", e.ParentStepIdx), maxWidth))
 			}
@@ -971,9 +968,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if bodyHeight < 8 {
 					bodyHeight = 8
 				}
-				topContentRows := (bodyHeight - 4) * 4 / 10
-				if topContentRows < 8 {
-					topContentRows = 8
+				topContentRows := (bodyHeight - 4) * 45 / 100
+				if topContentRows < 11 {
+					topContentRows = 11
 				}
 				topBoxHeight := topContentRows + 2
 				bottomInner := bodyHeight - topBoxHeight - 2
