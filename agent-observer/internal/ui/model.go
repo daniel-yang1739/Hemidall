@@ -478,9 +478,24 @@ func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) [
 		header1 := fmt.Sprintf("• Step %03d (%s) at %s | 👤 USER INPUT", e.StepIndex, e.Status, timeStr)
 		lines = append(lines, wrapVisualLines(header1, maxWidth)...)
 
-		tokensText := fmt.Sprintf("• Tokens : Total: %d | Cached: %d (%.1f%%) | New: %d",
-			t.TotalTokens, t.CachedTokens, t.CacheHitRate, t.NewTokens)
-		lines = append(lines, wrapVisualLines(tokensText, maxWidth)...)
+		header2 := "• Origin : Human Client Prompt (Inbound to Remote GPU Cluster)"
+		lines = append(lines, wrapVisualLines(header2, maxWidth)...)
+
+		var nextCloudTurnIdx int
+		for _, nextE := range m.history {
+			if nextE.StepIndex > e.StepIndex && (nextE.Type == core.StepTypeToolCall || nextE.Type == core.StepTypeModelResponse) {
+				nextCloudTurnIdx = nextE.StepIndex
+				break
+			}
+		}
+
+		var billingText string
+		if nextCloudTurnIdx > 0 {
+			billingText = fmt.Sprintf("• Billing: Inbound Prompt (~%d Context) ➔ Billed on Cloud Turn #%03d  [n] Jump", t.TotalTokens, nextCloudTurnIdx)
+		} else {
+			billingText = fmt.Sprintf("• Billing: Inbound Prompt (~%d Context) ➔ Pending Cloud Response ⏳", t.TotalTokens)
+		}
+		lines = append(lines, wrapVisualLines(billingText, maxWidth)...)
 
 		fiveDimsText := fmt.Sprintf("• 5-Dims : Sys=%d | Tools=%d | Res=%d | Hist=%d | Act=%d",
 			t.SystemTokens, t.ToolsDefTokens, t.ToolResultTokens, t.HistoryTokens, t.ActiveTurnTokens)

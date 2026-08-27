@@ -247,30 +247,32 @@ func (m Model) renderHistoryView() string {
 			}
 
 			isLocal := e.IsLocalStep() || e.Scope == core.ScopeLocalExecution
-			typeBadge := fmt.Sprintf("[%03d|%-5s]", e.StepIndex, shortenType(string(e.Type)))
-			timeStr := e.Timestamp.Format("15:04:05")
+			typeBadge := fmt.Sprintf("[%03d|%-4s]", e.StepIndex, shortenType(string(e.Type)))
+			label := getStepDistinctiveLabel(e)
 
 			var cardLine1 string
 			var cardLine2 string
 
 			if isLocal {
-				cardLine1 = fmt.Sprintf("%s└── %s %s", prefix, typeBadge, timeStr)
-				if listContentWidth >= 34 {
-					cardLine1 += " " + lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)")
-				} else {
-					cardLine1 += " " + lipgloss.NewStyle().Foreground(ColorSuccess).Render("💻")
-				}
+				cardLine1 = fmt.Sprintf("%s└── %s %s %s", prefix, typeBadge, label, lipgloss.NewStyle().Foreground(ColorSuccess).Render("💻"))
 				summaryText := e.Summary
 				if summaryText == "" {
 					summaryText = "(empty content)"
 				}
 				cardLine2 = "      " + summaryText
+			} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
+				cardLine1 = fmt.Sprintf("%s%s %s %s", prefix, typeBadge, label, lipgloss.NewStyle().Foreground(ColorPrimary).Render("👤"))
+				summaryText := e.Summary
+				if summaryText == "" {
+					summaryText = "(empty content)"
+				}
+				cardLine2 = "  " + summaryText
 			} else {
 				cacheTag := formatShortCache(e)
 				if cacheTag != "" {
-					cardLine1 = fmt.Sprintf("%s%s %s %s", prefix, typeBadge, timeStr, cacheTag)
+					cardLine1 = fmt.Sprintf("%s%s %s %s", prefix, typeBadge, label, cacheTag)
 				} else {
-					cardLine1 = fmt.Sprintf("%s%s %s", prefix, typeBadge, timeStr)
+					cardLine1 = fmt.Sprintf("%s%s %s", prefix, typeBadge, label)
 				}
 				summaryText := e.Summary
 				if summaryText == "" {
@@ -482,5 +484,62 @@ func formatShortCache(e core.UnifiedAgentEvent) string {
 		}
 		return ""
 	}
+}
+
+func getStepDistinctiveLabel(e core.UnifiedAgentEvent) string {
+	switch e.Type {
+	case core.StepTypeToolCall:
+		if len(e.ToolCalls) == 1 {
+			return e.ToolCalls[0].ToolName
+		} else if len(e.ToolCalls) > 1 {
+			return fmt.Sprintf("%s (+%d)", e.ToolCalls[0].ToolName, len(e.ToolCalls)-1)
+		}
+		return "tool_call"
+	case core.StepTypeRunCommand:
+		return "run_cmd"
+	case core.StepTypeViewFile:
+		return "view_file"
+	case core.StepTypeCodeAction:
+		return "code_diff"
+	case core.StepTypeListDirectory:
+		return "list_dir"
+	case core.StepTypeAskQuestion:
+		return "ask_user"
+	case core.StepTypeGeneric, core.StepTypeToolResult:
+		return "Local Output"
+	case core.StepTypeError:
+		return "Local Error"
+	case core.StepTypeUserInput:
+		return "User Prompt"
+	case core.StepTypeModelResponse:
+		if e.Tokens.OfficialModel != "" {
+			return shortenModelName(e.Tokens.OfficialModel)
+		}
+		return "Model Answer"
+	case core.StepTypeSystemInit:
+		return "System Init"
+	default:
+		if e.IsLocalStep() {
+			return "Local Output"
+		}
+		return string(e.Type)
+	}
+}
+
+func shortenModelName(m string) string {
+	m = strings.TrimPrefix(m, "models/")
+	if strings.Contains(m, "3.7-flash") {
+		return "Gemini 3.7"
+	}
+	if strings.Contains(m, "3.7-pro") {
+		return "Gemini 3.7 Pro"
+	}
+	if strings.Contains(m, "flash") {
+		return "Gemini Flash"
+	}
+	if strings.Contains(m, "pro") {
+		return "Gemini Pro"
+	}
+	return m
 }
 
