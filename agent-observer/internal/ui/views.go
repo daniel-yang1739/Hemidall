@@ -152,8 +152,8 @@ func (m Model) renderDashboardView() string {
 
 func (m Model) renderHistoryView() string {
 	leftOuterWidth := int(float64(m.width) * 0.35)
-	if leftOuterWidth < 34 {
-		leftOuterWidth = 34
+	if leftOuterWidth < 36 {
+		leftOuterWidth = 36
 	}
 	if leftOuterWidth > 50 {
 		leftOuterWidth = 50
@@ -251,14 +251,15 @@ func (m Model) renderHistoryView() string {
 			}
 
 			isLocal := e.IsLocalStep() || e.Scope == core.ScopeLocalExecution
-			typeStr := formatStepType(string(e.Type))
 
 			var cardLine1 string
 			var cardLine2 string
 
 			if isLocal {
-				cardLine1 = fmt.Sprintf("%s└── [%04d] %s %s", prefix, e.StepIndex, typeStr, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
+				toolName := m.getLocalToolName(e)
+				cardLine1 = fmt.Sprintf("%s└── [%04d] %s %s", prefix, e.StepIndex, toolName, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
 			} else {
+				typeStr := formatStepType(string(e.Type))
 				cacheTag := formatShortCache(e)
 				if cacheTag != "" {
 					cardLine1 = fmt.Sprintf("%s[%04d] %s %s", prefix, e.StepIndex, typeStr, cacheTag)
@@ -519,5 +520,62 @@ func (m Model) getStepModelName(e core.UnifiedAgentEvent) string {
 	}
 	model = strings.TrimPrefix(model, "models/")
 	return model
+}
+
+func (m Model) getLocalToolName(e core.UnifiedAgentEvent) string {
+	switch e.Type {
+	case core.StepTypeRunCommand:
+		return "run_cmd"
+	case core.StepTypeViewFile:
+		return "view_file"
+	case core.StepTypeCodeAction:
+		return "edit_file"
+	case core.StepTypeListDirectory:
+		return "list_dir"
+	case core.StepTypeAskQuestion:
+		return "ask_user"
+	}
+
+	if e.ParentStepIdx > 0 {
+		for _, p := range m.history {
+			if p.StepIndex == e.ParentStepIdx && len(p.ToolCalls) > 0 {
+				return cleanToolDisplay(p.ToolCalls[0].ToolName)
+			}
+		}
+	}
+
+	for i := len(m.history) - 1; i >= 0; i-- {
+		p := m.history[i]
+		if p.StepIndex < e.StepIndex && (p.Type == core.StepTypeToolCall || len(p.ToolCalls) > 0) {
+			if len(p.ToolCalls) > 0 {
+				return cleanToolDisplay(p.ToolCalls[0].ToolName)
+			}
+			break
+		}
+	}
+
+	return "OUTPUT"
+}
+
+func cleanToolDisplay(t string) string {
+	switch t {
+	case "run_command":
+		return "run_cmd"
+	case "replace_file_content", "write_to_file":
+		return "edit_file"
+	case "view_file":
+		return "view_file"
+	case "grep_search", "find_by_name":
+		return "search"
+	case "list_dir":
+		return "list_dir"
+	case "ask_question":
+		return "ask_user"
+	default:
+		if len(t) > 9 {
+			return t[:9]
+		}
+		return t
+	}
 }
 
