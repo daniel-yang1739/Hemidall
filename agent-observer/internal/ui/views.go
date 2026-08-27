@@ -416,11 +416,11 @@ func (m Model) renderDashboardView() string {
 
 	panel0Box := PanelStyle.Width(panelInnerWidth).Render(p0.String())
 
-	// ==================== PANEL 1: LATEST STEP TELEMETRY & 5-DIMENSION CONTEXT ====================
+	// ==================== PANEL 1: TRACK 1: OFFICIAL CLOUD TELEMETRY ====================
 	var p1 strings.Builder
-	p1Title := "TRACK 1: OFFICIAL TELEMETRY & STEP CONTEXT ANATOMY"
+	p1Title := "TRACK 1: OFFICIAL CLOUD TELEMETRY"
 	if isPlayback {
-		p1Title = fmt.Sprintf("TRACK 1: OFFICIAL TELEMETRY %s",
+		p1Title = fmt.Sprintf("TRACK 1: OFFICIAL CLOUD TELEMETRY %s",
 			lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("(PLAYBACK: Step #%d | %d of %d)", e.StepIndex, m.dashboardIdx+1, len(m.history))))
 	}
 	p1.WriteString(TitleStyle.Render(p1Title) + "\n")
@@ -435,48 +435,67 @@ func (m Model) renderDashboardView() string {
 		timeStr = "N/A"
 	}
 
-	if contentWidth < 75 {
-		// Ultra-Compact layout for Narrow Laptop Splits (< 75 cols)
-		p1.WriteString(fmt.Sprintf("  • Model  : %s (Step #%03d)\n",
-			lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(modelName, contentWidth-20)), e.StepIndex))
-		p1.WriteString(fmt.Sprintf("  • Context: %s Tok (%4.1f%% of %dk)\n",
-			lipgloss.NewStyle().Bold(true).Render(formatTokShort(total)), ctxUsagePct, ctxLimit/1000))
-		p1.WriteString(fmt.Sprintf("  • Cache  : %s\n", cacheBadge))
-		p1.WriteString(fmt.Sprintf("  • Status : %s | %s\n", e.Status, timeStr))
-		p1.WriteString(fmt.Sprintf("  • Anatomy: Sys: %s (%.1f%%) | Tools: %s (%.1f%%)\n",
-			formatTokShort(t.SystemTokens), sysPct, formatTokShort(t.ToolsDefTokens), toolsPct))
-		p1.WriteString(fmt.Sprintf("             Res: %s (%.1f%%) | Hist: %s (%.1f%%) | Act: %s (%.1f%%)",
-			formatTokShort(t.ToolResultTokens), resPct, formatTokShort(t.HistoryTokens), histPct, formatTokShort(t.ActiveTurnTokens+t.ThinkingTokens), activePct))
-	} else if contentWidth < 100 {
-		// Responsive clean layout for Medium Terminals (75 <= cols < 100)
-		p1.WriteString(fmt.Sprintf("  • Backend Model   : %s  (Step #%03d)\n",
-			lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(modelName, 26)), e.StepIndex))
-		p1.WriteString(fmt.Sprintf("  • Active Context  : %s Tok (%4.1f%% of %dk) %s\n",
+	if contentWidth < 80 {
+		p1.WriteString(fmt.Sprintf("  • Backend Model  : %s (Step #%03d)\n",
+			lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(modelName, contentWidth-24)), e.StepIndex))
+		p1.WriteString(fmt.Sprintf("  • Active Context : %s Tok (%4.1f%% of %dk Window) %s\n",
 			lipgloss.NewStyle().Bold(true).Render(formatTokShort(total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
-		p1.WriteString(fmt.Sprintf("  • Status & Time   : %s | %s\n",
-			e.Status, timeStr))
-		p1.WriteString(fmt.Sprintf("  • Context Anatomy : Sys: %s (%.1f%%) | Tools: %s (%.1f%%) | Res: %s (%.1f%%)\n",
-			formatTokShort(t.SystemTokens), sysPct, formatTokShort(t.ToolsDefTokens), toolsPct, formatTokShort(t.ToolResultTokens), resPct))
-		p1.WriteString(fmt.Sprintf("                      Hist: %s (%.1f%%) | Act: %s (%.1f%%)",
-			formatTokShort(t.HistoryTokens), histPct, formatTokShort(t.ActiveTurnTokens+t.ThinkingTokens), activePct))
+		p1.WriteString(fmt.Sprintf("  • Cached vs. New : %s Cached (%.1f%%) | %s New\n",
+			formatTokShort(t.CachedTokens), t.CacheHitRate, formatTokShort(t.NewTokens)))
+		p1.WriteString(fmt.Sprintf("  • Status & Time  : Status: %s | %s", e.Status, timeStr))
 	} else {
-		// Single-line layout for Wide Terminals (>= 100 cols)
-		p1.WriteString(fmt.Sprintf("  • Backend Model         : %s  (Step #%03d | Status: %s | %s)\n",
+		p1.WriteString(fmt.Sprintf("  • Backend Model        : %s  (Step #%03d | Status: %s | %s)\n",
 			lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName), e.StepIndex, e.Status, timeStr))
-		p1.WriteString(fmt.Sprintf("  • Step Active Context   : %s Tokens (%5.1f%% of %dk Window)  %s\n",
+		p1.WriteString(fmt.Sprintf("  • Step Active Context  : %s Tokens (%5.1f%% of %dk Window)  %s\n",
 			lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
-		p1.WriteString(fmt.Sprintf("  • 5-Dimension Breakdown : Sys: %s (%.1f%%) | Tools: %s (%.1f%%) | Res: %s (%.1f%%) | Hist: %s (%.1f%%) | Act: %s (%.1f%%)",
-			formatTokShort(t.SystemTokens), sysPct, formatTokShort(t.ToolsDefTokens), toolsPct, formatTokShort(t.ToolResultTokens), resPct, formatTokShort(t.HistoryTokens), histPct, formatTokShort(t.ActiveTurnTokens+t.ThinkingTokens), activePct))
+		p1.WriteString(fmt.Sprintf("  • Cache Optimization   : %s Tokens Cached (%.1f%% Hit) | %s Tokens Uncached New (%.1f%% Cold)",
+			formatTokShort(t.CachedTokens), t.CacheHitRate, formatTokShort(t.NewTokens), 100.0-t.CacheHitRate))
 	}
 
 	panel1Box := PanelStyle.Width(panelInnerWidth).Render(p1.String())
 
-	// Responsive vertical layout
-	if m.height >= 35 && len(m.history) > 0 {
+	// ==================== PANEL 2: TRACK 2: LOCAL 5-DIMENSION CONTEXT ANATOMY ====================
+	var p2 strings.Builder
+	p2Title := "TRACK 2: LOCAL 5-DIMENSION CONTEXT ANATOMY (PAYLOAD ANALYSIS)"
+	p2.WriteString(TitleStyle.Render(p2Title) + "\n")
+
+	barBlocks := 12
+	if contentWidth < 70 {
+		barBlocks = 8
+	}
+
+	if contentWidth < 80 {
+		p2.WriteString(fmt.Sprintf("  1. System Prompt : %-6s (%4.1f%%) [%s]\n",
+			formatTokShort(t.SystemTokens), sysPct, renderColorBar(sysPct, barBlocks, ColorSecondary)))
+		p2.WriteString(fmt.Sprintf("  2. Tools Schema  : %-6s (%4.1f%%) [%s]\n",
+			formatTokShort(t.ToolsDefTokens), toolsPct, renderColorBar(toolsPct, barBlocks, ColorSecondary)))
+		p2.WriteString(fmt.Sprintf("  3. Tool Results  : %-6s (%4.1f%%) [%s]\n",
+			formatTokShort(t.ToolResultTokens), resPct, renderColorBar(resPct, barBlocks, ColorHighlight)))
+		p2.WriteString(fmt.Sprintf("  4. History Turns : %-6s (%4.1f%%) [%s]\n",
+			formatTokShort(t.HistoryTokens), histPct, renderColorBar(histPct, barBlocks, ColorPrimary)))
+		p2.WriteString(fmt.Sprintf("  5. Active / CoT  : %-6s (%4.1f%%) [%s]",
+			formatTokShort(t.ActiveTurnTokens+t.ThinkingTokens), activePct, renderColorBar(activePct, barBlocks, ColorWarning)))
+	} else {
+		p2.WriteString(fmt.Sprintf("  1. System Instruction : %-8s Tokens (%5.1f%%)  [%s]\n",
+			formatTokShort(t.SystemTokens), sysPct, renderColorBar(sysPct, 15, ColorSecondary)))
+		p2.WriteString(fmt.Sprintf("  2. MCP Tools Schema   : %-8s Tokens (%5.1f%%)  [%s]\n",
+			formatTokShort(t.ToolsDefTokens), toolsPct, renderColorBar(toolsPct, 15, ColorSecondary)))
+		p2.WriteString(fmt.Sprintf("  3. Tool Results / Diff: %-8s Tokens (%5.1f%%)  [%s]\n",
+			formatTokShort(t.ToolResultTokens), resPct, renderColorBar(resPct, 15, ColorHighlight)))
+		p2.WriteString(fmt.Sprintf("  4. Conversation Hist  : %-8s Tokens (%5.1f%%)  [%s]\n",
+			formatTokShort(t.HistoryTokens), histPct, renderColorBar(histPct, 15, ColorPrimary)))
+		p2.WriteString(fmt.Sprintf("  5. Active Turn / CoT  : %-8s Tokens (%5.1f%%)  [%s]",
+			formatTokShort(t.ActiveTurnTokens+t.ThinkingTokens), activePct, renderColorBar(activePct, 15, ColorWarning)))
+	}
+
+	panel2Box := PanelStyle.Width(panelInnerWidth).Render(p2.String())
+
+	// Responsive vertical layout: include Panel 3 if height allows
+	if m.height >= 38 && len(m.history) > 0 {
 		var p3Lines []string
 		p3Lines = append(p3Lines, TitleStyle.Render("RECENT LIVE EVENTS (Press [Enter] or [2] to inspect history)"))
 
-		maxEventLines := 5
+		maxEventLines := 4
 		startIdx := len(m.history) - maxEventLines
 		if startIdx < 0 {
 			startIdx = 0
@@ -489,10 +508,10 @@ func (m Model) renderDashboardView() string {
 			p3Lines = append(p3Lines, truncateVisualWidth(eventLine, contentWidth))
 		}
 		panel3Box := PanelStyle.Width(panelInnerWidth).Render(strings.Join(p3Lines, "\n"))
-		return lipgloss.JoinVertical(lipgloss.Left, panel0Box, panel1Box, panel3Box)
+		return lipgloss.JoinVertical(lipgloss.Left, panel0Box, panel1Box, panel2Box, panel3Box)
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, panel0Box, panel1Box)
+	return lipgloss.JoinVertical(lipgloss.Left, panel0Box, panel1Box, panel2Box)
 }
 
 func (m Model) renderHistoryView() string {
