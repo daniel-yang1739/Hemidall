@@ -448,12 +448,33 @@ func TestHistoryParentChildNavigationPN(t *testing.T) {
 		t.Fatalf("Expected jump to Step 4 after 'n', got Step %d", ev.StepIndex)
 	}
 
-	// 4. On Step 4 (Model Response consuming Step 3), press 'n' -> Should jump to Consumed Step 3
+	// 5. Test that 'p' and 'n' work in FocusList as well
+	m.focusPane = FocusList
+	m.selectedIdx = 1 // Step 3
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
+	m = updated.(Model)
+	ev, ok = m.getSelectedEvent()
+	if !ok || ev.StepIndex != 2 {
+		t.Fatalf("Expected jump to Step 2 after 'p' in FocusList, got Step %d", ev.StepIndex)
+	}
+
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	m = updated.(Model)
 	ev, ok = m.getSelectedEvent()
 	if !ok || ev.StepIndex != 3 {
-		t.Fatalf("Expected jump to Consumed Step 3 after 'n', got Step %d", ev.StepIndex)
+		t.Fatalf("Expected jump to Step 3 after 'n' in FocusList, got Step %d", ev.StepIndex)
+	}
+
+	// 6. Test that GENERIC steps render with '└── ' and '(Local)' in History View
+	m.history = append(m.history, core.UnifiedAgentEvent{
+		StepIndex: 5,
+		Type:      core.StepTypeGeneric,
+		Scope:     core.ScopeLocalExecution,
+		Summary:   "Generic output",
+	})
+	rendered := m.renderHistoryView()
+	if !strings.Contains(rendered, "└──") {
+		t.Fatalf("Expected '└──' in rendered history view, got:\n%s", rendered)
 	}
 }
 

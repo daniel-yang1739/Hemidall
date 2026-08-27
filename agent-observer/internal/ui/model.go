@@ -364,6 +364,41 @@ func (m *Model) jumpToStep(targetStepIdx int) bool {
 	return false
 }
 
+func (m *Model) jumpToParent(curr core.UnifiedAgentEvent) bool {
+	if curr.ParentStepIdx > 0 {
+		return m.jumpToStep(curr.ParentStepIdx)
+	}
+	for i := len(m.history) - 1; i >= 0; i-- {
+		if m.history[i].StepIndex < curr.StepIndex && (m.history[i].Type == core.StepTypeToolCall || m.history[i].Type == core.StepTypeUserInput) {
+			return m.jumpToStep(m.history[i].StepIndex)
+		}
+	}
+	return false
+}
+
+func (m *Model) jumpToChildOrNext(curr core.UnifiedAgentEvent) bool {
+	if len(curr.ConsumedStepIndices) > 0 {
+		return m.jumpToStep(curr.ConsumedStepIndices[0])
+	}
+	if curr.PackagedInStepIdx > 0 {
+		return m.jumpToStep(curr.PackagedInStepIdx)
+	}
+	for _, e := range m.history {
+		if e.ParentStepIdx == curr.StepIndex {
+			return m.jumpToStep(e.StepIndex)
+		}
+	}
+	if curr.Type == core.StepTypeToolCall {
+		return m.jumpToStep(curr.StepIndex + 1)
+	}
+	for _, e := range m.history {
+		if e.StepIndex > curr.StepIndex && (e.Type == core.StepTypeToolCall || e.Type == core.StepTypeModelResponse) {
+			return m.jumpToStep(e.StepIndex)
+		}
+	}
+	return false
+}
+
 func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) []string {
 	if maxWidth <= 10 {
 		maxWidth = 60
@@ -499,9 +534,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.latestEvent = event
 		m.eventCount++
 		m.lastActivity = time.Now()
-
 		wasAtLatestDashboard := (m.dashboardIdx == len(m.history)-1 || len(m.history) == 0)
 		isInspectingPastStep := (m.activeView == ViewHistory && (m.selectedIdx > 0 || m.focusPane == FocusDetail))
+
+		// If this is a cloud step consuming previous local steps, update their PackagedInStepIdx in m.history!
+		if len(event.ConsumedStepIndices) > 0 {
+			for _, childIdx := range event.ConsumedStepIndices {
+				for hIdx := len(m.history) - 1; hIdx >= 0; hIdx-- {
+					if m.history[hIdx].StepIndex == childIdx {
+						m.history[hIdx].PackagedInStepIdx = event.StepIndex
+						break
+					}
+				}
+			}
+		}
 
 		m.history = append(m.history, event)
 
@@ -1099,21 +1145,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.detailScroll = maxScroll
 				}
 			case "p":
-				if m.focusPane == FocusDetail {
-					if curr, ok := m.getSelectedEvent(); ok && curr.ParentStepIdx > 0 {
-						m.jumpToStep(curr.ParentStepIdx)
-					}
+				if curr, ok := m.getSelectedEvent(); ok {
+					m.jumpToParent(curr)
 				}
+				return m, nil
 			case "n":
-				if m.focusPane == FocusDetail {
-					if curr, ok := m.getSelectedEvent(); ok {
-						if len(curr.ConsumedStepIndices) > 0 {
-							m.jumpToStep(curr.ConsumedStepIndices[0])
-						} else if curr.PackagedInStepIdx > 0 {
-							m.jumpToStep(curr.PackagedInStepIdx)
-						}
-					}
+				if curr, ok := m.getSelectedEvent(); ok {
+					m.jumpToChildOrNext(curr)
 				}
+				return m, nil
 			}
 		}
 	}
@@ -1237,11 +1277,16 @@ func (m Model) renderFooter() string {
 			hints = fmt.Sprintf(" %s Yank  %s Move  %s Cancel",
 				KeyStyle.Render("[y]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Esc]"))
 		} else if m.focusPane == FocusList {
-			hints = fmt.Sprintf(" %s Type  %s Cache  %s Step #  %s Focus  %s Cycle  %s Shortcuts  %s Quit",
-				KeyStyle.Render("[t]"), KeyStyle.Render("[c]"), KeyStyle.Render("[/]"), KeyStyle.Render("[l]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"), KeyStyle.Render("[q]"))
+			if m.width < 90 {
+				hints = fmt.Sprintf(" %s Parent  %s Child  %s Focus  %s Type  %s Cache  %s Shortcuts  %s Quit",
+					KeyStyle.Render("[p]"), KeyStyle.Render("[n]"), KeyStyle.Render("[l]"), KeyStyle.Render("[t]"), KeyStyle.Render("[c]"), KeyStyle.Render("[?]"), KeyStyle.Render("[q]"))
+			} else {
+				hints = fmt.Sprintf(" %s Parent  %s Child  %s Focus  %s Step #  %s Type  %s Cache  %s Shortcuts  %s Quit",
+					KeyStyle.Render("[p]"), KeyStyle.Render("[n]"), KeyStyle.Render("[l]"), KeyStyle.Render("[/]"), KeyStyle.Render("[t]"), KeyStyle.Render("[c]"), KeyStyle.Render("[?]"), KeyStyle.Render("[q]"))
+			}
 		} else {
-			hints = fmt.Sprintf(" %s Parent  %s Child  %s List  %s Visual  %s Scroll  %s Cycle  %s ?",
-				KeyStyle.Render("[p]"), KeyStyle.Render("[n]"), KeyStyle.Render("[h/Esc]"), KeyStyle.Render("[v]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"))
+			hints = fmt.Sprintf(" %s Parent  %s Child  %s List  %s Visual  %s Scroll  %s Cycle  %s Shortcuts  %s Quit",
+				KeyStyle.Render("[p]"), KeyStyle.Render("[n]"), KeyStyle.Render("[h/Esc]"), KeyStyle.Render("[v]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"), KeyStyle.Render("[q]"))
 		}
 	} else {
 		if len(m.history) > 0 {

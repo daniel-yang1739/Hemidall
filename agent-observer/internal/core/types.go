@@ -18,6 +18,8 @@ const (
 	StepTypeCodeAction    StepType = "CODE_ACTION"
 	StepTypeListDirectory StepType = "LIST_DIRECTORY"
 	StepTypeAskQuestion   StepType = "ASK_QUESTION"
+	StepTypeGeneric       StepType = "GENERIC"
+	StepTypeError         StepType = "ERROR_MESSAGE"
 	StepTypeUnknown       StepType = "UNKNOWN"
 )
 
@@ -102,7 +104,9 @@ func (e UnifiedAgentEvent) IsLocalStep() bool {
 		e.Type == StepTypeCodeAction ||
 		e.Type == StepTypeListDirectory ||
 		e.Type == StepTypeToolResult ||
-		e.Type == StepTypeAskQuestion
+		e.Type == StepTypeAskQuestion ||
+		e.Type == StepTypeGeneric ||
+		e.Type == StepTypeError
 }
 
 // IsCloudStep returns true if the step is a remote LLM generation / decision turn

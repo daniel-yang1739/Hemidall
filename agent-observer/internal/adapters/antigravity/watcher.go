@@ -223,6 +223,14 @@ func (w *Watcher) parseLine(line string) (core.UnifiedAgentEvent, error) {
 	case "ASK_QUESTION":
 		stepType = core.StepTypeAskQuestion
 		summary = fmt.Sprintf("❓ Interactive Question: %s", truncate(raw.Content, 50))
+	case "GENERIC":
+		stepType = core.StepTypeGeneric
+		clean := strings.TrimSpace(raw.Content)
+		summary = fmt.Sprintf("💻 Output: %s", truncate(clean, 50))
+	case "ERROR_MESSAGE":
+		stepType = core.StepTypeError
+		clean := strings.TrimSpace(raw.Content)
+		summary = fmt.Sprintf("❌ Error: %s", truncate(clean, 50))
 	default:
 		stepType = core.StepType(raw.Type)
 		summary = fmt.Sprintf("⚙️  %s (%s)", raw.Type, raw.Source)

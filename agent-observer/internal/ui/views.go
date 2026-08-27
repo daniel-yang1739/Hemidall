@@ -254,8 +254,12 @@ func (m Model) renderHistoryView() string {
 			var cardLine2 string
 
 			if isLocal {
-				localBadge := lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)")
-				cardLine1 = fmt.Sprintf("%s└── %s %s %s", prefix, typeBadge, timeStr, localBadge)
+				cardLine1 = fmt.Sprintf("%s└── %s %s", prefix, typeBadge, timeStr)
+				if listContentWidth >= 34 {
+					cardLine1 += " " + lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)")
+				} else {
+					cardLine1 += " " + lipgloss.NewStyle().Foreground(ColorSuccess).Render("💻")
+				}
 				summaryText := e.Summary
 				if summaryText == "" {
 					summaryText = "(empty content)"
@@ -444,7 +448,14 @@ func shortenType(t string) string {
 		return "CODE"
 	case "LIST_DIRECTORY":
 		return "DIR"
+	case "GENERIC":
+		return "OUT"
+	case "ERROR_MESSAGE":
+		return "ERR"
 	default:
+		if len(t) > 5 {
+			return t[:5]
+		}
 		return t
 	}
 }
