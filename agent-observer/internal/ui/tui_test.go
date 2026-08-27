@@ -448,8 +448,8 @@ func TestHistoryTreeAndDistinctiveLabels(t *testing.T) {
 	if !strings.Contains(rendered, "Tool: run_cmd") {
 		t.Fatalf("Expected 'Tool: run_cmd' in rendered history view, got:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, "(Local)") {
-		t.Fatalf("Expected '(Local)' badge in rendered history view, got:\n%s", rendered)
+	if !strings.Contains(rendered, "💻 OUTPUT") {
+		t.Fatalf("Expected '💻 OUTPUT' badge in rendered history view, got:\n%s", rendered)
 	}
 }
 

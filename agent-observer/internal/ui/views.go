@@ -1179,21 +1179,17 @@ func (m Model) formatHistoryCard(
 			}
 		}
 	} else if isLocal {
-		badge := lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)")
 		tag := "💻 OUTPUT"
 		if e.Status == "BLOCKED" {
-			badge = lipgloss.NewStyle().Foreground(ColorDanger).Render("(Blocked)")
-			tag = "🛡️ BLOCKED"
+			tag = lipgloss.NewStyle().Foreground(ColorDanger).Render("🛡️ BLOCKED")
 		} else if e.IsSubagent || e.GetAgentRole() == "SUBAGENT" {
-			badge = lipgloss.NewStyle().Foreground(ColorSecondary).Render("(Subagent)")
-			tag = "👥 SUBAGENT"
+			tag = lipgloss.NewStyle().Foreground(ColorSecondary).Render("👥 SUBAGENT")
 		} else if e.Source == "SYSTEM" || e.GetAgentRole() == "INTERNAL" {
-			badge = lipgloss.NewStyle().Foreground(ColorMuted).Render("(Internal)")
-			tag = "⚙️ INTERNAL"
+			tag = lipgloss.NewStyle().Foreground(ColorMuted).Render("⚙️ INTERNAL")
 		}
 
 		if toolName != "" && toolName != "OUTPUT" {
-			text1 := fmt.Sprintf("[%04d] %s %s", e.StepIndex, tag, badge)
+			text1 := fmt.Sprintf("[%04d] %s", e.StepIndex, tag)
 			text2 := "  Tool: " + toolName
 
 			if isSelected && m.focusPane == FocusList {
@@ -1208,7 +1204,7 @@ func (m Model) formatHistoryCard(
 			if isLocalInside {
 				connChar = "└"
 			}
-			text1 := fmt.Sprintf("[%04d] %s %s", e.StepIndex, tag, badge)
+			text1 := fmt.Sprintf("[%04d] %s", e.StepIndex, tag)
 
 			if isSelected && m.focusPane == FocusList {
 				cardLine1 = headerStyle.Render(truncateVisualWidth(prefix+connChar+text1, maxWidth))
