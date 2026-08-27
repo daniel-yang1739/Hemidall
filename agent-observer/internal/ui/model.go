@@ -215,7 +215,11 @@ func matchCacheFilter(e core.UnifiedAgentEvent, filter CacheFilter) bool {
 	case CacheFilterExpired:
 		return e.CacheStatus == "EXPIRED" || e.CacheStatus == "TTL_EXPIRED"
 	case CacheFilterMiss:
-		return e.CacheStatus == "MISS" || (e.StepIndex > 0 && e.Tokens.CachedTokens == 0 && e.Tokens.NewTokens > 0)
+		// Local execution steps are offline operations (not LLM inference calls), NEVER a cache miss!
+		if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
+			return false
+		}
+		return e.CacheStatus == "MISS" || (e.Tokens.TotalTokens > 0 && e.Tokens.CachedTokens == 0 && e.Tokens.NewTokens > 0 && e.CacheStatus != "WRITE")
 	}
 	return true
 }

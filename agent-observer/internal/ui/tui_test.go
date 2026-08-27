@@ -417,8 +417,8 @@ func TestHistoryTreeAndDistinctiveLabels(t *testing.T) {
 	if !strings.Contains(rendered, "└──") {
 		t.Fatalf("Expected '└──' tree connector in rendered history view, got:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, "run_command") {
-		t.Fatalf("Expected 'run_command' tool name in rendered history view, got:\n%s", rendered)
+	if !strings.Contains(rendered, "gemini-3.7-flash") {
+		t.Fatalf("Expected 'gemini-3.7-flash' model name on cloud step in rendered history view, got:\n%s", rendered)
 	}
 	if !strings.Contains(rendered, "(Local)") {
 		t.Fatalf("Expected '(Local)' badge in rendered history view, got:\n%s", rendered)

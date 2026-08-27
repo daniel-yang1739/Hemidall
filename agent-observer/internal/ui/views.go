@@ -151,12 +151,12 @@ func (m Model) renderDashboardView() string {
 }
 
 func (m Model) renderHistoryView() string {
-	leftOuterWidth := int(float64(m.width) * 0.38)
-	if leftOuterWidth < 36 {
-		leftOuterWidth = 36
+	leftOuterWidth := int(float64(m.width) * 0.35)
+	if leftOuterWidth < 34 {
+		leftOuterWidth = 34
 	}
-	if leftOuterWidth > 65 {
-		leftOuterWidth = 65
+	if leftOuterWidth > 50 {
+		leftOuterWidth = 50
 	}
 	rightOuterWidth := m.width - leftOuterWidth
 	if rightOuterWidth < 35 {
@@ -258,7 +258,6 @@ func (m Model) renderHistoryView() string {
 
 			if isLocal {
 				cardLine1 = fmt.Sprintf("%s└── [%04d] %s %s", prefix, e.StepIndex, typeStr, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
-				cardLine2 = "      " + e.Summary
 			} else {
 				cacheTag := formatShortCache(e)
 				if cacheTag != "" {
@@ -267,19 +266,14 @@ func (m Model) renderHistoryView() string {
 					cardLine1 = fmt.Sprintf("%s[%04d] %s", prefix, e.StepIndex, typeStr)
 				}
 
-				if e.Type == core.StepTypeToolCall && len(e.ToolCalls) > 0 {
-					if len(e.ToolCalls) == 1 {
-						cardLine2 = "  " + e.ToolCalls[0].ToolName
-					} else {
-						cardLine2 = fmt.Sprintf("  %s (+%d tools)", e.ToolCalls[0].ToolName, len(e.ToolCalls)-1)
-					}
-				} else {
-					cardLine2 = "  " + e.Summary
+				modelName := m.getStepModelName(e)
+				if modelName != "" {
+					cardLine2 = "  " + modelName
 				}
 			}
 
 			leftLines = append(leftLines, headerStyle.Render(truncateVisualWidth(cardLine1, listContentWidth)))
-			if strings.TrimSpace(cardLine2) != "" {
+			if cardLine2 != "" {
 				leftLines = append(leftLines, summaryStyle.Render(truncateVisualWidth(cardLine2, listContentWidth)))
 			}
 		}
@@ -510,5 +504,20 @@ func formatStepType(t string) string {
 	default:
 		return t
 	}
+}
+
+func (m Model) getStepModelName(e core.UnifiedAgentEvent) string {
+	if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution || e.Type == core.StepTypeUserInput {
+		return ""
+	}
+	model := e.Tokens.OfficialModel
+	if model == "" && (e.IsCloudStep() || e.Type == core.StepTypeToolCall || e.Type == core.StepTypeModelResponse) {
+		model = m.getSessionModelName()
+	}
+	if model == "" {
+		return ""
+	}
+	model = strings.TrimPrefix(model, "models/")
+	return model
 }
 
