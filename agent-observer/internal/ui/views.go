@@ -446,6 +446,10 @@ func (m Model) renderDashboardView() string {
 		if invokedModel == "" {
 			invokedModel = "Gemini 3.7 Flash"
 		}
+		toolName := m.getLocalToolName(e)
+		if toolName == "" {
+			toolName = string(e.Type)
+		}
 		packagedInfo := "Staged for Next Cloud Turn"
 		if e.PackagedInStepIdx > 0 {
 			packagedInfo = fmt.Sprintf("Billed in Cloud Turn #%04d ☁️", e.PackagedInStepIdx)
@@ -453,16 +457,22 @@ func (m Model) renderDashboardView() string {
 
 		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 		if contentWidth < 80 {
-			p1.WriteString(fmt.Sprintf("  • Origin / Role  : %s (%s | Step #%03d)\n", e.GetAgentRole(), e.Type, e.StepIndex))
+			p1.WriteString(fmt.Sprintf("  • Origin / Role  : %s (%s | Step #%03d)\n", e.GetAgentRole(), toolName, e.StepIndex))
 			p1.WriteString(fmt.Sprintf("  • Model & Size   : %s | %d Tok\n", truncateVisualWidth(invokedModel, contentWidth-20), total))
+			if e.ParentStepIdx > 0 {
+				p1.WriteString(fmt.Sprintf("  • Parent Turn    : Step #%04d (%s)\n", e.ParentStepIdx, truncateVisualWidth(invokedModel, contentWidth-25)))
+			}
 			p1.WriteString(fmt.Sprintf("  • Status & Bill  : %s | %s", e.Status, packagedInfo))
 		} else {
-			p1.WriteString(fmt.Sprintf("  • Origin / Role        : %s (%s | Step #%03d | Status: %s | %s)\n", e.GetAgentRole(), e.Type, e.StepIndex, e.Status, timeStr))
-			p1.WriteString(fmt.Sprintf("  • Model & Payload      : %s | %d Tokens (Tool Result Data)  %s\n", lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(invokedModel), total, cacheBadge))
+			p1.WriteString(fmt.Sprintf("  • Origin / Role        : %s (Tool Action: %s | Step #%04d | Status: %s | %s)\n", e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Render(toolName), e.StepIndex, e.Status, timeStr))
+			p1.WriteString(fmt.Sprintf("  • Model & Payload      : %s | %d Tokens (Tool Result Buffer)  %s\n", lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(invokedModel), total, cacheBadge))
+			if e.ParentStepIdx > 0 {
+				p1.WriteString(fmt.Sprintf("  • Invoking Parent      : Dispatched by Cloud Step #%04d (%s)\n", e.ParentStepIdx, invokedModel))
+			}
 			if e.Status == "BLOCKED" {
-				p1.WriteString("  • Action Status        : Blocked by System Permission Guard (0 GPU Tokens Billed) 🛡️")
+				p1.WriteString("  • Security Guardrail   : Blocked by System Permission Guard (0 GPU Tokens Billed) 🛡️")
 			} else {
-				p1.WriteString(fmt.Sprintf("  • Billing Attribution  : Local Offline Subprocess (0 GPU Tokens) ➔ %s", packagedInfo))
+				p1.WriteString(fmt.Sprintf("  • Billing Attribution  : Local Machine Subprocess (0 GPU Tokens) ➔ %s", packagedInfo))
 			}
 		}
 	} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
@@ -471,11 +481,18 @@ func (m Model) renderDashboardView() string {
 		if contentWidth < 80 {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role  : HUMAN CLIENT (Step #%03d)\n", e.StepIndex))
 			p1.WriteString(fmt.Sprintf("  • Prompt Payload : %d Tokens  %s\n", total, cacheBadge))
+			if e.PackagedInStepIdx > 0 {
+				p1.WriteString(fmt.Sprintf("  • Settlement     : Settled in Step #%04d ☁️\n", e.PackagedInStepIdx))
+			}
 			p1.WriteString(fmt.Sprintf("  • Status & Time  : %s | %s", e.Status, timeStr))
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role        : HUMAN CLIENT Intent (Step #%03d | Status: %s | %s)\n", e.StepIndex, e.Status, timeStr))
-			p1.WriteString(fmt.Sprintf("  • Prompt Payload : %d Tokens (Local Inbound Intent)  %s\n", total, cacheBadge))
-			p1.WriteString("  • Billing Status : Inbound Intent ➔ Settled on Next Cloud Inference Turn ☁️")
+			p1.WriteString(fmt.Sprintf("  • Prompt Payload       : %d Tokens (Natural Language Intent Buffer)  %s\n", total, cacheBadge))
+			if e.PackagedInStepIdx > 0 {
+				p1.WriteString(fmt.Sprintf("  • Inference Settlement : Ingested ➔ Settled & Billed in Cloud Step #%04d ☁️", e.PackagedInStepIdx))
+			} else {
+				p1.WriteString("  • Billing Status       : Inbound Intent ➔ Staged locally (Awaiting Next Cloud Inference Turn ⏳)")
+			}
 		}
 	} else if e.IsCompactionStep() || e.Scope == core.ScopeSystemCompaction {
 		p1Title := "TRACK 1: SYSTEM COMPACTION (CHECKPOINT)" + playbackSuffix
@@ -486,8 +503,8 @@ func (m Model) renderDashboardView() string {
 			p1.WriteString(fmt.Sprintf("  • Status & Time  : %s | %s", e.Status, timeStr))
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role        : %s Middleware (Sidecar Context GC | Step #%03d | Status: %s | %s)\n", e.GetAgentRole(), e.StepIndex, e.Status, timeStr))
-			p1.WriteString(fmt.Sprintf("  • Summary Size   : %d Tokens (Replaces ~200k+ Old Historical Tokens)  %s\n", total, cacheBadge))
-			p1.WriteString("  • Action Status  : Injected into Context ➔ Re-anchors Active Window Base for Next Turn")
+			p1.WriteString(fmt.Sprintf("  • Summary Size         : %d Tokens (Replaces ~200k+ Old Historical Tokens)  %s\n", total, cacheBadge))
+			p1.WriteString("  • Window Action        : Prepend Checkpoint ➔ Re-anchors Active Window Base for Next Turn 🔄")
 		}
 	} else {
 		p1Title := "TRACK 1: OFFICIAL CLOUD TELEMETRY" + playbackSuffix
@@ -500,6 +517,8 @@ func (m Model) renderDashboardView() string {
 		if modelName == "" {
 			modelName = "gemini-3.7-flash-high"
 		}
+		costUSD := float64(t.CachedTokens)*0.0375/1e6 + float64(t.NewTokens)*0.15/1e6
+		savedTok := int(float64(t.CachedTokens) * 0.75)
 
 		if contentWidth < 80 {
 			p1.WriteString(fmt.Sprintf("  • Agent / Model  : [%s] %s (Step #%03d)\n",
@@ -508,14 +527,23 @@ func (m Model) renderDashboardView() string {
 				lipgloss.NewStyle().Bold(true).Render(formatTokShort(total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
 			p1.WriteString(fmt.Sprintf("  • Cached vs. New : %s Cached (%.1f%%) | %s New\n",
 				formatTokShort(t.CachedTokens), t.CacheHitRate, formatTokShort(t.NewTokens)))
-			p1.WriteString(fmt.Sprintf("  • Status & Time  : Status: %s | %s", e.Status, timeStr))
+			p1.WriteString(fmt.Sprintf("  • Status & Cost  : ~$%.4f USD | Status: %s", costUSD, e.Status))
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Agent / Model        : [%s] %s  (Step #%03d | Status: %s | %s)\n",
 				e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName), e.StepIndex, e.Status, timeStr))
-			p1.WriteString(fmt.Sprintf("  • Step Active Context  : %s Tokens (%5.1f%% of %dk Window)  %s\n",
+			p1.WriteString(fmt.Sprintf("  • Active Context Window: %s Tokens (%5.1f%% of %dk Window)  %s\n",
 				lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
-			p1.WriteString(fmt.Sprintf("  • Cache Optimization   : %s Tokens Cached (%.1f%% Hit) | %s Tokens Uncached New (%.1f%% Cold)",
-				formatTokShort(t.CachedTokens), t.CacheHitRate, formatTokShort(t.NewTokens), 100.0-t.CacheHitRate))
+			p1.WriteString(fmt.Sprintf("  • Prefix Cache Savings : %s Tokens Cached (%.1f%% Hit) ➔ Net Saved ~%s Tok (75.0%% Discount)\n",
+				formatTokShort(t.CachedTokens), t.CacheHitRate, formatTokShort(savedTok)))
+			p1.WriteString(fmt.Sprintf("  • Uncached & Financial : %s New Tokens (Prefill) | Turn Cost: ~$%.4f USD (NT$ %.2f)",
+				formatTokShort(t.NewTokens), costUSD, costUSD*32.0))
+			if len(e.ConsumedStepIndices) > 0 {
+				var childStrs []string
+				for _, c := range e.ConsumedStepIndices {
+					childStrs = append(childStrs, fmt.Sprintf("#%04d", c))
+				}
+				p1.WriteString(fmt.Sprintf("\n  • Packaged Tool Inputs : Consumed Local Step %s", strings.Join(childStrs, ", ")))
+			}
 		}
 	}
 
