@@ -367,8 +367,8 @@ func (m Model) renderSessionSwitcherModal() string {
 
 	// 4. Modal Footer / Keybindings
 	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", contentWidth)))
-	footerHints := fmt.Sprintf(" %s Move  %s Attach  %s Switch Tab  %s Cancel",
-		KeyStyle.Render("[Ctrl+j/k, ↑/↓]"), KeyStyle.Render("[Enter]"), KeyStyle.Render("[Tab/Shift+Tab]"), KeyStyle.Render("[Esc]"))
+	footerHints := fmt.Sprintf(" %s Move  %s Attach  %s Cancel",
+		KeyStyle.Render("[Ctrl+j/k, ↑/↓]"), KeyStyle.Render("[Enter]"), KeyStyle.Render("[Esc]"))
 	contentLines = append(contentLines, lipgloss.NewStyle().MaxWidth(contentWidth).Render(footerHints))
 
 	modalBox := lipgloss.NewStyle().
