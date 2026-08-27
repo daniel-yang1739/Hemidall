@@ -24,60 +24,60 @@
 ---
 
 ### 🅰️ 方案 A：現代多欄 KPI 卡片方塊 ＋ 多模型明細表格（推薦）
-> **特點**：上方 5 顆大字號 KPI 圓角方塊（視覺衝擊力強，一目了然），下方搭配多模型成本明細表格。
+> **特點**：上方 5 顆大字號 KPI 圓角方塊（視覺衝擊力強，一目了然），下方搭配結構化的多模型 Token 效率明細表格。
 
 ```text
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ 📊 SESSION TOKEN AGGREGATES & MULTI-MODEL COST EFFICIENCY                                                            │
+│ 📊 SESSION TOKEN AGGREGATES & MULTI-MODEL EFFICIENCY                                                                 │
 │                                                                                                                      │
-│  ┌─ TOTAL PROCESSED ─┐  ┌─ CACHE HIT VOLUME ─┐  ┌─ UNCACHED INBOUND ─┐  ┌─ EFFECTIVE BILLED ─┐  ┌─ NET SAVINGS / ROI ┐ │
-│  │   2,450,120 Tok   │  │   2,210,000 Tok    │  │    240,120 Tok     │  │    792,620 Tok     │  │   1,657,500 Saved  │ │
-│  │   128 Cloud Turns │  │   90.2% Hit Rate   │  │    9.8% Cold       │  │    32.3% of Raw    │  │   67.7% OFF 💰     │ │
+│  ┌─ TOTAL PROCESSED ─┐  ┌─ CACHE HIT VOLUME ─┐  ┌─ UNCACHED INBOUND ─┐  ┌─ EFFECTIVE TOKENS ─┐  ┌─ TOKENS SAVED (%) ──┐ │
+│  │   2,450,120 Tok   │  │   2,210,000 Tok    │  │    240,120 Tok     │  │    792,620 Tok     │  │  1,657,500 Tok     │ │
+│  │   128 Cloud Turns │  │   90.2% Hit Rate   │  │    9.8% Cold       │  │    32.3% of Raw    │  │  67.7% Net Saved 🔥 │ │
 │  └───────────────────┘  └────────────────────┘  └────────────────────┘  └────────────────────┘  └────────────────────┘ │
 │                                                                                                                      │
-│  MODEL COST & SAVINGS BREAKDOWN:                                                                                     │
-│  Model Name                Turns   Processed     Cached (Hit %)       Uncached     Effective (Discount)   Net Saved  │
-│  gemini-3.7-flash-high       120   2,250,120   2,050,000 (91.1%)       200,120      712,620 (75% OFF)     1.54M (68%)│
-│  gemini-2.5-pro                8     200,000     160,000 (80.0%)        40,000       80,000 (75% OFF)      120k (60%)│
+│  MULTI-MODEL TOKEN & SAVINGS BREAKDOWN:                                                                              │
+│  Model Name                Turns   Processed     Cached (Hit %)       Uncached     Effective (Factor)     Tokens Saved   │
+│  gemini-3.7-flash-high       120   2,250,120   2,050,000 (91.1%)       200,120      712,620 (0.25x)       1.54M (68.3%)  │
+│  gemini-2.5-pro                8     200,000     160,000 (80.0%)        40,000       80,000 (0.25x)        120k (60.0%)  │
 │  ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────── │
-│  TOTAL SUMMARY               128   2,450,120   2,210,000 (90.2%)       240,120      792,620 (75% OFF)     1.66M (68%)│
+│  TOTAL SUMMARY               128   2,450,120   2,210,000 (90.2%)       240,120      792,620 (0.25x)       1.66M (67.7%)  │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ---
 
-### 🅱️ 方案 B：緊湊網格表格 ＋ 內嵌快取比例量表（精簡緊湊）
-> **特點**：以一體化數據網格為主體，直接在表格內嵌入色彩量表（Green/Orange Bar），兼具緊湊度與專業感。
+### 🅱️ 方案 B：緊湊網格表格 ＋ 內嵌快取比例量表（極致緊湊）
+> **特點**：一體化專業數據網格，直接在表格內嵌入色彩量表（`[█████████░]`），純粹聚焦於 Token 數量與節省比例。
 
 ```text
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ 📊 TOKEN ECONOMICS & MULTI-MODEL BREAKDOWN                                                                           │
 │                                                                                                                      │
-│  MODEL / BACKEND           TURNS     PROCESSED       CACHED TOKENS       UNCACHED     EFFECTIVE BILLED   NET SAVINGS │
-│  gemini-3.7-flash-high       120     2.25M Tok    2.05M [█████████░] 91%    200k Tok     713k (0.25x)    1.54M (68%) │
-│  gemini-2.5-pro                8      200k Tok     160k [████████░░] 80%     40k Tok      80k (0.25x)     120k (60%) │
+│  MODEL / BACKEND           TURNS     PROCESSED       CACHED TOKENS       UNCACHED     EFFECTIVE TOKENS   TOKENS SAVED (%)│
+│  gemini-3.7-flash-high       120     2.25M Tok    2.05M [█████████░] 91%    200k Tok     713k (0.25x)      1.54M (68.3%) │
+│  gemini-2.5-pro                8      200k Tok     160k [████████░░] 80%     40k Tok      80k (0.25x)       120k (60.0%) │
 │  ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────── │
-│  TOTAL (ALL MODELS)          128     2.45M Tok    2.21M [█████████░] 90%    240k Tok     793k (0.25x)    1.66M (68%) │
+│  TOTAL (ALL MODELS)          128     2.45M Tok    2.21M [█████████░] 90%    240k Tok     793k (0.25x)      1.66M (67.7%) │
 │                                                                                                                      │
-│  💰 Financial Summary: 792.6k Effective Billed vs 2.45M Raw Context (67.7% Net Savings via Cloud Prompt Caching)     │
+│  ⚡ Token Savings Summary: 792.6k Effective Billed vs 2.45M Raw Context (1.66M Tokens Saved / 67.7% Net Reduction)   │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ---
 
-### 🅲 方案 C：雙欄財務看板（左側大字號財務總結 ＋ 右側模型明細矩陣）
-> **特點**：左側以獨立的高亮總覽框凸顯財務 ROI，右側展開多模型明細，適合寬螢幕掃描。
+### 🅲 方案 C：雙欄統計看板（左側高亮節省統計 ＋ 右側模型明細矩陣）
+> **特點**：左側以獨立的等效與節省統計方塊呈現，右側展開多模型明細，適合寬螢幕掃描。
 
 ```text
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ 📊 SESSION TOKEN ECONOMICS & MULTI-MODEL COST ANALYSIS                                                               │
+│ 📊 SESSION TOKEN METRICS & MULTI-MODEL COST ANALYSIS                                                                 │
 │                                                                                                                      │
-│  ┌─ OVERALL COST SAVINGS ─────────┐  MODEL BREAKDOWN MATRIX:                                                         │
-│  │  💰 67.7% Net Cost Saved       │  Model Name            Turns  Processed    Cached   Uncached  Effective (Disc) │
-│  │  • Raw Processed : 2.45M Tok   │  gemini-3.7-flash-high   120     2.25M      2.05M     200k      713k (75% OFF) │
-│  │  • Cached Volume : 2.21M (90%) │  gemini-2.5-pro            8      200k       160k      40k       80k (75% OFF) │
-│  │  • Effective Bill: 793k Tok    │  ─────────────────────────────────────────────────────────────────────────────── │
-│  │  • Net Saved     : 1.66M Tok   │  TOTAL (All Models)      128     2.45M      2.21M     240k      793k (68% SAVED│
+│  ┌─ TOTAL TOKENS SAVED ───────────┐  MODEL BREAKDOWN MATRIX:                                                         │
+│  │  ⚡ 1,657,500 Tokens Saved      │  Model Name            Turns  Processed    Cached   Uncached  Effective (Disc) │
+│  │  • Raw Processed : 2.45M Tok   │  gemini-3.7-flash-high   120     2.25M      2.05M     200k      713k (0.25x)   │
+│  │  • Cached Volume : 2.21M (90%) │  gemini-2.5-pro            8      200k       160k      40k       80k (0.25x)   │
+│  │  • Effective Tok : 793k Tok    │  ─────────────────────────────────────────────────────────────────────────────── │
+│  │  • Net Reduction : 67.7% Saved │  TOTAL (All Models)      128     2.45M      2.21M     240k      793k (68% SAVED) │
 │  └────────────────────────────────┘                                                                                  │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
