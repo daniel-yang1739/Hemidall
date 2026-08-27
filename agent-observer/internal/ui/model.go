@@ -333,6 +333,15 @@ func (m Model) getSelectedEvent() (core.UnifiedAgentEvent, bool) {
 	return filtered[realIdx], true
 }
 
+func (m Model) getSessionModelName() string {
+	for _, s := range m.availableSessions {
+		if s.SessionID == m.sessionID && s.ModelName != "" {
+			return s.ModelName
+		}
+	}
+	return "gemini-3.7-flash"
+}
+
 func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) []string {
 	if maxWidth <= 10 {
 		maxWidth = 60
@@ -340,8 +349,17 @@ func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) [
 	var lines []string
 	t := e.Tokens
 
+	modelName := t.OfficialModel
+	if modelName == "" {
+		if e.Type == core.StepTypeModelResponse || e.Type == core.StepTypeToolCall || e.Type == core.StepTypeUserInput {
+			modelName = m.getSessionModelName()
+		} else {
+			modelName = "n/a (Local Step)"
+		}
+	}
+
 	headerLine1 := fmt.Sprintf("• Step %03d (%s) at %s | Type: %s | Model: %s",
-		e.StepIndex, e.Status, e.Timestamp.Format("15:04:05"), e.Type, t.OfficialModel)
+		e.StepIndex, e.Status, e.Timestamp.Format("15:04:05"), e.Type, modelName)
 	lines = append(lines, wrapVisualLines(headerLine1, maxWidth)...)
 
 	headerLine2 := fmt.Sprintf("• Tokens: %d | Cached: %d (%.1f%%) | New: %d",
