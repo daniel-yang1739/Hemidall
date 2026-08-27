@@ -151,9 +151,12 @@ func (m Model) renderDashboardView() string {
 }
 
 func (m Model) renderHistoryView() string {
-	leftOuterWidth := int(float64(m.width) * 0.32)
-	if leftOuterWidth < 26 {
-		leftOuterWidth = 26
+	leftOuterWidth := int(float64(m.width) * 0.30)
+	if leftOuterWidth < 28 {
+		leftOuterWidth = 28
+	}
+	if leftOuterWidth > 34 {
+		leftOuterWidth = 34
 	}
 	rightOuterWidth := m.width - leftOuterWidth
 	if rightOuterWidth < 30 {
@@ -171,7 +174,9 @@ func (m Model) renderHistoryView() string {
 		innerRowsLimit = 4
 	}
 
-	// ==================== 1. Left Pane: Step List (2 Lines per Step Card) ====================
+	linesPerCard := m.getHistoryLinesPerCard()
+
+	// ==================== 1. Left Pane: Step List ====================
 	filtered := m.getFilteredHistory()
 	var leftLines []string
 
@@ -199,7 +204,12 @@ func (m Model) renderHistoryView() string {
 		cacheBadgeStr = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("[C:%s]", m.historyCacheFilter))
 	}
 
-	titleLine := fmt.Sprintf("%s %s %s", TitleStyle.Render(leftTitle), typeBadgeStr, cacheBadgeStr)
+	var titleLine string
+	if listContentWidth < 28 {
+		titleLine = fmt.Sprintf("%s %s%s", TitleStyle.Render(leftTitle), typeBadgeStr, cacheBadgeStr)
+	} else {
+		titleLine = fmt.Sprintf("%s %s %s", TitleStyle.Render(leftTitle), typeBadgeStr, cacheBadgeStr)
+	}
 	leftLines = append(leftLines, truncateVisualWidth(titleLine, listContentWidth))
 
 	if m.isHistorySearching || m.historyStepQuery != "" {
@@ -261,7 +271,12 @@ func (m Model) renderHistoryView() string {
 				}
 				cardLine2 = "      " + summaryText
 			} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
-				cardLine1 = fmt.Sprintf("%s%s %s %s", prefix, typeBadge, label, lipgloss.NewStyle().Foreground(ColorPrimary).Render("👤"))
+				cacheTag := formatShortCache(e)
+				if cacheTag != "" {
+					cardLine1 = fmt.Sprintf("%s%s %s %s", prefix, typeBadge, label, cacheTag)
+				} else {
+					cardLine1 = fmt.Sprintf("%s%s %s %s", prefix, typeBadge, label, lipgloss.NewStyle().Foreground(ColorPrimary).Render("👤"))
+				}
 				summaryText := e.Summary
 				if summaryText == "" {
 					summaryText = "(empty content)"
@@ -282,7 +297,9 @@ func (m Model) renderHistoryView() string {
 			}
 
 			leftLines = append(leftLines, headerStyle.Render(truncateVisualWidth(cardLine1, listContentWidth)))
-			leftLines = append(leftLines, summaryStyle.Render(truncateVisualWidth(cardLine2, listContentWidth)))
+			if linesPerCard == 2 {
+				leftLines = append(leftLines, summaryStyle.Render(truncateVisualWidth(cardLine2, listContentWidth)))
+			}
 		}
 
 		// Bottom indicator: only if there are older steps below (endIdx < len(filtered))
