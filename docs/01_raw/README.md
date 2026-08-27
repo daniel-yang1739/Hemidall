@@ -32,4 +32,5 @@
 * `2026-08-27_235000_cloud_telemetry_forensics_safety_classifier_and_usage_query_mechanics.md` (法醫取證：SQLite/Protobuf 本地儲存解碼、Safety Classifier 免費安檢機制、前綴快取物理推導與 /usage 遠端查詢架構)
 * `2026-08-27_235900_dashboard_cost_converter_and_currency_toggle_plan.md` (企劃書：Dashboard 即時金額換算、多模型計價矩陣與快捷鍵切換 $ 實裝企劃)
 * `2026-08-28_010600_subagent_token_economics_and_permission_blocked_mechanics.md` (架構研究：Subagent 上下文生命週期與 Token 經濟學 ＆ 權限邊界攔截 (BLOCKED) 機制)
+* `2026-08-28_011600_telemetry_ground_truth_vs_derived_metrics_and_agent_cache_forensics.md` (法醫取證：官方遙測真理 vs. 本地推導度量 ＆ Agent 快取力學全景解構)
 
