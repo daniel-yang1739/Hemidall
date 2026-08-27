@@ -21,14 +21,15 @@ type StepTokenRecord struct {
 
 // SessionContextState tracks cumulative context tokens and step history per session
 type SessionContextState struct {
-	SessionID       string
-	BaseSystem      int               // Baseline static system instructions (identity, rules, skills)
-	BaseToolsDef    int               // Baseline MCP Tools JSON Schema definitions
-	StepRecords     []StepTokenRecord // Historical log of all steps for reverse sliding window extraction
-	HasInitialized  bool              // Indicates if the initial cache write turn has completed
-	PrevTotalTokens int               // Previous turn's total context tokens (LCP comparison baseline)
-	PrevModel       string            // Previous turn's model name to detect model switching
-	LastEventTime   time.Time         // Timestamp of previous turn to detect TTL expiration
+	SessionID         string
+	BaseSystem        int               // Baseline static system instructions (identity, rules, skills)
+	BaseToolsDef      int               // Baseline MCP Tools JSON Schema definitions
+	StepRecords       []StepTokenRecord // Historical log of all steps for reverse sliding window extraction
+	HasInitialized    bool              // Indicates if the initial cache write turn has completed
+	PrevTotalTokens   int               // Previous turn's total context tokens (LCP comparison baseline)
+	PrevModel         string            // Previous turn's model name to detect model switching
+	LastCloudTurnTime time.Time         // Timestamp of previous remote cloud turn to detect GPU KV-cache TTL expiration
+	LastEventTime     time.Time         // Timestamp of previous local/any event
 }
 
 // PayloadAnalyzer evaluates unified events and updates context state machine using reverse sliding window
@@ -204,8 +205,8 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 		event.Tokens.ThinkingTokens = 0
 
 		isTTLExpired := false
-		if !state.LastEventTime.IsZero() && !event.Timestamp.IsZero() {
-			if event.Timestamp.Sub(state.LastEventTime) > DefaultCacheTTL {
+		if !state.LastCloudTurnTime.IsZero() && !event.Timestamp.IsZero() {
+			if event.Timestamp.Sub(state.LastCloudTurnTime) > DefaultCacheTTL {
 				isTTLExpired = true
 			}
 		}
@@ -241,6 +242,9 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 		if event.Tokens.OfficialModel != "" {
 			state.PrevModel = event.Tokens.OfficialModel
 		}
+		if !event.Timestamp.IsZero() {
+			state.LastCloudTurnTime = event.Timestamp
+		}
 	} else {
 		// ==================== FALLBACK: INCREMENTAL SLIDING WINDOW ====================
 		event.Tokens.SystemTokens = state.BaseSystem
@@ -248,8 +252,8 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 		event.Tokens.ActiveTurnTokens = stepTokens
 
 		isTTLExpired := false
-		if !state.LastEventTime.IsZero() && !event.Timestamp.IsZero() {
-			if event.Timestamp.Sub(state.LastEventTime) > DefaultCacheTTL {
+		if !state.LastCloudTurnTime.IsZero() && !event.Timestamp.IsZero() {
+			if event.Timestamp.Sub(state.LastCloudTurnTime) > DefaultCacheTTL {
 				isTTLExpired = true
 			}
 		}
