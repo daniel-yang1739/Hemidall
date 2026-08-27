@@ -151,15 +151,235 @@ func (m Model) renderDashboardView() string {
 }
 
 func (m Model) renderHistoryView() string {
-	isNarrow := m.width < 100
+	if m.width < 100 {
+		return m.renderHistoryViewVertical()
+	}
+	return m.renderHistoryViewHorizontal()
+}
 
-	var leftOuterWidth int
-	if isNarrow {
-		leftOuterWidth = 24
-	} else {
-		leftOuterWidth = 38
+func (m Model) renderHistoryViewVertical() string {
+	bodyHeight := m.height - 2
+	if bodyHeight < 8 {
+		bodyHeight = 8
+	}
+	contentRows := bodyHeight - 4
+	if contentRows < 6 {
+		contentRows = 6
+	}
+	topRows := contentRows * 4 / 10
+	if topRows < 3 {
+		topRows = 3
+	}
+	bottomRows := contentRows - topRows
+	if bottomRows < 3 {
+		bottomRows = 3
 	}
 
+	boxInnerWidth := m.width - 2
+	contentWidth := boxInnerWidth - 2
+
+	// 1. Top Box: Step List
+	filtered := m.getFilteredHistory()
+	var topLines []string
+
+	countStr := fmt.Sprintf("%d/%d", len(filtered), len(m.history))
+	if len(filtered) == len(m.history) {
+		countStr = fmt.Sprintf("%d", len(m.history))
+	}
+	topTitle := fmt.Sprintf("STEPS (%s)", countStr)
+	if m.focusPane == FocusList {
+		topTitle = fmt.Sprintf("STEPS (%s) <", countStr)
+	}
+
+	var typeBadgeStr string
+	if m.historyTypeFilter == TypeFilterAll {
+		typeBadgeStr = lipgloss.NewStyle().Foreground(ColorMuted).Render("[T:All]")
+	} else {
+		typeBadgeStr = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("[T:%s]", m.historyTypeFilter))
+	}
+
+	var cacheBadgeStr string
+	if m.historyCacheFilter == CacheFilterAll {
+		cacheBadgeStr = lipgloss.NewStyle().Foreground(ColorMuted).Render("[C:All]")
+	} else {
+		cacheBadgeStr = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("[C:%s]", m.historyCacheFilter))
+	}
+
+	titleLine := fmt.Sprintf("%s %s %s", TitleStyle.Render(topTitle), typeBadgeStr, cacheBadgeStr)
+	topLines = append(topLines, truncateVisualWidth(titleLine, contentWidth))
+
+	if m.isHistorySearching || m.historyStepQuery != "" {
+		cursorChar := ""
+		if m.isHistorySearching {
+			cursorChar = "█"
+		}
+		filterBox := fmt.Sprintf("Filter: [#%s%s]", m.historyStepQuery, lipgloss.NewStyle().Foreground(ColorHighlight).Render(cursorChar))
+		topLines = append(topLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(truncateVisualWidth(filterBox, contentWidth)))
+		topLines = append(topLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", contentWidth)))
+	}
+
+	if len(filtered) == 0 {
+		topLines = append(topLines, truncateVisualWidth("  No matching steps...", contentWidth))
+		topLines = append(topLines, truncateVisualWidth("  Press [Esc] to reset", contentWidth))
+	} else {
+		maxCards := m.getHistoryVisibleCards()
+		endIdx := m.historyOffset + maxCards
+		if endIdx > len(filtered) {
+			endIdx = len(filtered)
+		}
+
+		if m.historyOffset > 0 {
+			topLines = append(topLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  ..."))
+		}
+
+		for i := m.historyOffset; i < endIdx; i++ {
+			realIdx := len(filtered) - 1 - i
+			e := filtered[realIdx]
+
+			prefix := "  "
+			headerStyle := DimRowStyle
+			summaryStyle := lipgloss.NewStyle().Foreground(ColorMuted)
+
+			if i == m.selectedIdx {
+				prefix = "> "
+				if m.focusPane == FocusList {
+					headerStyle = SelectedRowStyle
+					summaryStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorPrimary)
+				} else {
+					headerStyle = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary)
+					summaryStyle = lipgloss.NewStyle().Foreground(ColorLightText)
+				}
+			}
+
+			isLocal := e.IsLocalStep() || e.Scope == core.ScopeLocalExecution
+
+			var cardLine1 string
+			var cardLine2 string
+
+			if isLocal {
+				cardLine1 = fmt.Sprintf("%s└── [%04d] OUTPUT %s", prefix, e.StepIndex, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
+				toolName := m.getLocalToolName(e)
+				if toolName != "" && toolName != "OUTPUT" {
+					cardLine2 = "        Tool: " + toolName
+				}
+			} else {
+				typeStr := formatStepType(string(e.Type))
+				cacheTag := formatShortCache(e)
+				if cacheTag != "" {
+					cardLine1 = fmt.Sprintf("%s[%04d] %s %s", prefix, e.StepIndex, typeStr, cacheTag)
+				} else {
+					cardLine1 = fmt.Sprintf("%s[%04d] %s", prefix, e.StepIndex, typeStr)
+				}
+
+				modelName := m.getStepModelName(e)
+				if modelName != "" {
+					cardLine2 = "    Model: " + modelName
+				}
+			}
+
+			topLines = append(topLines, headerStyle.Render(truncateVisualWidth(cardLine1, contentWidth)))
+			if cardLine2 != "" {
+				topLines = append(topLines, summaryStyle.Render(truncateVisualWidth(cardLine2, contentWidth)))
+			}
+		}
+
+		if endIdx < len(filtered) && len(topLines) < topRows {
+			topLines = append(topLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  ..."))
+		}
+	}
+	for len(topLines) < topRows {
+		topLines = append(topLines, "")
+	}
+	if len(topLines) > topRows {
+		topLines = topLines[:topRows]
+	}
+
+	var topBox string
+	if m.focusPane == FocusList {
+		topBox = ActivePanelStyle.Width(boxInnerWidth).Render(strings.Join(topLines, "\n"))
+	} else {
+		topBox = PanelStyle.Width(boxInnerWidth).Render(strings.Join(topLines, "\n"))
+	}
+
+	// 2. Bottom Box: Selected Step Inspector
+	var bottomLines []string
+	bottomTitle := "STEP INSPECTOR"
+	if m.isVisualMode {
+		start := m.visualStart
+		end := m.visualCursor
+		if start > end {
+			start, end = end, start
+		}
+		bottomTitle = fmt.Sprintf("STEP INSPECTOR (VISUAL: %d lines | [y] Copy)", end-start+1)
+	} else if m.focusPane == FocusDetail {
+		bottomTitle = "STEP INSPECTOR < [Scroll: j/k, Ctrl+u/d, g/G]"
+	}
+	bottomLines = append(bottomLines, TitleStyle.Render(truncateVisualWidth(bottomTitle, contentWidth)))
+
+	selectedEvent, hasEvent := m.getSelectedEvent()
+	if hasEvent {
+		allInspectorLines := m.buildFullInspectorLines(selectedEvent, contentWidth)
+		totalInspectorLines := len(allInspectorLines)
+
+		availableLines := bottomRows - 1
+		if availableLines < 1 {
+			availableLines = 1
+		}
+
+		maxScroll := totalInspectorLines - availableLines
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		currentScroll := m.detailScroll
+		if currentScroll > maxScroll {
+			currentScroll = maxScroll
+		}
+
+		endLine := currentScroll + availableLines
+		if endLine > totalInspectorLines {
+			endLine = totalInspectorLines
+		}
+
+		vStart := m.visualStart
+		vEnd := m.visualCursor
+		if vStart > vEnd {
+			vStart, vEnd = vEnd, vStart
+		}
+
+		for i := currentScroll; i < endLine; i++ {
+			rawLine := allInspectorLines[i]
+			lineText := truncateVisualWidth(rawLine, contentWidth)
+			if m.isVisualMode && i >= vStart && i <= vEnd {
+				bottomLines = append(bottomLines, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorPrimary).Render(lineText))
+			} else {
+				bottomLines = append(bottomLines, lineText)
+			}
+		}
+	} else {
+		bottomLines = append(bottomLines, truncateVisualWidth("  Select a step above to inspect details.", contentWidth))
+	}
+
+	for len(bottomLines) < bottomRows {
+		bottomLines = append(bottomLines, "")
+	}
+	if len(bottomLines) > bottomRows {
+		bottomLines = bottomLines[:bottomRows]
+	}
+
+	var bottomBox string
+	if m.isVisualMode {
+		bottomBox = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(ColorHighlight).Padding(0, 1).Width(boxInnerWidth).Render(strings.Join(bottomLines, "\n"))
+	} else if m.focusPane == FocusDetail {
+		bottomBox = ActivePanelStyle.Width(boxInnerWidth).Render(strings.Join(bottomLines, "\n"))
+	} else {
+		bottomBox = PanelStyle.Width(boxInnerWidth).Render(strings.Join(bottomLines, "\n"))
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, topBox, bottomBox)
+}
+
+func (m Model) renderHistoryViewHorizontal() string {
+	leftOuterWidth := 38
 	rightOuterWidth := m.width - leftOuterWidth
 	if rightOuterWidth < 30 {
 		rightOuterWidth = 30
@@ -177,7 +397,7 @@ func (m Model) renderHistoryView() string {
 		innerRowsLimit = 4
 	}
 
-	// ==================== 1. Left Pane: Step List ====================
+	// 1. Left Pane: Step List
 	filtered := m.getFilteredHistory()
 	var leftLines []string
 
@@ -190,26 +410,22 @@ func (m Model) renderHistoryView() string {
 		leftTitle = fmt.Sprintf("STEPS (%s) <", countStr)
 	}
 
-	if isNarrow {
-		leftLines = append(leftLines, truncateVisualWidth(TitleStyle.Render(leftTitle), listContentWidth))
+	var typeBadgeStr string
+	if m.historyTypeFilter == TypeFilterAll {
+		typeBadgeStr = lipgloss.NewStyle().Foreground(ColorMuted).Render("[T:All]")
 	} else {
-		var typeBadgeStr string
-		if m.historyTypeFilter == TypeFilterAll {
-			typeBadgeStr = lipgloss.NewStyle().Foreground(ColorMuted).Render("[T:All]")
-		} else {
-			typeBadgeStr = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("[T:%s]", m.historyTypeFilter))
-		}
-
-		var cacheBadgeStr string
-		if m.historyCacheFilter == CacheFilterAll {
-			cacheBadgeStr = lipgloss.NewStyle().Foreground(ColorMuted).Render("[C:All]")
-		} else {
-			cacheBadgeStr = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("[C:%s]", m.historyCacheFilter))
-		}
-
-		titleLine := fmt.Sprintf("%s %s %s", TitleStyle.Render(leftTitle), typeBadgeStr, cacheBadgeStr)
-		leftLines = append(leftLines, truncateVisualWidth(titleLine, listContentWidth))
+		typeBadgeStr = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("[T:%s]", m.historyTypeFilter))
 	}
+
+	var cacheBadgeStr string
+	if m.historyCacheFilter == CacheFilterAll {
+		cacheBadgeStr = lipgloss.NewStyle().Foreground(ColorMuted).Render("[C:All]")
+	} else {
+		cacheBadgeStr = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("[C:%s]", m.historyCacheFilter))
+	}
+
+	titleLine := fmt.Sprintf("%s %s %s", TitleStyle.Render(leftTitle), typeBadgeStr, cacheBadgeStr)
+	leftLines = append(leftLines, truncateVisualWidth(titleLine, listContentWidth))
 
 	if m.isHistorySearching || m.historyStepQuery != "" {
 		cursorChar := ""
@@ -231,7 +447,6 @@ func (m Model) renderHistoryView() string {
 			endIdx = len(filtered)
 		}
 
-		// Top indicator: only if there are newer steps above (m.historyOffset > 0)
 		if m.historyOffset > 0 {
 			leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  ..."))
 		}
@@ -260,38 +475,24 @@ func (m Model) renderHistoryView() string {
 			var cardLine1 string
 			var cardLine2 string
 
-			if isNarrow {
-				if isLocal {
-					cardLine1 = fmt.Sprintf("%s└── [%04d] OUTPUT", prefix, e.StepIndex)
-					cardLine2 = "      " + lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)")
-				} else {
-					typeStr := formatStepType(string(e.Type))
-					cardLine1 = fmt.Sprintf("%s[%04d] %s", prefix, e.StepIndex, typeStr)
-					cacheTag := formatShortCache(e)
-					if cacheTag != "" {
-						cardLine2 = "  " + cacheTag
-					}
+			if isLocal {
+				cardLine1 = fmt.Sprintf("%s└── [%04d] OUTPUT %s", prefix, e.StepIndex, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
+				toolName := m.getLocalToolName(e)
+				if toolName != "" && toolName != "OUTPUT" {
+					cardLine2 = "        Tool: " + toolName
 				}
 			} else {
-				if isLocal {
-					cardLine1 = fmt.Sprintf("%s└── [%04d] OUTPUT %s", prefix, e.StepIndex, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
-					toolName := m.getLocalToolName(e)
-					if toolName != "" && toolName != "OUTPUT" {
-						cardLine2 = "        Tool: " + toolName
-					}
+				typeStr := formatStepType(string(e.Type))
+				cacheTag := formatShortCache(e)
+				if cacheTag != "" {
+					cardLine1 = fmt.Sprintf("%s[%04d] %s %s", prefix, e.StepIndex, typeStr, cacheTag)
 				} else {
-					typeStr := formatStepType(string(e.Type))
-					cacheTag := formatShortCache(e)
-					if cacheTag != "" {
-						cardLine1 = fmt.Sprintf("%s[%04d] %s %s", prefix, e.StepIndex, typeStr, cacheTag)
-					} else {
-						cardLine1 = fmt.Sprintf("%s[%04d] %s", prefix, e.StepIndex, typeStr)
-					}
+					cardLine1 = fmt.Sprintf("%s[%04d] %s", prefix, e.StepIndex, typeStr)
+				}
 
-					modelName := m.getStepModelName(e)
-					if modelName != "" {
-						cardLine2 = "    Model: " + modelName
-					}
+				modelName := m.getStepModelName(e)
+				if modelName != "" {
+					cardLine2 = "    Model: " + modelName
 				}
 			}
 
@@ -301,7 +502,6 @@ func (m Model) renderHistoryView() string {
 			}
 		}
 
-		// Bottom indicator: only if there are older steps below (endIdx < len(filtered))
 		if endIdx < len(filtered) && len(leftLines) < innerRowsLimit {
 			leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  ..."))
 		}
@@ -320,7 +520,7 @@ func (m Model) renderHistoryView() string {
 		leftBox = PanelStyle.Width(listInnerWidth).Render(strings.Join(leftLines, "\n"))
 	}
 
-	// ==================== 2. Right Pane: Selected Step Detail Inspector (Word-Wrapped Buffer) ====================
+	// 2. Right Pane: Selected Step Detail Inspector
 	var rightLines []string
 	rightTitle := "STEP INSPECTOR"
 	if m.isVisualMode {

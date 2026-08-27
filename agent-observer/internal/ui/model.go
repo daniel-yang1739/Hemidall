@@ -296,11 +296,24 @@ func NewModel(sessionID string, openSwitcherOnStart bool) Model {
 }
 
 func (m Model) getHistoryVisibleCards() int {
-	innerRowsLimit := m.height - 4
-	if innerRowsLimit < 4 {
-		innerRowsLimit = 4
+	var availLines int
+	if m.width < 100 {
+		contentRows := m.height - 6
+		if contentRows < 6 {
+			contentRows = 6
+		}
+		topRows := contentRows * 4 / 10
+		if topRows < 3 {
+			topRows = 3
+		}
+		availLines = topRows - 1
+	} else {
+		innerRowsLimit := m.height - 4
+		if innerRowsLimit < 4 {
+			innerRowsLimit = 4
+		}
+		availLines = innerRowsLimit - 1
 	}
-	availLines := innerRowsLimit - 1 // 1 line for title
 
 	if m.isHistorySearching || m.historyStepQuery != "" {
 		availLines -= 2
