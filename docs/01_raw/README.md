@@ -26,7 +26,7 @@
 ---
 
 ## 📑 當前素材池清單
-* `2026-08-27_102000_session_switcher_preview_and_multi_agent_plan.md`
-* `2026-08-27_103000_history_filtering_and_step_search_plan.md`
-* `2026-08-27_125034_agent_step_mental_model_and_clarity_plan.md`
+* `2026-08-27_155000_dashboard_aggregate_metrics_and_multi_turn_trend_charts_plan_v1.md` (v1.0 初代條列企劃)
+* `2026-08-27_162500_dashboard_aggregate_metrics_and_multi_turn_trend_charts_plan_v2.md` (v2.0 方案 A/B/C 提案與多模型折扣矩陣)
+* `2026-08-27_173000_dashboard_aggregate_metrics_and_responsive_layout_implementation_v3.md` (v3.0 最終實裝規格、無框 KPI 條與雙模響應式佈局)
 
