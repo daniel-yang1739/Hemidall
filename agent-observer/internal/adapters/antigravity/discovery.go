@@ -20,11 +20,39 @@ import (
 var (
 	userRequestRegex = regexp.MustCompile(`(?s)<USER_REQUEST>(.*?)</USER_REQUEST>`)
 	userObjRegex     = regexp.MustCompile(`(?m)^#\s*USER Objective:\s*(.+)$`)
-	modelSelectRegex = regexp.MustCompile(`Model Selection.*from.*to\s+([^\n\.]+)`)
+	modelSelectRegex = regexp.MustCompile(`(?i)Model Selection[` + "`" + `'"]*\s+from\s+.*?\s+to\s+(.+?)(?:\.\s+No need|\.\s+If reporting|\n|$)`)
 	dirPathRegex     = regexp.MustCompile(`"DirectoryPath"\s*:\s*"\\?"?([^"\\]+)`)
 	absPathRegex     = regexp.MustCompile(`"AbsolutePath"\s*:\s*"\\?"?([^"\\]+)`)
 	userWorkspacesRe = regexp.MustCompile(`(?s)<user_information>.*?workspaces.*?(/[^ \n\r\t]+)`)
 )
+
+// CleanModelName validates and normalizes raw model string to a clean, authoritative model name
+func CleanModelName(raw string) string {
+	raw = strings.TrimSpace(raw)
+	low := strings.ToLower(raw)
+	if len(raw) > 35 || strings.Contains(low, "comment") || strings.Contains(low, "need to") || strings.Contains(low, "user") {
+		return "Gemini 3.7 Flash"
+	}
+	if strings.Contains(low, "flash") {
+		if strings.Contains(low, "high") {
+			return "Gemini 3.7 Flash (High)"
+		}
+		return "Gemini 3.7 Flash"
+	}
+	if strings.Contains(low, "pro") {
+		return "Gemini 2.5 Pro"
+	}
+	if strings.Contains(low, "claude") {
+		if strings.Contains(low, "sonnet") {
+			return "Claude 3.7 Sonnet"
+		}
+		return "Claude 3.5 Sonnet"
+	}
+	if raw == "" || strings.EqualFold(raw, "none") {
+		return "Gemini 3.7 Flash"
+	}
+	return raw
+}
 
 // FormatShortPath formats a full path to its trailing 2-3 readable directory segments
 func FormatShortPath(fullPath string) string {
@@ -115,7 +143,7 @@ func ExtractSessionMetadata(transcriptPath string) (initialGoal string, lastProm
 	for _, l := range headLines {
 		if modelName == "" {
 			if m := modelSelectRegex.FindStringSubmatch(l); len(m) > 1 {
-				modelName = strings.TrimSpace(m[1])
+				modelName = CleanModelName(m[1])
 			}
 		}
 		if workspaceDir == "" {
