@@ -679,7 +679,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		m.history = append(m.history, event)
+		// Update in-place if this step index already exists in history (e.g. streaming update or status transition), otherwise append
+		existingIdx := -1
+		for i := len(m.history) - 1; i >= 0; i-- {
+			if m.history[i].StepIndex == event.StepIndex && m.history[i].SessionID == event.SessionID {
+				existingIdx = i
+				break
+			}
+		}
+
+		if existingIdx >= 0 {
+			m.history[existingIdx] = event
+		} else {
+			m.history = append(m.history, event)
+		}
 
 		if wasAtLatestDashboard {
 			m.dashboardIdx = len(m.history) - 1
