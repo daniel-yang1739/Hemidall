@@ -1,5 +1,11 @@
 # ⏱️ LLM Wiki Chrono Log
 
+## [2026-08-27] feat | 會話快切中樞升級 (Quick Switcher v2.0)：雙欄即時預覽、對話意圖與進度雙軌識別、純視覺標籤頁與零 Emoji 俐落排版：
+1. **純視覺多 Agent 標籤頁 (Real Visual Tabs)**：移除非必要的 "Tabs:" 文字與 "All" 標籤，直接以原生標籤按鈕 `[Antigravity (N)]` / `Claude Code (0)` / `OpenCode (0)` 呈現，支援按 **`[` / `]`** 鍵快速循環切換；
+2. **左欄極速掃描與末端目錄提取**：自動將長路徑精簡為末端 2~3 層目錄（如 `self/ithome2026 (#aa726359)`），每張卡片僅保留目錄、Hash、步驟數與相對時間，大幅降低掃描干擾；
+3. **右欄深度透視 (Focused Live Inspector)**：移除非必要 Overview 區塊，垂直空間 100% 聚焦呈現 **`[INITIAL GOAL / FIRST PROMPT]`**（創立主題）與 **`[LATEST PROGRESS / LAST ACTION]`**（最新進度，完美辨識 Fork 分叉會話）；
+4. **零 Emoji 工業級純文字排版**：全面根絕 Emoji 雜訊，統一採用 ASCII 盒模型、專業文字徽章與 Lipgloss 精準終端渲染；
+5. **多欄位模糊過濾**：支援同時依照專案目錄名、Short Hash、起始提問或最新進度關鍵字即時搜尋
 ## [2026-08-27] plan | 升級 2026 鐵人賽總企劃、30 天大綱與路線圖至 v2.0 (Master Plan & 30 Days Breakdown v2.0)：
 1. **確立核心精神與首尾呼應情感錨點**：
    * Day 01 開篇 Hook：《至少直到最後一刻，我與 AI 共舞著 —— 寫在黑盒時代前夕的工程自白》；

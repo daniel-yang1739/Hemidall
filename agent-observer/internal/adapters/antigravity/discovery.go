@@ -3,32 +3,144 @@ package antigravity
 import (
 	"bufio"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
-	"time"
 
 	_ "modernc.org/sqlite"
 
 	"agent-observer/internal/core"
 )
 
-// SessionInfo encapsulates discovered session metadata
-type SessionInfo struct {
-	SessionID    string
-	StepCount    int
-	LastModified time.Time
-	SizeMB       float64
-	DBPath       string
-	LogPath      string
-	Title        string
+var (
+	userRequestRegex = regexp.MustCompile(`(?s)<USER_REQUEST>(.*?)</USER_REQUEST>`)
+	userObjRegex     = regexp.MustCompile(`(?m)^#\s*USER Objective:\s*(.+)$`)
+	modelSelectRegex = regexp.MustCompile(`Model Selection.*from.*to\s+([^\n\.]+)`)
+	dirPathRegex     = regexp.MustCompile(`"DirectoryPath"\s*:\s*"\\?"?([^"\\]+)`)
+	absPathRegex     = regexp.MustCompile(`"AbsolutePath"\s*:\s*"\\?"?([^"\\]+)`)
+	userWorkspacesRe = regexp.MustCompile(`(?s)<user_information>.*?workspaces.*?(/[^ \n\r\t]+)`)
+)
+
+// FormatShortPath formats a full path to its trailing 2-3 readable directory segments
+func FormatShortPath(fullPath string) string {
+	if fullPath == "" {
+		return "workspace"
+	}
+	clean := filepath.Clean(fullPath)
+	parts := strings.Split(clean, string(filepath.Separator))
+	var valid []string
+	for _, p := range parts {
+		if p != "" {
+			valid = append(valid, p)
+		}
+	}
+	if len(valid) == 0 {
+		return "workspace"
+	}
+	if len(valid) <= 2 {
+		return strings.Join(valid, "/")
+	}
+	return strings.Join(valid[len(valid)-2:], "/")
+}
+
+// CleanPromptText cleans raw prompt strings by stripping XML tags and condensing whitespaces
+func CleanPromptText(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	if m := userRequestRegex.FindStringSubmatch(raw); len(m) > 1 {
+		raw = m[1]
+	} else if m := userObjRegex.FindStringSubmatch(raw); len(m) > 1 {
+		raw = m[1]
+	}
+	// Strip any remaining XML/HTML tags
+	tagRe := regexp.MustCompile(`<[^>]+>`)
+	raw = tagRe.ReplaceAllString(raw, " ")
+
+	// Replace newlines and tabs with single space
+	fields := strings.Fields(raw)
+	return strings.Join(fields, " ")
+}
+
+// ExtractSessionMetadata performs lightweight head and tail scanning of a session transcript
+func ExtractSessionMetadata(transcriptPath string) (initialGoal string, lastPrompt string, workspaceDir string, modelName string) {
+	file, err := os.Open(transcriptPath)
+	if err != nil {
+		return "", "", "", ""
+	}
+	defer file.Close()
+
+	var headLines []string
+	var allUserInputs []string
+
+	scanner := bufio.NewScanner(file)
+	// Buffer size up to 1MB per line for transcripts
+	buf := make([]byte, 1024*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	lineCount := 0
+	for scanner.Scan() {
+		line := scanner.Text()
+		if lineCount < 10 {
+			headLines = append(headLines, line)
+		}
+		lineCount++
+
+		var rawMap map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &rawMap); err == nil {
+			stepType, _ := rawMap["type"].(string)
+			if stepType == "USER_INPUT" {
+				if content, ok := rawMap["content"].(string); ok && content != "" {
+					cleaned := CleanPromptText(content)
+					if cleaned != "" {
+						allUserInputs = append(allUserInputs, cleaned)
+					}
+				}
+			}
+		}
+	}
+
+	// 1. Initial Goal
+	if len(allUserInputs) > 0 {
+		initialGoal = allUserInputs[0]
+		lastPrompt = allUserInputs[len(allUserInputs)-1]
+	}
+
+	// 2. Workspace & Model from Head Lines
+	for _, l := range headLines {
+		if modelName == "" {
+			if m := modelSelectRegex.FindStringSubmatch(l); len(m) > 1 {
+				modelName = strings.TrimSpace(m[1])
+			}
+		}
+		if workspaceDir == "" {
+			if m := userWorkspacesRe.FindStringSubmatch(l); len(m) > 1 {
+				workspaceDir = strings.TrimSpace(m[1])
+			} else if m := dirPathRegex.FindStringSubmatch(l); len(m) > 1 {
+				workspaceDir = strings.TrimSpace(m[1])
+			} else if m := absPathRegex.FindStringSubmatch(l); len(m) > 1 {
+				workspaceDir = filepath.Dir(strings.TrimSpace(m[1]))
+			}
+		}
+	}
+
+	if modelName == "" {
+		modelName = "Gemini 3.7 Flash"
+	}
+	if workspaceDir == "" {
+		workspaceDir = "workspace"
+	}
+
+	return initialGoal, lastPrompt, workspaceDir, modelName
 }
 
 // DiscoverAllSessions scans ~/.gemini/antigravity-cli/conversations and discovers all active/past sessions
-func DiscoverAllSessions() ([]SessionInfo, error) {
+func DiscoverAllSessions() ([]core.SessionInfo, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
@@ -43,7 +155,7 @@ func DiscoverAllSessions() ([]SessionInfo, error) {
 		return nil, err
 	}
 
-	var sessions []SessionInfo
+	var sessions []core.SessionInfo
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".db") {
 			continue
@@ -58,6 +170,13 @@ func DiscoverAllSessions() ([]SessionInfo, error) {
 		sid := strings.TrimSuffix(entry.Name(), ".db")
 		fullDBPath := filepath.Join(dbDir, entry.Name())
 		fullLogPath := filepath.Join(brainDir, sid, ".system_generated", "logs", "transcript_full.jsonl")
+		compactLogPath := filepath.Join(brainDir, sid, ".system_generated", "logs", "transcript.jsonl")
+
+		// Prefer compact transcript.jsonl for fast metadata extraction
+		scanPath := compactLogPath
+		if _, err := os.Stat(compactLogPath); err != nil {
+			scanPath = fullLogPath
+		}
 
 		count := 0
 		db, err := sql.Open("sqlite", "file:"+fullDBPath+"?mode=ro")
@@ -66,11 +185,19 @@ func DiscoverAllSessions() ([]SessionInfo, error) {
 			_ = db.Close()
 		}
 
-		sessions = append(sessions, SessionInfo{
+		initialGoal, lastPrompt, workspaceDir, modelName := ExtractSessionMetadata(scanPath)
+
+		sessions = append(sessions, core.SessionInfo{
+			AgentType:    core.AgentTypeAntigravity,
 			SessionID:    sid,
+			WorkspaceDir: workspaceDir,
+			ShortPath:    FormatShortPath(workspaceDir),
+			InitialGoal:  initialGoal,
+			LastPrompt:   lastPrompt,
 			StepCount:    count,
 			LastModified: info.ModTime(),
 			SizeMB:       float64(info.Size()) / (1024 * 1024),
+			ModelName:    modelName,
 			DBPath:       fullDBPath,
 			LogPath:      fullLogPath,
 		})

@@ -269,8 +269,8 @@ func TestSessionSwitcherModalRenderingAndFilter(t *testing.T) {
 	}
 
 	view := m.View()
-	if !strings.Contains(view, "SWITCH SESSION") {
-		t.Errorf("Expected modal title 'SWITCH SESSION' in view, got: %s", view)
+	if !strings.Contains(view, "SWITCH AGENT SESSION") {
+		t.Errorf("Expected modal title 'SWITCH AGENT SESSION' in view, got: %s", view)
 	}
 
 	// Test Ctrl+P toggle
@@ -333,17 +333,50 @@ func TestHistoryInspectionAntiJitterLock(t *testing.T) {
 
 func TestSessionSwitcherKeyboardNavigationAndActions(t *testing.T) {
 	m := NewModel("test-session-1", true)
-	m.width = 80
-	m.height = 24
+	m.width = 100
+	m.height = 30
 
 	// Mock available sessions
-	m.availableSessions = []antigravity.SessionInfo{
-		{SessionID: "session-alpha", StepCount: 100, LastModified: time.Now()},
-		{SessionID: "session-beta", StepCount: 50, LastModified: time.Now().Add(-1 * time.Hour)},
-		{SessionID: "session-gamma", StepCount: 10, LastModified: time.Now().Add(-2 * time.Hour)},
+	m.availableSessions = []core.SessionInfo{
+		{
+			AgentType:    core.AgentTypeAntigravity,
+			SessionID:    "session-alpha-12345678",
+			WorkspaceDir: "/Users/test/Documents/self/project-a",
+			ShortPath:    "self/project-a",
+			InitialGoal:  "Create a new microservice",
+			LastPrompt:   "Add unit tests",
+			StepCount:    100,
+			LastModified: time.Now(),
+		},
+		{
+			AgentType:    core.AgentTypeAntigravity,
+			SessionID:    "session-beta-87654321",
+			WorkspaceDir: "/Users/test/Documents/self/project-b",
+			ShortPath:    "self/project-b",
+			InitialGoal:  "Fix database deadlock bug",
+			LastPrompt:   "Verify WAL mode",
+			StepCount:    50,
+			LastModified: time.Now().Add(-1 * time.Hour),
+		},
+		{
+			AgentType:    core.AgentTypeClaudeCode,
+			SessionID:    "session-claude-999999",
+			WorkspaceDir: "/Users/test/Documents/self/claude-app",
+			ShortPath:    "self/claude-app",
+			InitialGoal:  "Refactor React frontend",
+			LastPrompt:   "Update Tailwind styles",
+			StepCount:    10,
+			LastModified: time.Now().Add(-2 * time.Hour),
+		},
 	}
-	m.filteredSessions = m.availableSessions
+	m.selectedAgentTab = core.AgentTypeAntigravity
+	m.filteredSessions = filterSessions(m.availableSessions, "", m.selectedAgentTab)
 	m.switcherSelectedIdx = 0
+
+	// Initial AGY tab should only match 2 sessions
+	if len(m.filteredSessions) != 2 {
+		t.Fatalf("Expected 2 AGY sessions, got %d", len(m.filteredSessions))
+	}
 
 	// 1. Test Navigation Down with Ctrl+j (Vim)
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
@@ -359,27 +392,79 @@ func TestSessionSwitcherKeyboardNavigationAndActions(t *testing.T) {
 		t.Errorf("Expected switcherSelectedIdx=0 after Ctrl+k, got %d", m.switcherSelectedIdx)
 	}
 
-	// 3. Test Typing Filter
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("gamma")})
+	// 3. Test Agent Tab Cycle with ']'
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
 	m = updated.(Model)
-	if len(m.filteredSessions) != 1 || m.filteredSessions[0].SessionID != "session-gamma" {
-		t.Fatalf("Expected 1 filtered session 'session-gamma', got %d", len(m.filteredSessions))
+	if m.selectedAgentTab != core.AgentTypeClaudeCode {
+		t.Errorf("Expected selectedAgentTab=core.AgentTypeClaudeCode after ']', got %s", m.selectedAgentTab)
+	}
+	if len(m.filteredSessions) != 1 || m.filteredSessions[0].SessionID != "session-claude-999999" {
+		t.Fatalf("Expected 1 Claude session, got %d", len(m.filteredSessions))
 	}
 
-	// 4. Test Backspace
-	for i := 0; i < 5; i++ {
+	// 4. Test Agent Tab Cycle back with '['
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("[")})
+	m = updated.(Model)
+	if m.selectedAgentTab != core.AgentTypeAntigravity {
+		t.Errorf("Expected selectedAgentTab=core.AgentTypeAntigravity after '[', got %s", m.selectedAgentTab)
+	}
+
+	// 5. Test Typing Filter for path or prompt keywords
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("deadlock")})
+	m = updated.(Model)
+	if len(m.filteredSessions) != 1 || m.filteredSessions[0].SessionID != "session-beta-87654321" {
+		t.Fatalf("Expected 1 filtered session matching 'deadlock', got %d", len(m.filteredSessions))
+	}
+
+	// 6. Test Backspace
+	for i := 0; i < 8; i++ {
 		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
 		m = updated.(Model)
 	}
-	if len(m.filteredSessions) != 3 {
-		t.Errorf("Expected 3 sessions restored after backspace, got %d", len(m.filteredSessions))
+	if len(m.filteredSessions) != 2 {
+		t.Errorf("Expected 2 sessions restored after backspace, got %d", len(m.filteredSessions))
 	}
 
-	// 5. Test Escape Key (Cancel without switching)
+	// 7. Test Dual-Pane Rendering Output (Zero Emojis & Inspector content)
+	view := m.View()
+	if strings.Contains(view, "📂") || strings.Contains(view, "🏷️") || strings.Contains(view, "🎯") {
+		t.Errorf("Expected Zero Emojis in switcher view, but found emoji")
+	}
+	if !strings.Contains(view, "INITIAL GOAL / FIRST PROMPT") {
+		t.Errorf("Expected 'INITIAL GOAL / FIRST PROMPT' inspector block, got: %s", view)
+	}
+	if !strings.Contains(view, "LATEST PROGRESS / LAST ACTION") {
+		t.Errorf("Expected 'LATEST PROGRESS / LAST ACTION' inspector block, got: %s", view)
+	}
+	if !strings.Contains(view, "self/project-a") {
+		t.Errorf("Expected 'self/project-a' short path in view, got: %s", view)
+	}
+
+	// 8. Test Escape Key (Cancel without switching)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
 	if m.isSessionSwitcherOpen {
 		t.Error("Expected Esc key to close switcher modal")
+	}
+}
+
+func TestFormatShortPath(t *testing.T) {
+	cases := []struct {
+		input    string
+		expected string
+	}{
+		{"/Users/daniel_y_yang/Documents/self/ithome2026", "self/ithome2026"},
+		{"/Users/daniel_y_yang/Documents/self/bookkeeper", "self/bookkeeper"},
+		{"/Users/daniel_y_yang/.gemini/antigravity-cli", ".gemini/antigravity-cli"},
+		{"/project", "project"},
+		{"", "workspace"},
+	}
+
+	for _, c := range cases {
+		got := antigravity.FormatShortPath(c.input)
+		if got != c.expected {
+			t.Errorf("FormatShortPath(%q) = %q, expected %q", c.input, got, c.expected)
+		}
 	}
 }
 

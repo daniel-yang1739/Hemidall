@@ -54,13 +54,42 @@ type Model struct {
 	isSessionSwitcherOpen bool
 	isShortcutsModalOpen  bool
 	sessionSearchQuery    string
-	availableSessions     []antigravity.SessionInfo
-	filteredSessions      []antigravity.SessionInfo
+	selectedAgentTab      core.AgentType
+	availableSessions     []core.SessionInfo
+	filteredSessions      []core.SessionInfo
 	switcherSelectedIdx   int
 	docsSearchQuery       string
 	isDocsSearching       bool
 	docsScroll            int
 	docsLang              string
+}
+
+// nextAgentTab cycles agent filter tab: Antigravity -> ClaudeCode -> OpenCode -> Antigravity
+func (m *Model) nextAgentTab() {
+	switch m.selectedAgentTab {
+	case core.AgentTypeClaudeCode:
+		m.selectedAgentTab = core.AgentTypeOpenCode
+	case core.AgentTypeOpenCode:
+		m.selectedAgentTab = core.AgentTypeAntigravity
+	default:
+		m.selectedAgentTab = core.AgentTypeClaudeCode
+	}
+	m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery, m.selectedAgentTab)
+	m.switcherSelectedIdx = 0
+}
+
+// prevAgentTab cycles agent filter tab: Antigravity -> OpenCode -> ClaudeCode -> Antigravity
+func (m *Model) prevAgentTab() {
+	switch m.selectedAgentTab {
+	case core.AgentTypeClaudeCode:
+		m.selectedAgentTab = core.AgentTypeAntigravity
+	case core.AgentTypeOpenCode:
+		m.selectedAgentTab = core.AgentTypeClaudeCode
+	default:
+		m.selectedAgentTab = core.AgentTypeOpenCode
+	}
+	m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery, m.selectedAgentTab)
+	m.switcherSelectedIdx = 0
 }
 
 // nextView cycles active view clockwise: Dashboard -> History -> Docs -> Dashboard
@@ -94,6 +123,7 @@ func (m *Model) prevView() {
 // NewModel creates an initial TUI model
 func NewModel(sessionID string, openSwitcherOnStart bool) Model {
 	sessions, _ := antigravity.DiscoverAllSessions()
+	initialTab := core.AgentTypeAntigravity
 
 	m := Model{
 		sessionID:             sessionID,
@@ -104,8 +134,9 @@ func NewModel(sessionID string, openSwitcherOnStart bool) Model {
 		history:               make([]core.UnifiedAgentEvent, 0, 1000),
 		selectedIdx:           0,
 		lastActivity:          time.Now(),
+		selectedAgentTab:      initialTab,
 		availableSessions:     sessions,
-		filteredSessions:      sessions,
+		filteredSessions:      filterSessions(sessions, "", initialTab),
 		switcherSelectedIdx:   0,
 		isSessionSwitcherOpen: openSwitcherOnStart,
 		isShortcutsModalOpen:  false,
@@ -116,7 +147,7 @@ func NewModel(sessionID string, openSwitcherOnStart bool) Model {
 	}
 
 	// If sessionID matches one of discovered sessions, select it in the switcher
-	for i, s := range sessions {
+	for i, s := range m.filteredSessions {
 		if s.SessionID == sessionID {
 			m.switcherSelectedIdx = i
 			break
@@ -295,7 +326,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.isSessionSwitcherOpen {
 				m.isShortcutsModalOpen = false
 				m.availableSessions, _ = antigravity.DiscoverAllSessions()
-				m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery)
+				m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery, m.selectedAgentTab)
 				m.switcherSelectedIdx = 0
 				for i, s := range m.filteredSessions {
 					if s.SessionID == m.sessionID {
@@ -313,19 +344,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				m.isSessionSwitcherOpen = false
 				return m, nil
-			case "up", "ctrl+k", "ctrl+p":
+			case "[":
+				m.prevAgentTab()
+				return m, nil
+			case "]":
+				m.nextAgentTab()
+				return m, nil
+			case "up", "ctrl+k":
 				if m.switcherSelectedIdx > 0 {
 					m.switcherSelectedIdx--
 				}
 				return m, nil
-			case "down", "ctrl+j", "ctrl+n", "tab":
+			case "down", "ctrl+j", "ctrl+n":
 				if m.switcherSelectedIdx < len(m.filteredSessions)-1 {
 					m.switcherSelectedIdx++
-				}
-				return m, nil
-			case "shift+tab":
-				if m.switcherSelectedIdx > 0 {
-					m.switcherSelectedIdx--
 				}
 				return m, nil
 			case "enter":
@@ -338,7 +370,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "backspace":
 				if len(m.sessionSearchQuery) > 0 {
 					m.sessionSearchQuery = m.sessionSearchQuery[:len(m.sessionSearchQuery)-1]
-					m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery)
+					m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery, m.selectedAgentTab)
 					m.switcherSelectedIdx = 0
 				}
 				return m, nil
@@ -355,13 +387,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.switcherSelectedIdx--
 						}
 						return m, nil
+					} else if key == "h" {
+						m.prevAgentTab()
+						return m, nil
+					} else if key == "l" {
+						m.nextAgentTab()
+						return m, nil
 					}
 				}
 
 				// Type characters to filter sessions
 				if len(msg.Runes) > 0 {
 					m.sessionSearchQuery += string(msg.Runes)
-					m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery)
+					m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery, m.selectedAgentTab)
 					m.switcherSelectedIdx = 0
 					return m, nil
 				}
