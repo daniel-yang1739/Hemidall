@@ -1,5 +1,11 @@
 # ⏱️ LLM Wiki Chrono Log
 
+## [2026-08-27] feat | History 步驟多維度過濾與 '/' Step 編號極速搜尋 (History Multi-Dimension Filter & Step Search v0.8.4)：
+1. **Step Type 類別過濾 (`t` / `T`)**：按 `t` 鍵快速循環切換 `[T:All]` $\to$ `[T:Tool]` $\to$ `[T:Model]` $\to$ `[T:User]` $\to$ `[T:Code]` $\to$ `[T:Generic]` $\to$ `[T:All]`，瞬間萃取目標步驟；
+2. **Cache 狀態過濾 (`c` / `C`)**：按 `c` 鍵快速循環切換 `[C:All]` $\to$ `[C:Hit]` $\to$ `[C:Partial]` $\to$ `[C:Miss]` $\to$ `[C:Broken]` $\to$ `[C:All]`，精確鎖定快取命中或斷裂點；
+3. **'/' 數字步驟編號極速搜尋與跳轉**：按 `/` 喚出 `Filter: [#14█]` 搜尋列，輸入任意數字（如 `14`），清單毫秒級篩選並跳轉至 `#014`，按 `Esc` 瞬間清空復原；
+4. **左欄快取狀態微徽章與標題徽章**：步驟清單卡片右側自動依色彩標註 `[HIT 78%]` / `[PART 40%]` / `[MISS]` / `[BROKEN]`，標題列精確統計當前篩選命中數與總數（如 `STEPS (12/540) [T:Tool] [C:Hit]`）；
+5. **智能視窗邊界連動**：篩選與搜尋時自動重新校準可視卡片容量，徹底杜絕文字溢出或底部遮擋，全螢幕零高度抖動
 ## [2026-08-27] feat | 會話快切中樞升級 (Quick Switcher v2.0)：雙欄即時預覽、對話意圖與進度雙軌識別、純視覺標籤頁與零 Emoji 俐落排版：
 1. **純視覺多 Agent 標籤頁 (Real Visual Tabs)**：移除非必要的 "Tabs:" 文字與 "All" 標籤，直接以原生標籤按鈕 `[Antigravity (N)]` / `Claude Code (0)` / `OpenCode (0)` 呈現，支援按 **`[` / `]`** 鍵快速循環切換；
 2. **左欄極速掃描與末端目錄提取**：自動將長路徑精簡為末端 2~3 層目錄（如 `self/ithome2026 (#aa726359)`），每張卡片僅保留目錄、Hash、步驟數與相對時間，大幅降低掃描干擾；
