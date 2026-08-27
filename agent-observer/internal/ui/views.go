@@ -117,7 +117,7 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 
 func renderTrendPanel(series core.TurnTrendSeries, width int) string {
 	var sb strings.Builder
-	pTitle := fmt.Sprintf("📈 MULTI-TURN CONTEXT & CACHE HIT TREND (Last %d Cloud Turns)", len(series.Points))
+	pTitle := fmt.Sprintf("MULTI-TURN CONTEXT & CACHE HIT TREND (Last %d Cloud Turns)", len(series.Points))
 	sb.WriteString(TitleStyle.Render(pTitle) + "\n")
 
 	if len(series.Points) == 0 {
@@ -232,7 +232,7 @@ func (m Model) renderDashboardView() string {
 	tot := agg.TotalStats
 
 	var p0 strings.Builder
-	p0.WriteString(TitleStyle.Render("📊 SESSION TOKEN AGGREGATES & MULTI-MODEL EFFICIENCY") + "\n\n")
+	p0.WriteString(TitleStyle.Render("SESSION TOKEN AGGREGATES & MULTI-MODEL EFFICIENCY") + "\n\n")
 
 	p0.WriteString(renderBorderlessKpiStrip(tot, contentWidth) + "\n\n")
 
