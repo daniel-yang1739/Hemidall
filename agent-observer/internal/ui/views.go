@@ -151,16 +151,18 @@ func (m Model) renderDashboardView() string {
 }
 
 func (m Model) renderHistoryView() string {
-	leftOuterWidth := int(float64(m.width) * 0.35)
-	if leftOuterWidth < 36 {
-		leftOuterWidth = 36
+	isNarrow := m.width < 100
+
+	var leftOuterWidth int
+	if isNarrow {
+		leftOuterWidth = 24
+	} else {
+		leftOuterWidth = 38
 	}
-	if leftOuterWidth > 50 {
-		leftOuterWidth = 50
-	}
+
 	rightOuterWidth := m.width - leftOuterWidth
-	if rightOuterWidth < 35 {
-		rightOuterWidth = 35
+	if rightOuterWidth < 30 {
+		rightOuterWidth = 30
 		leftOuterWidth = m.width - rightOuterWidth
 	}
 
@@ -188,23 +190,26 @@ func (m Model) renderHistoryView() string {
 		leftTitle = fmt.Sprintf("STEPS (%s) <", countStr)
 	}
 
-	// Always render both [T:...] and [C:...] filter indicators
-	var typeBadgeStr string
-	if m.historyTypeFilter == TypeFilterAll {
-		typeBadgeStr = lipgloss.NewStyle().Foreground(ColorMuted).Render("[T:All]")
+	if isNarrow {
+		leftLines = append(leftLines, truncateVisualWidth(TitleStyle.Render(leftTitle), listContentWidth))
 	} else {
-		typeBadgeStr = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("[T:%s]", m.historyTypeFilter))
-	}
+		var typeBadgeStr string
+		if m.historyTypeFilter == TypeFilterAll {
+			typeBadgeStr = lipgloss.NewStyle().Foreground(ColorMuted).Render("[T:All]")
+		} else {
+			typeBadgeStr = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("[T:%s]", m.historyTypeFilter))
+		}
 
-	var cacheBadgeStr string
-	if m.historyCacheFilter == CacheFilterAll {
-		cacheBadgeStr = lipgloss.NewStyle().Foreground(ColorMuted).Render("[C:All]")
-	} else {
-		cacheBadgeStr = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("[C:%s]", m.historyCacheFilter))
-	}
+		var cacheBadgeStr string
+		if m.historyCacheFilter == CacheFilterAll {
+			cacheBadgeStr = lipgloss.NewStyle().Foreground(ColorMuted).Render("[C:All]")
+		} else {
+			cacheBadgeStr = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("[C:%s]", m.historyCacheFilter))
+		}
 
-	titleLine := fmt.Sprintf("%s %s %s", TitleStyle.Render(leftTitle), typeBadgeStr, cacheBadgeStr)
-	leftLines = append(leftLines, truncateVisualWidth(titleLine, listContentWidth))
+		titleLine := fmt.Sprintf("%s %s %s", TitleStyle.Render(leftTitle), typeBadgeStr, cacheBadgeStr)
+		leftLines = append(leftLines, truncateVisualWidth(titleLine, listContentWidth))
+	}
 
 	if m.isHistorySearching || m.historyStepQuery != "" {
 		cursorChar := ""
@@ -255,24 +260,38 @@ func (m Model) renderHistoryView() string {
 			var cardLine1 string
 			var cardLine2 string
 
-			if isLocal {
-				cardLine1 = fmt.Sprintf("%s└── [%04d] OUTPUT %s", prefix, e.StepIndex, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
-				toolName := m.getLocalToolName(e)
-				if toolName != "" && toolName != "OUTPUT" {
-					cardLine2 = "      " + toolName
+			if isNarrow {
+				if isLocal {
+					cardLine1 = fmt.Sprintf("%s└── [%04d] OUTPUT", prefix, e.StepIndex)
+					cardLine2 = "      " + lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)")
+				} else {
+					typeStr := formatStepType(string(e.Type))
+					cardLine1 = fmt.Sprintf("%s[%04d] %s", prefix, e.StepIndex, typeStr)
+					cacheTag := formatShortCache(e)
+					if cacheTag != "" {
+						cardLine2 = "  " + cacheTag
+					}
 				}
 			} else {
-				typeStr := formatStepType(string(e.Type))
-				cacheTag := formatShortCache(e)
-				if cacheTag != "" {
-					cardLine1 = fmt.Sprintf("%s[%04d] %s %s", prefix, e.StepIndex, typeStr, cacheTag)
+				if isLocal {
+					cardLine1 = fmt.Sprintf("%s└── [%04d] OUTPUT %s", prefix, e.StepIndex, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
+					toolName := m.getLocalToolName(e)
+					if toolName != "" && toolName != "OUTPUT" {
+						cardLine2 = "        Tool: " + toolName
+					}
 				} else {
-					cardLine1 = fmt.Sprintf("%s[%04d] %s", prefix, e.StepIndex, typeStr)
-				}
+					typeStr := formatStepType(string(e.Type))
+					cacheTag := formatShortCache(e)
+					if cacheTag != "" {
+						cardLine1 = fmt.Sprintf("%s[%04d] %s %s", prefix, e.StepIndex, typeStr, cacheTag)
+					} else {
+						cardLine1 = fmt.Sprintf("%s[%04d] %s", prefix, e.StepIndex, typeStr)
+					}
 
-				modelName := m.getStepModelName(e)
-				if modelName != "" {
-					cardLine2 = "  " + modelName
+					modelName := m.getStepModelName(e)
+					if modelName != "" {
+						cardLine2 = "    Model: " + modelName
+					}
 				}
 			}
 
