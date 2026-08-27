@@ -58,17 +58,17 @@
 │ STEPS (6054) <                     │
 │ Filters: [T:All] [C:All]           │
 │   ...                              │
-│ ┌─ [4446] 🛠️ TOOL [HIT 100%]        │  <-- 果 (Cloud Effect: Top of bracket)
-│ │     Model: Gemini 3.7 Flash      │  <-- Cloud Hint (Vertical stem)
-│ │  [4445] 💻 OUTPUT (Local)       │  <-- 因 (Local Cause: Inside stem, [ aligned)
-│ └─   Tool: edit_file               │  <-- Local Hint (Bottom of bracket)
-│ ┌─ [4444] 🛠️ TOOL [HIT 100%]        │  <-- 果 (Cloud Effect: Top of bracket)
-│ │     Model: Gemini 3.7 Flash      │  <-- Cloud Hint (Vertical stem)
-│ │  [4443] 💻 OUTPUT (Local)       │  <-- 因 (Local Cause: Inside stem, [ aligned)
-│ └─   Tool: view_file               │  <-- Local Hint (Bottom of bracket)
-│ ┌─ [4440] 🤖 MODEL [HIT 100%]       │  <-- 果 (Cloud Effect: Top of bracket)
-│ │     Model: Gemini 3.7 Flash      │  <-- Cloud Hint (Vertical stem)
-│ └─ [4433] 👤 USER                  │  <-- 因 (Local Cause: Bottom of bracket, [ aligned)
+│ ┌ [4446] 🛠️ TOOL [HIT 100%]        │  <-- 果 (Cloud Effect: Top of bracket)
+│ │   Model: Gemini 3.7 Flash      │  <-- Cloud Hint (Vertical stem)
+│ │ [4445] 💻 OUTPUT (Local)       │  <-- 因 (Local Cause: Inside stem, [ aligned)
+│ └   Tool: edit_file               │  <-- Local Hint (Bottom of bracket)
+│ ┌ [4444] 🛠️ TOOL [HIT 100%]        │  <-- 果 (Cloud Effect: Top of bracket)
+│ │   Model: Gemini 3.7 Flash      │  <-- Cloud Hint (Vertical stem)
+│ │ [4443] 💻 OUTPUT (Local)       │  <-- 因 (Local Cause: Inside stem, [ aligned)
+│ └   Tool: view_file               │  <-- Local Hint (Bottom of bracket)
+│ ┌ [4440] 🤖 MODEL [HIT 100%]       │  <-- 果 (Cloud Effect: Top of bracket)
+│ │   Model: Gemini 3.7 Flash      │  <-- Cloud Hint (Vertical stem)
+│ └ [4433] 👤 USER                  │  <-- 因 (Local Cause: Bottom of bracket, [ aligned)
 ╰────────────────────────────────────╯
 ```
 
