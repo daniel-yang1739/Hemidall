@@ -291,21 +291,6 @@ func NewModel(sessionID string, openSwitcherOnStart bool) Model {
 	return m
 }
 
-func (m Model) getHistoryLinesPerCard() int {
-	leftOuterWidth := int(float64(m.width) * 0.30)
-	if leftOuterWidth < 28 {
-		leftOuterWidth = 28
-	}
-	if leftOuterWidth > 34 {
-		leftOuterWidth = 34
-	}
-	listContentWidth := leftOuterWidth - 4
-	if m.width < 110 || listContentWidth < 28 {
-		return 1
-	}
-	return 2
-}
-
 func (m Model) getHistoryVisibleCards() int {
 	innerRowsLimit := m.height - 4
 	if innerRowsLimit < 4 {
@@ -317,17 +302,15 @@ func (m Model) getHistoryVisibleCards() int {
 		availLines -= 2
 	}
 
-	linesPerCard := m.getHistoryLinesPerCard()
-
 	if m.historyOffset > 0 {
 		availLines--
 	}
 	filtered := m.getFilteredHistory()
-	if len(filtered) > 0 && len(filtered) > (m.historyOffset+availLines/linesPerCard) {
+	if len(filtered) > 0 && len(filtered) > (m.historyOffset+availLines/2) {
 		availLines--
 	}
 
-	maxCards := availLines / linesPerCard
+	maxCards := availLines / 2
 	if maxCards < 1 {
 		maxCards = 1
 	}

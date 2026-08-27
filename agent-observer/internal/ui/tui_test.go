@@ -417,11 +417,11 @@ func TestHistoryTreeAndDistinctiveLabels(t *testing.T) {
 	if !strings.Contains(rendered, "└──") {
 		t.Fatalf("Expected '└──' tree connector in rendered history view, got:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, "run_cmd") {
-		t.Fatalf("Expected 'run_cmd' distinctive label in rendered history view, got:\n%s", rendered)
+	if !strings.Contains(rendered, "run_command") {
+		t.Fatalf("Expected 'run_command' tool name in rendered history view, got:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, "Prompt") {
-		t.Fatalf("Expected 'Prompt' distinctive label in rendered history view, got:\n%s", rendered)
+	if !strings.Contains(rendered, "(Local)") {
+		t.Fatalf("Expected '(Local)' badge in rendered history view, got:\n%s", rendered)
 	}
 }
 

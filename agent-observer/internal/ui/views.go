@@ -174,8 +174,6 @@ func (m Model) renderHistoryView() string {
 		innerRowsLimit = 4
 	}
 
-	linesPerCard := m.getHistoryLinesPerCard()
-
 	// ==================== 1. Left Pane: Step List ====================
 	filtered := m.getFilteredHistory()
 	var leftLines []string
@@ -258,46 +256,34 @@ func (m Model) renderHistoryView() string {
 
 			isLocal := e.IsLocalStep() || e.Scope == core.ScopeLocalExecution
 			typeBadge := fmt.Sprintf("[%03d|%-4s]", e.StepIndex, shortenType(string(e.Type)))
-			label := getStepDistinctiveLabel(e)
 
 			var cardLine1 string
 			var cardLine2 string
 
 			if isLocal {
-				cardLine1 = fmt.Sprintf("%s└── %s %s %s", prefix, typeBadge, label, lipgloss.NewStyle().Foreground(ColorSuccess).Render("💻"))
-				summaryText := e.Summary
-				if summaryText == "" {
-					summaryText = "(empty content)"
-				}
-				cardLine2 = "      " + summaryText
-			} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
-				cacheTag := formatShortCache(e)
-				if cacheTag != "" {
-					cardLine1 = fmt.Sprintf("%s%s %s %s", prefix, typeBadge, label, cacheTag)
-				} else {
-					cardLine1 = fmt.Sprintf("%s%s %s %s", prefix, typeBadge, label, lipgloss.NewStyle().Foreground(ColorPrimary).Render("👤"))
-				}
-				summaryText := e.Summary
-				if summaryText == "" {
-					summaryText = "(empty content)"
-				}
-				cardLine2 = "  " + summaryText
+				cardLine1 = fmt.Sprintf("%s└── %s %s", prefix, typeBadge, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
+				cardLine2 = "      " + e.Summary
 			} else {
 				cacheTag := formatShortCache(e)
 				if cacheTag != "" {
-					cardLine1 = fmt.Sprintf("%s%s %s %s", prefix, typeBadge, label, cacheTag)
+					cardLine1 = fmt.Sprintf("%s%s %s", prefix, typeBadge, cacheTag)
 				} else {
-					cardLine1 = fmt.Sprintf("%s%s %s", prefix, typeBadge, label)
+					cardLine1 = fmt.Sprintf("%s%s", prefix, typeBadge)
 				}
-				summaryText := e.Summary
-				if summaryText == "" {
-					summaryText = "(empty content)"
+
+				if e.Type == core.StepTypeToolCall && len(e.ToolCalls) > 0 {
+					if len(e.ToolCalls) == 1 {
+						cardLine2 = "  " + e.ToolCalls[0].ToolName
+					} else {
+						cardLine2 = fmt.Sprintf("  %s (+%d tools)", e.ToolCalls[0].ToolName, len(e.ToolCalls)-1)
+					}
+				} else {
+					cardLine2 = "  " + e.Summary
 				}
-				cardLine2 = "  " + summaryText
 			}
 
 			leftLines = append(leftLines, headerStyle.Render(truncateVisualWidth(cardLine1, listContentWidth)))
-			if linesPerCard == 2 {
+			if strings.TrimSpace(cardLine2) != "" {
 				leftLines = append(leftLines, summaryStyle.Render(truncateVisualWidth(cardLine2, listContentWidth)))
 			}
 		}
