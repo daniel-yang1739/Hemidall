@@ -3,6 +3,7 @@ package antigravity
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 
 	_ "modernc.org/sqlite"
@@ -53,6 +54,10 @@ func (r *SQLiteTelemetryReader) PollLatest() error {
 
 		meta, err := ParseGeminiGenMetadata(idx, data)
 		if err != nil {
+			continue
+		}
+
+		if strings.Contains(meta.ModelName, "safety-le") {
 			continue
 		}
 

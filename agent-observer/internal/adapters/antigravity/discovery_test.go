@@ -29,12 +29,13 @@ func TestDiscoverAllSessions(t *testing.T) {
 		t.Logf("LoadSessionHistory info/warning: %v", err)
 	} else {
 		t.Logf("✅ Successfully loaded %d historical steps for session %s", len(events), topSession.SessionID)
-		for _, idx := range []int{100, 500, 1000, 1500, 2000, 2291, 2330, len(events) - 1} {
-			if idx >= 0 && idx < len(events) {
-				ev := events[idx]
-				t.Logf("Step %d (Index %d): Type=%v, Total=%d, Cached=%d, New=%d, HitRate=%.2f%%, Hist=%d, Official=%v",
-					ev.StepIndex, idx, ev.Type, ev.Tokens.TotalTokens, ev.Tokens.CachedTokens, ev.Tokens.NewTokens, ev.Tokens.CacheHitRate, ev.Tokens.HistoryTokens, ev.Tokens.IsOfficialData)
-			}
+		agg := core.ComputeSessionAggregateMetrics(events)
+		t.Logf("AGGREGATE: Processed=%d, Cached=%d, HitRate=%.2f%%, New=%d, Saved=%d (%.2f%%), Turns=%d",
+			agg.TotalStats.TotalProcessed, agg.TotalStats.TotalCached, agg.TotalStats.CacheHitRate,
+			agg.TotalStats.TotalNew, agg.TotalStats.TokensSaved, agg.TotalStats.SavingsPercentage, agg.TotalStats.TurnCount)
+		for _, m := range agg.ModelStats {
+			t.Logf("  • Model %s: Turns=%d, Processed=%d, Cached=%d (%.2f%%), Saved=%d",
+				m.ModelName, m.TurnCount, m.TotalProcessed, m.TotalCached, m.CacheHitRate, m.TokensSaved)
 		}
 	}
 }

@@ -202,6 +202,21 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 		event.Tokens.ActiveTurnTokens = d5
 		event.Tokens.ThinkingTokens = 0
 
+		isTTLExpired := false
+		if !state.LastEventTime.IsZero() && !event.Timestamp.IsZero() {
+			if event.Timestamp.Sub(state.LastEventTime) > DefaultCacheTTL {
+				isTTLExpired = true
+			}
+		}
+
+		if event.Tokens.CachedTokens == 0 && state.PrevTotalTokens > 0 && !isTTLExpired {
+			cached := state.PrevTotalTokens
+			if cached > officialTotal {
+				cached = officialTotal
+			}
+			event.Tokens.CachedTokens = cached
+		}
+
 		// Ensure NewTokens = Total - Cached
 		event.Tokens.NewTokens = officialTotal - event.Tokens.CachedTokens
 		if event.Tokens.NewTokens < 0 {
@@ -210,7 +225,7 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 		if officialTotal > 0 {
 			event.Tokens.CacheHitRate = float64(event.Tokens.CachedTokens) / float64(officialTotal) * 100.0
 		}
-		event.CacheStatus = ClassifyCacheStatus(event.Tokens.CacheHitRate, event.Tokens.CachedTokens, officialTotal, false)
+		event.CacheStatus = ClassifyCacheStatus(event.Tokens.CacheHitRate, event.Tokens.CachedTokens, officialTotal, isTTLExpired)
 		state.PrevTotalTokens = officialTotal
 	} else {
 		// ==================== FALLBACK: INCREMENTAL SLIDING WINDOW ====================
