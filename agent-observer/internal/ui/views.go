@@ -437,6 +437,11 @@ func (m Model) renderDashboardView() string {
 
 	if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
 		p1Title := "TRACK 1: LOCAL EXECUTION STEP (OFFLINE OPERATION)" + playbackSuffix
+		if e.Status == "BLOCKED" {
+			p1Title = "TRACK 1: PERMISSION BOUNDARY INTERCEPTED (BLOCKED)" + playbackSuffix
+		} else if e.Source == "SYSTEM" {
+			p1Title = "TRACK 1: INTERNAL HARNESS BACKGROUND TASK" + playbackSuffix
+		}
 		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 		if contentWidth < 80 {
 			p1.WriteString(fmt.Sprintf("  • Origin         : Local Machine (%s | Step #%03d)\n", e.Type, e.StepIndex))
@@ -445,7 +450,11 @@ func (m Model) renderDashboardView() string {
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Origin         : Local Host Process (%s | Step #%03d | Status: %s | %s)\n", e.Type, e.StepIndex, e.Status, timeStr))
 			p1.WriteString(fmt.Sprintf("  • Output Payload : %d Tokens (Tool Result Data)  %s\n", total, cacheBadge))
-			p1.WriteString("  • Billing Status : Offline Machine Subprocess (0 GPU Tokens Billed) ➔ Staged for Next Cloud Turn")
+			if e.Status == "BLOCKED" {
+				p1.WriteString("  • Action Status  : Blocked by System Permission Guard (0 GPU Tokens Billed) 🛡️")
+			} else {
+				p1.WriteString("  • Billing Status : Offline Machine Subprocess (0 GPU Tokens Billed) ➔ Staged for Next Cloud Turn")
+			}
 		}
 	} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
 		p1Title := "TRACK 1: USER INTERACTION (CLIENT PROMPT)" + playbackSuffix
@@ -1164,8 +1173,18 @@ func (m Model) formatHistoryCard(
 			}
 		}
 	} else if isLocal {
+		badge := lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)")
+		tag := "💻 OUTPUT"
+		if e.Status == "BLOCKED" {
+			badge = lipgloss.NewStyle().Foreground(ColorDanger).Render("(Blocked)")
+			tag = "🛡️ BLOCKED"
+		} else if e.Source == "SYSTEM" {
+			badge = lipgloss.NewStyle().Foreground(ColorMuted).Render("(Internal)")
+			tag = "⚙️ INTERNAL"
+		}
+
 		if toolName != "" && toolName != "OUTPUT" {
-			text1 := fmt.Sprintf("[%04d] 💻 OUTPUT %s", e.StepIndex, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
+			text1 := fmt.Sprintf("[%04d] %s %s", e.StepIndex, tag, badge)
 			text2 := "  Tool: " + toolName
 
 			if isSelected && m.focusPane == FocusList {
@@ -1180,7 +1199,7 @@ func (m Model) formatHistoryCard(
 			if isLocalInside {
 				connChar = "└"
 			}
-			text1 := fmt.Sprintf("[%04d] 💻 OUTPUT %s", e.StepIndex, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
+			text1 := fmt.Sprintf("[%04d] %s %s", e.StepIndex, tag, badge)
 
 			if isSelected && m.focusPane == FocusList {
 				cardLine1 = headerStyle.Render(truncateVisualWidth(prefix+connChar+text1, maxWidth))

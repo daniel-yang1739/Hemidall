@@ -285,7 +285,101 @@ func LoadSessionHistory(sessionID string, analyzer *core.PayloadAnalyzer) ([]cor
 		}
 	}
 
+	events = MergeMissingSQLiteSteps(events, dbPath, sessionID)
 	core.BackfillPackagedIn(events)
 
 	return events, nil
+}
+
+// MergeMissingSQLiteSteps reads SQLite steps table and inserts any internal/subagent steps missing from transcript
+func MergeMissingSQLiteSteps(events []core.UnifiedAgentEvent, dbPath string, sessionID string) []core.UnifiedAgentEvent {
+	if dbPath == "" {
+		return events
+	}
+	db, err := sql.Open("sqlite", "file:"+dbPath+"?mode=ro&_journal=WAL")
+	if err != nil {
+		return events
+	}
+	defer db.Close()
+
+	existingIndices := make(map[int]bool, len(events))
+	for _, e := range events {
+		existingIndices[e.StepIndex] = true
+	}
+
+	rows, err := db.Query("SELECT idx, step_type, status, metadata FROM steps ORDER BY idx ASC")
+	if err != nil {
+		return events
+	}
+	defer rows.Close()
+
+	toolRegex := regexp.MustCompile(`(write_to_file|view_file|run_command|list_directory|read_url_content|ask_question)`)
+	summaryRegex := regexp.MustCompile(`"toolSummary"\s*:\s*"([^"]+)"`)
+
+	var merged []core.UnifiedAgentEvent
+	merged = append(merged, events...)
+
+	for rows.Next() {
+		var idx, stepType, status int
+		var metadata []byte
+		if err := rows.Scan(&idx, &stepType, &status, &metadata); err != nil {
+			continue
+		}
+		if existingIndices[idx] {
+			continue
+		}
+
+		toolName := "internal"
+		summary := fmt.Sprintf("Internal background execution #%d", idx)
+		if len(metadata) > 0 {
+			metaStr := string(metadata)
+			if m := toolRegex.FindStringSubmatch(metaStr); len(m) > 1 {
+				toolName = m[1]
+			}
+			if m := summaryRegex.FindStringSubmatch(metaStr); len(m) > 1 {
+				summary = m[1]
+			} else if toolName != "internal" {
+				summary = fmt.Sprintf("Execute %s", toolName)
+			}
+		}
+
+		statusLabel := "DONE"
+		stepScope := core.ScopeLocalExecution
+		stType := core.StepTypeRunCommand
+		if status == 7 {
+			statusLabel = "BLOCKED"
+			summary = fmt.Sprintf("[BLOCKED] %s", summary)
+		}
+		if toolName == "view_file" {
+			stType = core.StepTypeViewFile
+		} else if toolName == "write_to_file" {
+			stType = core.StepTypeCodeAction
+		} else if toolName == "list_directory" {
+			stType = core.StepTypeListDirectory
+		}
+
+		internalEvent := core.UnifiedAgentEvent{
+			SessionID: sessionID,
+			StepIndex: idx,
+			Source:    "SYSTEM",
+			Type:      stType,
+			Status:    statusLabel,
+			Scope:     stepScope,
+			Summary:   summary,
+			Tokens: core.TokenBreakdown{
+				TotalTokens:      0,
+				CachedTokens:     0,
+				NewTokens:        0,
+				IsOfficialData:   false,
+				ToolResultTokens: 0,
+			},
+		}
+		merged = append(merged, internalEvent)
+	}
+
+	sort.Slice(merged, func(i, j int) bool {
+		return merged[i].StepIndex < merged[j].StepIndex
+	})
+
+	return merged
 }
