@@ -187,4 +187,9 @@ flowchart LR
 * [[04_Context_Compaction_and_Summarization]]：長上下文雙水位線壓縮機制。
 * [[03_Agent_Storage_and_State_Machine]]：SQLite 7 表與 Protobuf 遙測中樞。
 * [[07_TUI_Engine_and_Terminal_Layout_Mechanics]]：全螢幕 TUI 引擎與終端機盒模型。
+* [[10_Dashboard_Aggregate_Metrics_and_Multi_Model_Pricing]]：Dashboard 聚合度量與計價演算法。
+* [[11_Multi_Agent_Hierarchy_and_Subagent_Token_Economics]]：Multi-Agent 協同階層與 Subagent Token 經濟學。
 * [[05_troubleshooting/01_Context_Inflation_and_Intermediate_Compounding|實戰排查：Fallback 累積膨脹 89 萬 Tokens 與基線污染]]：中間步驟非遞增基線修復。
+* [[05_troubleshooting/07_Idle_TTL_Masking_by_Local_User_Input_Timestamps|實戰排查：10 分鐘閒置快取未過期之謎]]：本地 USER_INPUT 時間戳引發的時序遮蔽修復。
+* [[05_troubleshooting/08_Stream_Update_Duplication_and_Step_Counter_Inflation|實戰排查：事件計數 10,336 與步驟序號 5,919 脫節之謎]]：串流狀態躍遷重複累加修復。
+* [[05_troubleshooting/09_Harness_Internal_Plumbing_Filtering_and_SQLite_Gap_Recovery|實戰排查：消失的 31 個步驟與跳號之謎]]：Google 內部管線過濾與全量 SQLite 補齊。

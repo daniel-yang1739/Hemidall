@@ -24,7 +24,11 @@ aliases: [Troubleshooting MOC, 排查手冊索引, 故障覆盤中樞]
 ├── 03_TUI_ANSI_Escape_Truncation_and_Overscroll_Lag.md   # ANSI 字元隱形佔位腰斬折行與滾動延遲排查
 ├── 04_Filter_Isolation_and_Cache_Expired_Boundary_Leak.md # EXPIRED 步驟洩漏至 MISS 過濾結果排查
 ├── 05_USER_Input_Inbound_Intent_vs_GPU_Cache_Settlement.md # USER 步驟誤標 MISS 與時序結算錯位排查
-└── 06_Single_Line_Card_Static_Packing_Blank_Gap.md        # 單行卡片靜態除二計算導致清單留白排查
+├── 06_Single_Line_Card_Static_Packing_Blank_Gap.md        # 單行卡片靜態除二計算導致清單留白排查
+├── 07_Idle_TTL_Masking_by_Local_User_Input_Timestamps.md  # 10 分鐘閒置快取未過期與本地打字時序遮蔽排查
+├── 08_Stream_Update_Duplication_and_Step_Counter_Inflation.md # 事件數 10,336 與步驟序號 5,919 重複累加排查
+├── 09_Harness_Internal_Plumbing_Filtering_and_SQLite_Gap_Recovery.md # Google 內部管線過濾 31 步驟與全量補齊排查
+└── 10_Destructive_History_Filter_vs_Non_Destructive_Jump_Navigation.md # 破壞式過濾 Context 丟失到 Vim 跳轉導航重構
 ```
 
 ---
@@ -39,4 +43,8 @@ aliases: [Troubleshooting MOC, 排查手冊索引, 故障覆盤中樞]
 | [[04_Filter_Isolation_and_Cache_Expired_Boundary_Leak\|04. EXPIRED 洩漏至 MISS 篩選漏洞]] | 按 `c` 切至 `[C:Miss]` 時，黃色 `[EXPIRED]` 步驟混入清單中 | `matchCacheFilter` 僅排除 `WRITE`，未能先制攔截 `EXPIRED`，命中 Fallback 條件 | 實作顯式互斥排除守衛，確保各狀態篩選集嚴格正交隔離 | [[02_architecture/09_History_Explorer_and_Causality_Graph\|歷史步進瀏覽器圖譜]] |
 | [[05_USER_Input_Inbound_Intent_vs_GPU_Cache_Settlement\|05. USER 誤標 MISS 與結算錯位]] | 使用者打字步驟顯示紅色 `[MISS]`，面板顯示 `Cached: 0 \| New: 162k` | 人類輸入當下尚未發起推論，適配器在無 Protobuf 時合成全未命中帳單 | 移除 USER 合成標籤，遙測改標 `Staged Intent ➔ Settled in Step #N+1` | [[02_architecture/03_Agent_Storage_and_State_Machine\|SQLite 狀態機]] |
 | [[06_Single_Line_Card_Static_Packing_Blank_Gap\|06. 單行卡片靜態除二清單大片留白]] | 篩選 `[T:User]` 時，30 行視窗僅顯示 8 筆卡片，底部留白 14 行 | `getHistoryVisibleCards` 靜態執行 `availLines / 2`，嚴重低估單行卡片容量 | 改採動態累加行數打包演算法，依實際卡片高度 100% 填滿可用行數 | [[02_architecture/07_TUI_Engine_and_Terminal_Layout_Mechanics\|TUI 引擎與盒模型]] |
+| [[07_Idle_TTL_Masking_by_Local_User_Input_Timestamps\|07. 10 分鐘閒置快取未過期之謎]] | 閒置 10 分鐘依然誤顯 `[CACHE HIT 88%]` | 本地打字 `USER_INPUT` 更新了 `LastEventTime`，雲端比對時 $\Delta t=0$，時序遮蔽真實閒置 | 抽離 `LastCloudTurnTime` 專屬時鐘，本地事件嚴禁覆蓋，死守雲端間隔 | [[01_theory/03_Prompt_Caching_Lifecycle\|前綴快取生命週期]] |
+| [[08_Stream_Update_Duplication_and_Step_Counter_Inflation\|08. 事件數 10,336 與步驟序號 5,919 脫節]] | 右上角計數器膨脹至 10,639，但清單最新僅 Step #5919 | 串流發送 `RUNNING` 與 `DONE`，接收端無腦 `append` 導致同一步驟重複入庫 | 實裝步驟序號唯一性鎖定與原地覆蓋 (In-Place Update)，Header 改標 `Steps` | [[02_architecture/03_Agent_Storage_and_State_Machine\|SQLite 狀態機]] |
+| [[09_Harness_Internal_Plumbing_Filtering_and_SQLite_Gap_Recovery\|09. 消失的 31 個步驟與跳號之謎]] | 列表總數 5889 與最大序號 5919 短少 30 筆（出現跳號） | Google 為了防範 Context 污染與介面降噪，在 jsonl 日誌過濾管線與 BLOCKED 步驟 | 實裝 `MergeMissingSQLiteSteps` 全量補齊，賦予 `INTERNAL` 與 `BLOCKED` 徽章 | [[02_architecture/11_Multi_Agent_Hierarchy_and_Subagent_Token_Economics\|Multi-Agent 階層]] |
+| [[10_Destructive_History_Filter_vs_Non_Destructive_Jump_Navigation\|10. 歷史搜尋 Context 丟失與 Vim 跳轉導航]] | 按 `/` 搜尋後列表被裁切，按 Enter 無法上下瀏覽前後步驟 | 搜尋邏輯採用破壞式 Filter 切片，破壞步驟陣列連續性 | 重構為 Vim Jump-to-Step 導航器，完整保留列表，平滑滾動錨定游標 | [[02_architecture/07_TUI_Engine_and_Terminal_Layout_Mechanics\|TUI 引擎與盒模型]] |
 

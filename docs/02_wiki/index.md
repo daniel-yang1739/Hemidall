@@ -16,7 +16,7 @@ docs/02_wiki/
 │   ├── 03_Prompt_Caching_Lifecycle.md
 │   ├── 04_Context_Compaction_and_Summarization.md
 │   └── index.md
-├── 02_architecture/      # 🏛️ [系統落地] Context 5 維度、LCP 快取演算法、雙層 SQLite 狀態機、雙軌遙測、TUI 盒模型、會話快切、歷史因果圖譜
+├── 02_architecture/      # 🏛️ [系統落地] Context 5 維度、LCP 快取演算法、雙層 SQLite 狀態機、雙軌遙測、TUI 盒模型、會話快切、歷史因果圖譜、全局聚合度量、Multi-Agent 階層
 │   ├── 01_Context_5_Dimensions.md
 │   ├── 02_Token_Calculation_and_LCP.md
 │   ├── 03_Agent_Storage_and_State_Machine.md
@@ -26,6 +26,8 @@ docs/02_wiki/
 │   ├── 07_TUI_Engine_and_Terminal_Layout_Mechanics.md
 │   ├── 08_Interactive_Session_Switching_and_Anti_Jitter.md
 │   ├── 09_History_Explorer_and_Causality_Graph.md
+│   ├── 10_Dashboard_Aggregate_Metrics_and_Multi_Model_Pricing.md
+│   ├── 11_Multi_Agent_Hierarchy_and_Subagent_Token_Economics.md
 │   └── index.md
 ├── 03_planning/          # 🏆 [系列藍圖] v1/ (初版存檔) 與 v2/ (萬能觀測與極致壓縮旗艦版)
 │   ├── v1/                   #    📜 [初版存檔] 單一 Agent 原型企劃與初版 30 天大綱
@@ -42,6 +44,10 @@ docs/02_wiki/
 │   ├── 04_Filter_Isolation_and_Cache_Expired_Boundary_Leak.md
 │   ├── 05_USER_Input_Inbound_Intent_vs_GPU_Cache_Settlement.md
 │   ├── 06_Single_Line_Card_Static_Packing_Blank_Gap.md
+│   ├── 07_Idle_TTL_Masking_by_Local_User_Input_Timestamps.md
+│   ├── 08_Stream_Update_Duplication_and_Step_Counter_Inflation.md
+│   ├── 09_Harness_Internal_Plumbing_Filtering_and_SQLite_Gap_Recovery.md
+│   ├── 10_Destructive_History_Filter_vs_Non_Destructive_Jump_Navigation.md
 │   └── index.md
 └── index.md              # 🧭 本導覽文件 (Wiki Root MOC)
 ```
@@ -53,10 +59,10 @@ docs/02_wiki/
 | 模組編號與名稱 | 認知職責與核心範疇 | 前置依賴與解鎖能力 |
 | :--- | :--- | :--- |
 | **`01_theory/`<br/>推論物理與數學模型** | **【認知起點】** 深入 Transformer 推論的底層硬體物理，建立 GEMM/GEMV、算術強度、KV 顯存占用 ($40GB)、前綴快取生命週期與長上下文雙水位線壓縮的硬核直覺。 | **零前置依賴**。讀完後解鎖「看穿所有 LLM 推論瓶頸、顯存溢出與成本來源」的底層物理直覺。 |
-| **`02_architecture/`<br/>通用系統與演算法** | **【系統落地】** 將物理直覺轉化為具體的系統架構。定義 Context 5 維度、LCP 快取比對演算法、雙層 SQLite 狀態機、雙軌遙測引擎、API 載荷協議、全螢幕 TUI 佈局、會話快切與歷史因果圖譜。 | **依賴 `01_theory/`**。讀完後解鎖「設計並實作工業級 Agent 觀測、遙測與記憶服務」的架構能力。 |
+| **`02_architecture/`<br/>通用系統與演算法** | **【系統落地】** 將物理直覺轉化為具體的系統架構。定義 Context 5 維度、LCP 快取比對演算法、雙層 SQLite 狀態機、雙軌遙測引擎、API 載荷協議、全螢幕 TUI 佈局、會話快切、歷史因果圖譜、全局聚合度量與 Multi-Agent 階層。 | **依賴 `01_theory/`**。讀完後解鎖「設計並實作工業級 Agent 觀測、遙測與記憶服務」的架構能力。 |
 | **`03_planning/`<br/>系列藍圖與規劃規格** | **【產品全景】** 從工程師視角躍升至產品架構師。梳理 30 天每日技術交付大綱、Go vs Python 選型決策與 5 階段路線圖。 | **依賴 `01_` 與 `02_`**。讀完後解鎖「規劃並交付完整工程專案」的全局視野。 |
 | **`04_meta/`<br/>AI 協同工程與方法論** | **【元架構體系】** 沉澱專案在 19 位 Multi-Agent 雙輪對抗審查、自我進化反饋庫、Obsidian 拓撲與專案協同憲法的最佳實踐。 | **全域通用**。解鎖「構建具備自我進化能力之頂級 AI 協同體系」的組織工程能力。 |
-| **`05_troubleshooting/`<br/>實戰故障排查與 Runbook** | **【實戰武器庫】** 收錄長程觀測中遭遇的重大真實 Bug（基線污染、開機雙重分析、ANSI 隱形佔位、快取過濾洩漏、USER 誤標 MISS、單行留白），以四段式 Postmortem 與 Runbook SOP 呈現。 | **依賴 `02_architecture/`**。解鎖「1 分鐘秒級定位並根治底層黑天鵝」的頂級 SRE 實戰能力。 |
+| **`05_troubleshooting/`<br/>實戰故障排查與 Runbook** | **【實戰武器庫】** 收錄長程觀測中遭遇的重大真實 Bug（基線污染、開機雙重分析、ANSI 隱形佔位、快取過濾洩漏、USER 誤標 MISS、單行留白、時序遮蔽、串流重複、消失 31 步、破壞式搜尋），以四段式 Postmortem 與 Runbook SOP 呈現。 | **依賴 `02_architecture/`**。解鎖「1 分鐘秒級定位並根治底層黑天鵝」的頂級 SRE 實戰能力。 |
 
 ---
 
@@ -86,6 +92,8 @@ flowchart LR
 * [[07_TUI_Engine_and_Terminal_Layout_Mechanics]]：全螢幕 TUI 引擎架構、ANSI 感知狀態機、全寬懸掛縮排、零過度滾動與嵌入式多語言 Markdown。
 * [[08_Interactive_Session_Switching_and_Anti_Jitter]]：全域會話快切中樞（`Ctrl+p`）、動態目錄發現與歷史步驟防抖動鎖定機制（Anti-Jitter Lock）。
 * [[09_History_Explorer_and_Causality_Graph]]：歷史步進瀏覽器、雙軌正交過濾引擎（`[T:Type]` 與 `[C:Cache]`）、方案 B 緊湊括號封裝與雙向因果跳轉（`p`/`c`/`C`）。
+* [[10_Dashboard_Aggregate_Metrics_and_Multi_Model_Pricing]]：跨輪次總吞吐量、Effective Tokens 等效字數折扣矩陣、即時貨幣換算（`$` 鍵切換）與 Google AI Pro 5,000 RPD 配額消耗模型。
+* [[11_Multi_Agent_Hierarchy_and_Subagent_Token_Economics]]：Subagent 獨立 Context 生命週期、四階段計費拆解、本地 Tool 0 GPU Token 原則與 `status = 7` (BLOCKED) 沙盒防禦。
 
 ### 3. [[02_wiki/03_planning/index|🏆 03_planning: 系列藍圖與規格規劃]]
 * [[03_planning/v2/index|🚀 v2/ 旗艦版企劃與 30 天大綱 (當前主線)]]：萬能多 Agent 觀測中樞、開篇與終章「共舞」自白與極致壓縮。
@@ -104,6 +112,10 @@ flowchart LR
 * [[04_Filter_Isolation_and_Cache_Expired_Boundary_Leak|04. EXPIRED 洩漏至 MISS 篩選漏洞]]：顯式互斥排除守衛與快取狀態嚴格正交隔離。
 * [[05_USER_Input_Inbound_Intent_vs_GPU_Cache_Settlement|05. USER 誤標 MISS 與結算錯位]]：使用者意圖與雲端推論時序解耦，移除合成標籤。
 * [[06_Single_Line_Card_Static_Packing_Blank_Gap|06. 單行卡片靜態除二清單大片留白]]：動態行數打包演算法修復與多高度緊湊排版。
+* [[07_Idle_TTL_Masking_by_Local_User_Input_Timestamps|07. 10 分鐘閒置快取未過期之謎]]：本地打字時間戳時序遮蔽修復與 `LastCloudTurnTime` 專屬時鐘。
+* [[08_Stream_Update_Duplication_and_Step_Counter_Inflation|08. 事件數 10,336 與步驟序號 5,919 脫節]]：串流狀態躍遷重複累加修復與 In-Place 原地更新。
+* [[09_Harness_Internal_Plumbing_Filtering_and_SQLite_Gap_Recovery|09. 消失的 31 個步驟與跳號之謎]]：Google 內部管線過濾 31 步驟與全量 SQLite 補齊。
+* [[10_Destructive_History_Filter_vs_Non_Destructive_Jump_Navigation|10. 歷史搜尋 Context 丟失與 Vim 跳轉導航]]：破壞式過濾修復與 Vim Jump-to-Step 導航重構。
 
 ---
 

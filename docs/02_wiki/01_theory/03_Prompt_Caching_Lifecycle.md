@@ -205,4 +205,6 @@ flowchart TD
 * [[04_Context_Compaction_and_Summarization]]：上下文雙水位線壓縮與遞迴摘要機制。
 * [[02_architecture/02_Token_Calculation_and_LCP|Token 計算與 LCP 演算法]]：手刻 LCP 前綴比對演算法實作。
 * [[02_architecture/06_Dual_Track_Telemetry_and_Window_Accounting|雙軌遙測架構與窗口會計]]：官方 Protobuf 帳單與本地 5 維度分析。
+* [[02_architecture/10_Dashboard_Aggregate_Metrics_and_Multi_Model_Pricing|Dashboard 聚合度量與計價演算法]]：多模型快取折扣與等效字數結算。
 * [[05_troubleshooting/01_Context_Inflation_and_Intermediate_Compounding|實戰排查：Fallback 累積膨脹 89 萬 Tokens 與基線污染]]：中間步驟非遞增基線修復。
+* [[05_troubleshooting/07_Idle_TTL_Masking_by_Local_User_Input_Timestamps|實戰排查：10 分鐘閒置快取未過期之謎]]：本地 USER_INPUT 時間戳引發的時序遮蔽修復。

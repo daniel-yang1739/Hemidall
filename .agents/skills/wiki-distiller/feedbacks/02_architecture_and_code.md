@@ -71,6 +71,27 @@
 
 ---
 
+### 📌 條目 02-G：多模型聚合度量必須採用 Effective Tokens 折扣矩陣與即時貨幣換算
+* **決策狀態**：🟢 **ACCEPTED (已採納為標準規範)**
+* **首次記錄**：2026-08-28 | **累犯次數**：1 次
+* **適用檔案**：`02_architecture/10_Dashboard_Aggregate_Metrics_and_Multi_Model_Pricing.md`
+* **【採納理由】**：不同模型快取折扣率不同（Flash 75% vs Sonnet 90%），唯有標準化為 Effective Tokens 才能真實反映混合調用成本。
+* **【強制執行標準】**：
+  * 必須透過 `GetModelDiscount(Model)` 取得各模型專屬折扣係數；
+  * 支援 Tokens ➔ USD ➔ TWD 循環換算與 Google AI Pro 5,000 RPD 配額模型。
+
+---
+
+### 📌 條目 02-H：Subagent 階層必須嚴格區分本地 Tool 執行（0 GPU Token）與雲端推理計費
+* **決策狀態**：🟢 **ACCEPTED (已採納為標準規範)**
+* **首次記錄**：2026-08-28 | **累犯次數**：1 次
+* **適用檔案**：`02_architecture/11_Multi_Agent_Hierarchy_and_Subagent_Token_Economics.md`
+* **【採納理由】**：Subagent 本地執行的 Tool 是在 Mac CPU 跑，不花 GPU 算力；只有雲端輪次才需計費。
+* **【強制執行標準】**：
+  * 本地 Tool 步驟標記為 0 GPU Token，並穿透標記發起模型與後續打包結算的 Cloud Turn 序號。
+
+---
+
 ## 🔴 駁回警示 (REJECTED Guidelines - 嚴禁重複提出或實裝)
 
 ### 🚫 條目 02-R1：嚴禁為了追求理論通用性而將 Pure Go 實作重構為 Go/Python 雙語言混合

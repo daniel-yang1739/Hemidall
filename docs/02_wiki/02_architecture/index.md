@@ -24,6 +24,10 @@
    * *會話快切與防抖動*：全域會話快切中樞（`Ctrl+p`）、動態目錄發現與歷史步驟防抖動鎖定機制（Anti-Jitter Lock）。
 9. **[[09_History_Explorer_and_Causality_Graph]]**：
    * *歷史步進瀏覽器與因果圖譜*：雙軌正交過濾引擎（`[T:Type]` 與 `[C:Cache]`）、增量搜尋、方案 B 緊湊括號封裝與雙向因果跳轉（`p`/`c`/`C`）。
+10. **[[10_Dashboard_Aggregate_Metrics_and_Multi_Model_Pricing]]**：
+   * *全局聚合度量與多模型計價*：跨輪次總吞吐量、Effective Tokens 等效字數折扣矩陣、即時貨幣換算（`$` 鍵切換）與 Google AI Pro 5,000 RPD 配額消耗模型。
+11. **[[11_Multi_Agent_Hierarchy_and_Subagent_Token_Economics]]**：
+   * *Multi-Agent 協同階層與子代理*：Subagent 獨立 Context 生命週期、四階段計費拆解、本地 Tool 0 GPU Token 原則與 `status = 7` (BLOCKED) 沙盒防禦。
 
 ---
 

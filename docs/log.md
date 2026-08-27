@@ -1,6 +1,20 @@
 # ⏱️ LLM Wiki Chrono Log
 
-## [2026-08-27] distill | 歷史步進瀏覽器、雙軌過濾隔離與三大實戰排查 Wiki 深度提煉 (Wiki Distillation & Codebase Truth-Tracing)：
+## [2026-08-28] distill | 官方遙測真理、Multi-Agent 經濟學、四大時序排查與全局計價矩陣 Wiki 深度提煉 (Wiki Distillation & Forensics Audit)：
+1. **全新架構卡片落地 (`02_architecture/10` & `11`)**：
+   * `10_Dashboard_Aggregate_Metrics_and_Multi_Model_Pricing.md`：跨輪次總吞吐量、Effective Tokens 等效字數折扣矩陣（Flash 75%, Sonnet 90%）、即時貨幣換算（`$` 鍵循環切換）與 Google AI Pro 5,000 RPD 配額消耗模型；
+   * `11_Multi_Agent_Hierarchy_and_Subagent_Token_Economics.md`：Subagent 獨立 Context 生命週期、四階段計費拆解、本地 Tool 0 GPU Token 原則與 `status = 7` (BLOCKED) 沙盒防禦；
+2. **四大 SRE 四段式實戰故障覆盤卡片落地 (`05_troubleshooting/07..10`)**：
+   * `07_Idle_TTL_Masking_by_Local_User_Input_Timestamps.md`：10 分鐘閒置快取未過期之謎、本地打字 `USER_INPUT` 時序遮蔽與 `LastCloudTurnTime` 專屬時鐘隔離修復；
+   * `08_Stream_Update_Duplication_and_Step_Counter_Inflation.md`：事件數 10,336 與步驟序號 5,919 脫節之謎、串流 `RUNNING` $\to$ `DONE` 重複累加與 In-Place 原地覆蓋修復；
+   * `09_Harness_Internal_Plumbing_Filtering_and_SQLite_Gap_Recovery.md`：消失的 31 個步驟與跳號之謎、Google 內部管線過濾機制剖析與 `MergeMissingSQLiteSteps` 全量補齊；
+   * `10_Destructive_History_Filter_vs_Non_Destructive_Jump_Navigation.md`：歷史搜尋 Context 丟失之謎、破壞式過濾修復與 Vim Jump-to-Step 導航器平滑錨定重構；
+3. **全庫雙向鏈接與 MOC 矩陣同步**：
+   * 同步升級 `docs/index.md`、`02_wiki/index.md`、`02_architecture/index.md`、`05_troubleshooting/index.md`、`01_theory/03` 與 `02_architecture/06`；
+4. **19 角色雙輪審查與全景報告書**：
+   * 由 19 位頂尖專家與讀者完成雙輪對抗審查，產出 `docs/reviews/2026-08-28_01-25-00_wiki_distillation_and_forensics_audit_report.md`；
+5. **秘書長反饋庫沉澱與 Digest & Delete 執行**：
+   * 更新 `feedbacks/` 5 大記憶庫，並安全清理 `docs/01_raw/` 8 份已消化原始素材。
 1. **全新架構卡片落地 (`02_architecture/09_History_Explorer_and_Causality_Graph.md`)**：
    * 提煉雙軌正交過濾引擎（`[T:Type]` 與 `[C:Cache]` 嚴格隔離）；
    * 提煉增量步驟搜尋（`/` 與 `n`/`N` 跳轉）、方案 B 緊湊連續括號（`┌[` / `│[` / `└[`）與雙向因果導航（`p` 跳父步驟，`c`/`C` 跳已消費子步驟）；

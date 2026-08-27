@@ -37,6 +37,8 @@
 * [[07_TUI_Engine_and_Terminal_Layout_Mechanics]]：全螢幕 TUI 引擎架構、3-Panel 雙模式響應式佈局、方案 B 連續括號封裝、動態行數打包與嵌入式多語言 Markdown。
 * [[08_Interactive_Session_Switching_and_Anti_Jitter]]：全域會話快切中樞（`Ctrl+p`）、動態目錄發現與歷史步驟防抖動鎖定機制（Anti-Jitter Lock）。
 * [[09_History_Explorer_and_Causality_Graph]]：歷史步進瀏覽器、雙軌正交過濾引擎（`[T:Type]` 與 `[C:Cache]`）、方案 B 緊湊括號封裝與雙向因果跳轉（`p`/`c`/`C`）。
+* [[10_Dashboard_Aggregate_Metrics_and_Multi_Model_Pricing]]：跨輪次總吞吐量、Effective Tokens 等效字數折扣矩陣、即時貨幣換算（`$` 鍵切換）與 Google AI Pro 5,000 RPD 配額消耗模型。
+* [[11_Multi_Agent_Hierarchy_and_Subagent_Token_Economics]]：Subagent 獨立 Context 生命週期、四階段計費拆解、本地 Tool 0 GPU Token 原則與 `status = 7` (BLOCKED) 沙盒防禦。
 
 ### 3. [[02_wiki/03_planning/index|🏆 03_planning: 系列藍圖與規劃規格 (產品全景)]]
 * [[02_wiki/03_planning/v2/index|🚀 v2/ 旗艦版企劃與 30 天大綱 (當前主線)]]：萬能多 Agent 觀測中樞、開篇與終章「共舞」自白與極致壓縮。
@@ -55,10 +57,15 @@
 * [[04_Filter_Isolation_and_Cache_Expired_Boundary_Leak|04. EXPIRED 洩漏至 MISS 篩選漏洞]]：顯式互斥排除守衛與快取狀態嚴格正交隔離。
 * [[05_USER_Input_Inbound_Intent_vs_GPU_Cache_Settlement|05. USER 誤標 MISS 與結算錯位]]：使用者意圖與雲端推論時序解耦，移除合成標籤。
 * [[06_Single_Line_Card_Static_Packing_Blank_Gap|06. 單行卡片靜態除二清單大片留白]]：動態行數打包演算法修復與多高度緊湊排版。
+* [[07_Idle_TTL_Masking_by_Local_User_Input_Timestamps|07. 10 分鐘閒置快取未過期之謎]]：本地打字時間戳時序遮蔽修復與 `LastCloudTurnTime` 專屬時鐘。
+* [[08_Stream_Update_Duplication_and_Step_Counter_Inflation|08. 事件數 10,336 與步驟序號 5,919 脫節]]：串流狀態躍遷重複累加修復與 In-Place 原地更新。
+* [[09_Harness_Internal_Plumbing_Filtering_and_SQLite_Gap_Recovery|09. 消失的 31 個步驟與跳號之謎]]：Google 內部管線過濾 31 步驟與全量 SQLite 補齊。
+* [[10_Destructive_History_Filter_vs_Non_Destructive_Jump_Navigation|10. 歷史搜尋 Context 丟失與 Vim 跳轉導航]]：破壞式過濾修復與 Vim Jump-to-Step 導航重構。
 
 ---
 
 ## 📜 三、審查委員會全景報告書 (`docs/reviews/`)
+* **👉 [[reviews/2026-08-28_01-25-00_wiki_distillation_and_forensics_audit_report|🏛️ 2026-08-28 01:25:00 官方遙測真理、Multi-Agent 經濟學、四大時序排查與全局計價矩陣 Wiki 深度提煉報告書]]**
 * **👉 [[reviews/2026-08-27_15-26-00_history_explorer_and_troubleshooting_audit_report|🏛️ 2026-08-27 15:26:00 歷史步進瀏覽器、雙軌過濾隔離與三大實戰排查 Wiki 深度提煉報告書]]**
 * **👉 [[reviews/2026-08-27_02-15-00_multi_agent_adversarial_review_audit_report|🏛️ 2026-08-27 02:15:00 19 角色雙輪深層對抗審查、QA/Runbook 模組落地與全量 Raw 提煉審查報告書]]**
 * **👉 [[reviews/2026-08-26_23-13-21_wiki_distillation_comprehensive_audit_report|🏛️ 2026-08-26 23:13:21 全量 16 篇 Wiki 卡片深度提煉、雙軌遙測、TUI 盒模型與雙水位線壓縮審查報告書]]**

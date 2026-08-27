@@ -27,6 +27,15 @@
 ### 5. 【本地意圖輸入與雲端 GPU 計費時序解耦 (Intent Ingestion vs Inference Settlement)】
 * **[規則]**：人類在終端機打字輸入意圖（`USER_INPUT`）時雲端尚未推論，嚴禁為輸入步驟合成虛假的 `[MISS]` 標籤與全額未命中帳單，必須定義為 `Staged Intent` 待下一輪雲端步驟結算。
 
+### 6. 【本地打字與中間步驟嚴禁覆蓋 TTL 計時器 (LastCloudTurnTime 隔離鐵律)】
+* **[規則]**：GPU KV-Cache 的過期判定必須死守雲端推論間隔。本地事件（User Input, Tool Output）嚴禁更新 `LastCloudTurnTime`，杜絕時序遮蔽效應。
+
+### 7. 【串流事件接收端必須以實體主鍵 (SessionID, StepIndex) 原地覆蓋去重 (In-Place Deduplication)】
+* **[規則]**：面對 `RUNNING` $\to$ `DONE` 的連續串流通知，UI 接收端必須按實體序號查找並原地覆蓋更新，嚴禁無腦 append 導致計數器膨脹與記憶體洩漏。
+
+### 8. 【底層過濾的內部與阻擋步驟必須在 View 層全量補齊並明確標記角色】
+* **[規則]**：觀測器必須 100% 忠實還原底層 SQLite 的所有步驟，補齊遺失序號並賦予 `INTERNAL` 與 `BLOCKED` 專屬徽章，絕不替使用者做未告知的過濾。
+
 ---
 
 ## 🔴 [REJECTED] 駁回警示與邊界 (Rejected Patterns)
