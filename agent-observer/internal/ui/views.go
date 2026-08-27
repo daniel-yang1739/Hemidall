@@ -62,7 +62,7 @@ func renderBorderlessKpiStrip(tot core.ModelTokenStats, width int) string {
 			truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%s Tok (%.1f%% Hit)", formatTokShort(tot.TotalCached), tot.CacheHitRate)), colW))
 
 		h3 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "UNCACHED INBOUND"), colW))
-		h4 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "EFFECTIVE / SAVED"), colW))
+		h4 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "TOKENS SAVED (%)"), colW))
 		v3 := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(
 			truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%s Tok (%.1f%% Cold)", formatTokShort(tot.TotalNew), 100.0-tot.CacheHitRate)), colW))
 		v4 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(
@@ -118,28 +118,54 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 	var sb strings.Builder
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("  MULTI-MODEL TOKEN & SAVINGS BREAKDOWN:") + "\n")
 
-	if width < 110 {
-		// Responsive 5-Column Compact Table for Narrow / Half Width Terminals
-		header := fmt.Sprintf("  %-22s %5s %12s %17s %17s",
-			"Model Name", "Turns", "Processed", "Cached (Hit %)", "Tokens Saved (%)")
+	if width < 85 {
+		// Ultra-Compact 4-Column Table for Half-Width / Narrow Terminals (< 85 cols)
+		header := fmt.Sprintf("  %-18s %5s %10s %16s",
+			"Model Name", "Turns", "Processed", "Cached (Hit %)")
 		sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(truncateVisualWidth(header, width)) + "\n")
 
 		for _, m := range models {
-			mName := truncateVisualWidth(m.ModelName, 22)
+			mName := truncateVisualWidth(m.ModelName, 18)
+			hitStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(m.TotalCached), m.CacheHitRate)
+
+			line := fmt.Sprintf("  %-18s %5d %10s %16s",
+				mName, m.TurnCount, formatTokShort(m.TotalProcessed), hitStr)
+			sb.WriteString(truncateVisualWidth(line, width) + "\n")
+		}
+
+		sep := "  " + strings.Repeat("─", min(width-4, 52))
+		sb.WriteString(lipgloss.NewStyle().Foreground(ColorBorder).Render(truncateVisualWidth(sep, width)) + "\n")
+
+		totHitStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(total.TotalCached), total.CacheHitRate)
+		totLine := fmt.Sprintf("  %-18s %5d %10s %16s",
+			"TOTAL SUMMARY", total.TurnCount, formatTokShort(total.TotalProcessed), totHitStr)
+		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(truncateVisualWidth(totLine, width)))
+
+		return sb.String()
+	}
+
+	if width < 110 {
+		// Responsive 5-Column Compact Table for Medium Terminals (85..109 cols)
+		header := fmt.Sprintf("  %-18s %5s %10s %16s %15s",
+			"Model Name", "Turns", "Processed", "Cached (Hit %)", "Saved (%)")
+		sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(truncateVisualWidth(header, width)) + "\n")
+
+		for _, m := range models {
+			mName := truncateVisualWidth(m.ModelName, 18)
 			hitStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(m.TotalCached), m.CacheHitRate)
 			savStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(m.TokensSaved), m.SavingsPercentage)
 
-			line := fmt.Sprintf("  %-22s %5d %12s %17s %17s",
+			line := fmt.Sprintf("  %-18s %5d %10s %16s %15s",
 				mName, m.TurnCount, formatTokShort(m.TotalProcessed), hitStr, savStr)
 			sb.WriteString(truncateVisualWidth(line, width) + "\n")
 		}
 
-		sep := "  " + strings.Repeat("─", min(width-4, 76))
+		sep := "  " + strings.Repeat("─", min(width-4, 68))
 		sb.WriteString(lipgloss.NewStyle().Foreground(ColorBorder).Render(truncateVisualWidth(sep, width)) + "\n")
 
 		totHitStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(total.TotalCached), total.CacheHitRate)
 		totSavStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(total.TokensSaved), total.SavingsPercentage)
-		totLine := fmt.Sprintf("  %-22s %5d %12s %17s %17s",
+		totLine := fmt.Sprintf("  %-18s %5d %10s %16s %15s",
 			"TOTAL SUMMARY", total.TurnCount, formatTokShort(total.TotalProcessed), totHitStr, totSavStr)
 		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(truncateVisualWidth(totLine, width)))
 
@@ -322,17 +348,33 @@ func (m Model) renderDashboardView() string {
 		timeStr = "N/A"
 	}
 
-	p1.WriteString(fmt.Sprintf("  • Backend Model         : %s  (Step #%03d | Status: %s | %s)\n",
-		lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName), e.StepIndex, e.Status, timeStr))
-	p1.WriteString(fmt.Sprintf("  • Step Active Context   : %s Tokens (%5.1f%% of %dk Window)  %s\n",
-		lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
-	p1.WriteString(fmt.Sprintf("  • 5-Dimension Breakdown : Sys: %d (%.1f%%) | Tools: %d (%.1f%%) | Res: %d (%.1f%%) | Hist: %d (%.1f%%) | Active: %d (%.1f%%)",
-		t.SystemTokens, sysPct, t.ToolsDefTokens, toolsPct, t.ToolResultTokens, resPct, t.HistoryTokens, histPct, t.ActiveTurnTokens+t.ThinkingTokens, activePct))
+	if contentWidth < 100 {
+		// Responsive clean layout for Half-Width / Narrow Terminals (< 100 cols)
+		p1.WriteString(fmt.Sprintf("  • Backend Model   : %s  (Step #%03d)\n",
+			lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(modelName, 26)), e.StepIndex))
+		p1.WriteString(fmt.Sprintf("  • Active Context  : %s Tokens (%5.1f%% of %dk) %s\n",
+			lipgloss.NewStyle().Bold(true).Render(formatTokShort(total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
+		p1.WriteString(fmt.Sprintf("  • Status & Time   : Status: %s | %s\n",
+			e.Status, timeStr))
+		p1.WriteString("  • Context Anatomy :\n")
+		p1.WriteString(fmt.Sprintf("    Sys: %s (%.1f%%) | Tools: %s (%.1f%%) | Res: %s (%.1f%%)\n",
+			formatTokShort(t.SystemTokens), sysPct, formatTokShort(t.ToolsDefTokens), toolsPct, formatTokShort(t.ToolResultTokens), resPct))
+		p1.WriteString(fmt.Sprintf("    Hist: %s (%.1f%%) | Act: %s (%.1f%%)",
+			formatTokShort(t.HistoryTokens), histPct, formatTokShort(t.ActiveTurnTokens+t.ThinkingTokens), activePct))
+	} else {
+		// Single-line layout for Wide Terminals (>= 100 cols)
+		p1.WriteString(fmt.Sprintf("  • Backend Model         : %s  (Step #%03d | Status: %s | %s)\n",
+			lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName), e.StepIndex, e.Status, timeStr))
+		p1.WriteString(fmt.Sprintf("  • Step Active Context   : %s Tokens (%5.1f%% of %dk Window)  %s\n",
+			lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
+		p1.WriteString(fmt.Sprintf("  • 5-Dimension Breakdown : Sys: %s (%.1f%%) | Tools: %s (%.1f%%) | Res: %s (%.1f%%) | Hist: %s (%.1f%%) | Active: %s (%.1f%%)",
+			formatTokShort(t.SystemTokens), sysPct, formatTokShort(t.ToolsDefTokens), toolsPct, formatTokShort(t.ToolResultTokens), resPct, formatTokShort(t.HistoryTokens), histPct, formatTokShort(t.ActiveTurnTokens+t.ThinkingTokens), activePct))
+	}
 
 	panel1Box := PanelStyle.Width(panelInnerWidth).Render(p1.String())
 
 	// Responsive vertical layout
-	if m.height >= 30 && len(m.history) > 0 {
+	if m.height >= 35 && len(m.history) > 0 {
 		var p3Lines []string
 		p3Lines = append(p3Lines, TitleStyle.Render("RECENT LIVE EVENTS (Press [Enter] or [2] to inspect history)"))
 
