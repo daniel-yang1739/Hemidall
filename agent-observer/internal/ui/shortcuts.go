@@ -31,8 +31,8 @@ var allShortcutItems = []ShortcutItem{
 	{Category: "Dashboard Playback", Key: "Enter", Desc: "Inspect selected playback step in History View"},
 
 	// 3. Step History Explorer Controls
-	{Category: "History Explorer", Key: "t / T", Desc: "Cycle Step Type filter (All ➔ Tool ➔ Model ➔ User ➔ Code)"},
-	{Category: "History Explorer", Key: "c / C", Desc: "Cycle Cache Status filter (All ➔ Hit ➔ Partial ➔ Miss ➔ Broken)"},
+	{Category: "History Explorer", Key: "t / T", Desc: "Cycle Step Type filter (All ➔ Tool ➔ Model ➔ User ➔ Code ➔ Generic)"},
+	{Category: "History Explorer", Key: "c / C", Desc: "Cycle Cache Status filter (All ➔ Hit ➔ Partial ➔ Write ➔ Expired ➔ Miss)"},
 	{Category: "History Explorer", Key: "/", Desc: "Search / filter by Step Number (#)"},
 	{Category: "History Explorer", Key: "l / Enter / Right", Desc: "Switch focus to Right Pane (Inspector)"},
 	{Category: "History Explorer", Key: "h / Esc / Left", Desc: "Return focus to Left Pane / Clear active filters"},

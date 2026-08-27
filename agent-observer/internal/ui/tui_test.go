@@ -310,10 +310,14 @@ func TestHistoryFilteringAndStepSearch(t *testing.T) {
 		{StepIndex: 14, Type: core.StepTypeToolCall, CacheStatus: "HIT", Tokens: core.TokenBreakdown{CacheHitRate: 95.0}, Summary: "Write file"},
 	}
 
-	// 1. Initial State: All 5 events
+	// 1. Initial State: All 5 events and [T:All] [C:All] rendered
 	filtered := m.getFilteredHistory()
 	if len(filtered) != 5 {
 		t.Fatalf("Expected 5 events, got %d", len(filtered))
+	}
+	renderedInitial := m.renderHistoryView()
+	if !strings.Contains(renderedInitial, "[T:All]") || !strings.Contains(renderedInitial, "[C:All]") {
+		t.Fatalf("Expected '[T:All]' and '[C:All]' badges on header line, got:\n%s", renderedInitial)
 	}
 
 	// 2. Cycle Type Filter: press 't' -> Tool (should match Step 3, 4, 14)
@@ -336,6 +340,17 @@ func TestHistoryFilteringAndStepSearch(t *testing.T) {
 	filtered = m.getFilteredHistory()
 	if len(filtered) != 2 {
 		t.Fatalf("Expected 2 hit events, got %d", len(filtered))
+	}
+
+	// Cycle Cache Filter: press 'c' -> Partial (should match Step 4)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	m = updated.(Model)
+	if m.historyCacheFilter != CacheFilterPartial {
+		t.Fatalf("Expected CacheFilterPartial, got %v", m.historyCacheFilter)
+	}
+	filtered = m.getFilteredHistory()
+	if len(filtered) != 1 || filtered[0].StepIndex != 4 {
+		t.Fatalf("Expected 1 partial event (step 4), got %v", filtered)
 	}
 
 	// 4. Press Esc to reset filters

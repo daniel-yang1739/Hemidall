@@ -184,20 +184,23 @@ func (m Model) renderHistoryView() string {
 		leftTitle = fmt.Sprintf("STEPS (%s) <", countStr)
 	}
 
-	var filterBadges []string
-	if m.historyTypeFilter != TypeFilterAll {
-		filterBadges = append(filterBadges, fmt.Sprintf("[T:%s]", m.historyTypeFilter))
-	}
-	if m.historyCacheFilter != CacheFilterAll {
-		filterBadges = append(filterBadges, fmt.Sprintf("[C:%s]", m.historyCacheFilter))
+	// Always render both [T:...] and [C:...] filter indicators
+	var typeBadgeStr string
+	if m.historyTypeFilter == TypeFilterAll {
+		typeBadgeStr = lipgloss.NewStyle().Foreground(ColorMuted).Render("[T:All]")
+	} else {
+		typeBadgeStr = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("[T:%s]", m.historyTypeFilter))
 	}
 
-	titleStr := TitleStyle.Render(leftTitle)
-	if len(filterBadges) > 0 {
-		badgesStr := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(strings.Join(filterBadges, " "))
-		titleStr = titleStr + " " + badgesStr
+	var cacheBadgeStr string
+	if m.historyCacheFilter == CacheFilterAll {
+		cacheBadgeStr = lipgloss.NewStyle().Foreground(ColorMuted).Render("[C:All]")
+	} else {
+		cacheBadgeStr = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("[C:%s]", m.historyCacheFilter))
 	}
-	leftLines = append(leftLines, truncateVisualWidth(titleStr, listContentWidth))
+
+	titleLine := fmt.Sprintf("%s %s %s", TitleStyle.Render(leftTitle), typeBadgeStr, cacheBadgeStr)
+	leftLines = append(leftLines, truncateVisualWidth(titleLine, listContentWidth))
 
 	if m.isHistorySearching || m.historyStepQuery != "" {
 		cursorChar := ""
@@ -437,13 +440,19 @@ func formatShortCache(e core.UnifiedAgentEvent) string {
 		return lipgloss.NewStyle().Foreground(ColorSuccess).Render(fmt.Sprintf("[HIT %.0f%%]", e.Tokens.CacheHitRate))
 	case "PARTIAL":
 		return lipgloss.NewStyle().Foreground(ColorWarning).Render(fmt.Sprintf("[PART %.0f%%]", e.Tokens.CacheHitRate))
+	case "WRITE":
+		return lipgloss.NewStyle().Foreground(ColorSecondary).Render("[WRITE]")
+	case "EXPIRED", "TTL_EXPIRED":
+		return lipgloss.NewStyle().Foreground(ColorHighlight).Render("[EXPIRED]")
 	case "MISS":
 		return lipgloss.NewStyle().Foreground(ColorDanger).Render("[MISS]")
-	case "BROKEN":
-		return lipgloss.NewStyle().Foreground(ColorHighlight).Render("[BROKEN]")
 	default:
 		if e.Tokens.CacheHitRate >= 70.0 {
 			return lipgloss.NewStyle().Foreground(ColorSuccess).Render(fmt.Sprintf("[HIT %.0f%%]", e.Tokens.CacheHitRate))
+		} else if e.Tokens.CacheHitRate > 0.0 {
+			return lipgloss.NewStyle().Foreground(ColorWarning).Render(fmt.Sprintf("[PART %.0f%%]", e.Tokens.CacheHitRate))
+		} else if e.StepIndex == 0 {
+			return lipgloss.NewStyle().Foreground(ColorSecondary).Render("[WRITE]")
 		}
 		return ""
 	}

@@ -80,15 +80,16 @@ const (
 	TypeFilterGeneric TypeFilter = "Generic"
 )
 
-// CacheFilter defines cache status filter in History Explorer
+// CacheFilter defines cache status filter in History Explorer (aligned with Docs)
 type CacheFilter string
 
 const (
 	CacheFilterAll     CacheFilter = "All"
 	CacheFilterHit     CacheFilter = "Hit"
 	CacheFilterPartial CacheFilter = "Partial"
+	CacheFilterWrite   CacheFilter = "Write"
+	CacheFilterExpired CacheFilter = "Expired"
 	CacheFilterMiss    CacheFilter = "Miss"
-	CacheFilterBroken  CacheFilter = "Broken"
 )
 
 // nextAgentTab cycles agent filter tab: Antigravity -> ClaudeCode -> OpenCode -> Antigravity
@@ -146,9 +147,11 @@ func (m *Model) cycleCacheFilter() {
 	case CacheFilterHit:
 		m.historyCacheFilter = CacheFilterPartial
 	case CacheFilterPartial:
+		m.historyCacheFilter = CacheFilterWrite
+	case CacheFilterWrite:
+		m.historyCacheFilter = CacheFilterExpired
+	case CacheFilterExpired:
 		m.historyCacheFilter = CacheFilterMiss
-	case CacheFilterMiss:
-		m.historyCacheFilter = CacheFilterBroken
 	default:
 		m.historyCacheFilter = CacheFilterAll
 	}
@@ -207,10 +210,12 @@ func matchCacheFilter(e core.UnifiedAgentEvent, filter CacheFilter) bool {
 		return e.CacheStatus == "HIT" || e.Tokens.CacheHitRate >= 70.0
 	case CacheFilterPartial:
 		return e.CacheStatus == "PARTIAL" || (e.Tokens.CacheHitRate > 0 && e.Tokens.CacheHitRate < 70.0)
+	case CacheFilterWrite:
+		return e.CacheStatus == "WRITE" || (e.StepIndex == 0 && e.Tokens.CachedTokens == 0)
+	case CacheFilterExpired:
+		return e.CacheStatus == "EXPIRED" || e.CacheStatus == "TTL_EXPIRED"
 	case CacheFilterMiss:
-		return e.CacheStatus == "MISS" || (e.Tokens.CachedTokens == 0 && e.Tokens.NewTokens > 0)
-	case CacheFilterBroken:
-		return e.CacheStatus == "BROKEN" || e.CacheStatus == "EXPIRED"
+		return e.CacheStatus == "MISS" || (e.StepIndex > 0 && e.Tokens.CachedTokens == 0 && e.Tokens.NewTokens > 0)
 	}
 	return true
 }
