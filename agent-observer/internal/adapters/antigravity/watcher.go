@@ -262,8 +262,8 @@ func (w *Watcher) parseLine(line string) (core.UnifiedAgentEvent, error) {
 		w.tracker.ProcessEvent(&event)
 	}
 
-	// Check if official telemetry from SQLite is available for this step
-	if w.sqliteReader != nil {
+	// Check if official telemetry from SQLite is available for this step (strictly cloud inference steps only)
+	if w.sqliteReader != nil && event.IsCloudStep() {
 		if meta := w.sqliteReader.GetTelemetryForStep(raw.StepIndex); meta != nil && meta.TotalTokens > 0 {
 			event.Tokens.IsOfficialData = true
 			event.Tokens.TotalTokens = meta.TotalTokens

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"math"
 	"sort"
 	"strings"
 )
@@ -30,7 +31,8 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 	var weightedEffectiveTotal int
 
 	for _, e := range history {
-		if !e.IsCloudStep() && e.Tokens.TotalTokens == 0 {
+		// Only genuine cloud inference steps participate in session billing & caching aggregates
+		if !e.IsCloudStep() {
 			continue
 		}
 
@@ -54,8 +56,18 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 		pTokens := e.Tokens.TotalTokens
 		cTokens := e.Tokens.CachedTokens
 		nTokens := e.Tokens.NewTokens
-		if nTokens == 0 && pTokens > cTokens {
+
+		if cTokens > pTokens {
+			cTokens = pTokens
+		}
+		if nTokens == 0 || nTokens > pTokens {
 			nTokens = pTokens - cTokens
+		}
+		if nTokens < 0 {
+			nTokens = 0
+		}
+		if pTokens < cTokens+nTokens {
+			pTokens = cTokens + nTokens
 		}
 
 		stats.TurnCount++
@@ -73,8 +85,8 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 	for _, stats := range modelMap {
 		if stats.TotalProcessed > 0 {
 			stats.CacheHitRate = float64(stats.TotalCached) / float64(stats.TotalProcessed) * 100.0
-			stats.EffectiveTokens = stats.TotalNew + int(float64(stats.TotalCached)*stats.PriceFactor)
-			stats.TokensSaved = stats.TotalProcessed - stats.EffectiveTokens
+			stats.EffectiveTokens = stats.TotalNew + int(math.Round(float64(stats.TotalCached)*stats.PriceFactor))
+			stats.TokensSaved = int(math.Round(float64(stats.TotalCached) * stats.DiscountRate))
 			stats.SavingsPercentage = float64(stats.TokensSaved) / float64(stats.TotalProcessed) * 100.0
 		} else {
 			stats.EffectiveTokens = stats.TotalNew

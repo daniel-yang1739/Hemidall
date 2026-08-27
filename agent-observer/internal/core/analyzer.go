@@ -116,6 +116,11 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 			event.Tokens.ToolResultTokens = stepTokens
 		}
 		event.Tokens.TotalTokens = stepTokens
+		event.Tokens.CachedTokens = 0
+		event.Tokens.NewTokens = 0
+		event.Tokens.CacheHitRate = 0.0
+		event.Tokens.IsOfficialData = false
+		event.Tokens.OfficialModel = ""
 		event.CacheStatus = ""
 		if !event.Timestamp.IsZero() {
 			state.LastEventTime = event.Timestamp
