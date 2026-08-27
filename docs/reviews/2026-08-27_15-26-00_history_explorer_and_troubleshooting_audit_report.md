@@ -11,14 +11,14 @@
 
 本輪提煉針對 2026-08-27 上午至下午累積的 11 份 Raw 素材進行深層二次編譯與代碼事實溯源，完成了 1 篇全新核心架構卡片、3 篇四段式實戰排查卡片與 2 篇核心架構卡片的重大升級：
 
-| 模組分類 | 檔案路徑 | 核心內容與技術貢獻 | 關聯 Codebase 實證 |
-| :--- | :--- | :--- | :--- |
-| **02_architecture** | `09_History_Explorer_and_Causality_Graph.md` | 雙軌正交過濾引擎（`[T:Type]` 與 `[C:Cache]`）、增量搜尋、方案 B 連續括號封裝與雙向因果跳轉（`p`/`c`/`C`） | `internal/ui/views.go`<br/>`internal/ui/model.go` |
-| **02_architecture** | `03_Agent_Storage_and_State_Machine.md` | 升級通用 Agent 4 態狀態機（User $\to$ Cloud $\to$ Local $\to$ Cloud）、`StepLinkageTracker` 親緣追蹤器與跨平台可移植性 | `internal/core/tracker.go`<br/>`internal/core/types.go` |
-| **02_architecture** | `07_TUI_Engine_and_Terminal_Layout_Mechanics.md` | 升級 3-Panel 雙模式響應式佈局、方案 B 零縮排連續括號（`┌[`/`│[`/`└[`）、動態行數打包演算法與 $H$ 守恆 | `internal/ui/views.go`<br/>`internal/ui/model.go` |
-| **05_troubleshooting** | `04_Filter_Isolation_and_Cache_Expired_Boundary_Leak.md` | SRE 四段式覆盤：黃色 `[EXPIRED]` 步驟洩漏至 `[C:Miss]` 篩選清單之邊界漏洞、顯式互斥排除守衛與 Runbook | `internal/ui/model.go:matchCacheFilter` |
-| **05_troubleshooting** | `05_USER_Input_Inbound_Intent_vs_GPU_Cache_Settlement.md` | SRE 四段式覆盤：`USER_INPUT` 誤標合成 `[MISS]` 標籤與時序結算錯位、意圖暫存與雲端計費解耦 | `internal/ui/views.go:formatShortCache` |
-| **05_troubleshooting** | `06_Single_Line_Card_Static_Packing_Blank_Gap.md` | SRE 四段式覆盤：`[T:User]` 篩選下單行卡片靜態除二計算導致底部 14 行留白、動態累加行數打包修復 | `internal/ui/model.go:getHistoryVisibleCards` |
+| 模組分類                   | 檔案路徑                                                      | 核心內容與技術貢獻                                                                                      | 關聯 Codebase 實證                                          |
+| :--------------------- | :-------------------------------------------------------- | :--------------------------------------------------------------------------------------------- | :------------------------------------------------------ |
+| **02_architecture**    | `09_History_Explorer_and_Causality_Graph.md`              | 雙軌正交過濾引擎（`[T:Type]` 與 `[C:Cache]`）、增量搜尋、方案 B 連續括號封裝與雙向因果跳轉（`p`/`c`/`C`）                        | `internal/ui/views.go`<br/>`internal/ui/model.go`       |
+| **02_architecture**    | `03_Agent_Storage_and_State_Machine.md`                   | 升級通用 Agent 4 態狀態機（User $\to$ Cloud $\to$ Local $\to$ Cloud）、`StepLinkageTracker` 親緣追蹤器與跨平台可移植性 | `internal/core/tracker.go`<br/>`internal/core/types.go` |
+| **02_architecture**    | `07_TUI_Engine_and_Terminal_Layout_Mechanics.md`          | 升級 3-Panel 雙模式響應式佈局、方案 B 零縮排連續括號（`┌[`/`│[`/`└[`）、動態行數打包演算法與 $H$ 守恆                             | `internal/ui/views.go`<br/>`internal/ui/model.go`       |
+| **05_troubleshooting** | `04_Filter_Isolation_and_Cache_Expired_Boundary_Leak.md`  | SRE 四段式覆盤：黃色 `[EXPIRED]` 步驟洩漏至 `[C:Miss]` 篩選清單之邊界漏洞、顯式互斥排除守衛與 Runbook                          | `internal/ui/model.go:matchCacheFilter`                 |
+| **05_troubleshooting** | `05_USER_Input_Inbound_Intent_vs_GPU_Cache_Settlement.md` | SRE 四段式覆盤：`USER_INPUT` 誤標合成 `[MISS]` 標籤與時序結算錯位、意圖暫存與雲端計費解耦                                     | `internal/ui/views.go:formatShortCache`                 |
+| **05_troubleshooting** | `06_Single_Line_Card_Static_Packing_Blank_Gap.md`         | SRE 四段式覆盤：`[T:User]` 篩選下單行卡片靜態除二計算導致底部 14 行留白、動態累加行數打包修復                                       | `internal/ui/model.go:getHistoryVisibleCards`           |
 
 ---
 
