@@ -67,6 +67,7 @@ const (
 	ScopeUserInteraction  StepScope = "USER"       // 👤 User Intent / Prompts (Network billed)
 	ScopeCloudInference   StepScope = "CLOUD"      // ☁️ Cloud LLM Inference / Tool Calls (GPU billed)
 	ScopeLocalExecution   StepScope = "LOCAL"      // 💻 Local Machine Process (Offline, 0 tokens)
+	ScopeSubagent         StepScope = "SUBAGENT"   // 👥 Subagent Worker Execution / Parallel Inference
 	ScopeSystemCompaction StepScope = "COMPACTION" // ⚙️ Out-of-band context compaction & truncation injection
 	ScopeSystemBootstrap  StepScope = "SYSTEM"     // 📜 System Init / Rules / Static configurations
 )
@@ -99,7 +100,9 @@ type UnifiedAgentEvent struct {
 	Source      string           `json:"source"`       // USER_EXPLICIT, MODEL, SYSTEM
 	Type        StepType         `json:"type"`         // Step category
 	Status      string           `json:"status"`       // DONE, RUNNING, ERROR
-	Scope       StepScope        `json:"scope"`        // USER, CLOUD, LOCAL, COMPACTION, SYSTEM
+	Scope       StepScope        `json:"scope"`        // USER, CLOUD, LOCAL, SUBAGENT, COMPACTION, SYSTEM
+	AgentRole   string           `json:"agent_role"`   // MAIN, SUBAGENT, INTERNAL
+	IsSubagent  bool             `json:"is_subagent"`  // True if executed by a subagent worker
 
 	// Causality & Hierarchy Linkage
 	ParentStepIdx       int      `json:"parent_step_idx,omitempty"`        // The triggering parent step index
@@ -116,6 +119,20 @@ type UnifiedAgentEvent struct {
 	// 5-dimension breakdown (injected by Analyzer)
 	Tokens      TokenBreakdown   `json:"tokens"`
 	CacheStatus string           `json:"cache_status"` // HIT, PARTIAL, WRITE, EXPIRED, MISS, UNKNOWN
+}
+
+// GetAgentRole returns the authoritative role of the agent executing this step (MAIN, SUBAGENT, or INTERNAL)
+func (e UnifiedAgentEvent) GetAgentRole() string {
+	if e.AgentRole != "" {
+		return e.AgentRole
+	}
+	if e.IsSubagent || e.Scope == ScopeSubagent {
+		return "SUBAGENT"
+	}
+	if e.Source == "SYSTEM" || e.Scope == ScopeSystemBootstrap || e.Scope == ScopeSystemCompaction {
+		return "INTERNAL"
+	}
+	return "MAIN"
 }
 
 // IsLocalStep returns true if the step is an offline execution on the local host machine

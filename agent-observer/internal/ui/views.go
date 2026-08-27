@@ -444,11 +444,11 @@ func (m Model) renderDashboardView() string {
 		}
 		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 		if contentWidth < 80 {
-			p1.WriteString(fmt.Sprintf("  • Origin         : Local Machine (%s | Step #%03d)\n", e.Type, e.StepIndex))
+			p1.WriteString(fmt.Sprintf("  • Origin / Role  : %s (%s | Step #%03d)\n", e.GetAgentRole(), e.Type, e.StepIndex))
 			p1.WriteString(fmt.Sprintf("  • Tool Output    : %d Tokens  %s\n", total, cacheBadge))
 			p1.WriteString(fmt.Sprintf("  • Status & Time  : %s | %s", e.Status, timeStr))
 		} else {
-			p1.WriteString(fmt.Sprintf("  • Origin         : Local Host Process (%s | Step #%03d | Status: %s | %s)\n", e.Type, e.StepIndex, e.Status, timeStr))
+			p1.WriteString(fmt.Sprintf("  • Origin / Role        : %s (%s | Step #%03d | Status: %s | %s)\n", e.GetAgentRole(), e.Type, e.StepIndex, e.Status, timeStr))
 			p1.WriteString(fmt.Sprintf("  • Output Payload : %d Tokens (Tool Result Data)  %s\n", total, cacheBadge))
 			if e.Status == "BLOCKED" {
 				p1.WriteString("  • Action Status  : Blocked by System Permission Guard (0 GPU Tokens Billed) 🛡️")
@@ -460,11 +460,11 @@ func (m Model) renderDashboardView() string {
 		p1Title := "TRACK 1: USER INTERACTION (CLIENT PROMPT)" + playbackSuffix
 		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 		if contentWidth < 80 {
-			p1.WriteString(fmt.Sprintf("  • Origin         : Human Client Prompt (Step #%03d)\n", e.StepIndex))
+			p1.WriteString(fmt.Sprintf("  • Origin / Role  : HUMAN CLIENT (Step #%03d)\n", e.StepIndex))
 			p1.WriteString(fmt.Sprintf("  • Prompt Payload : %d Tokens  %s\n", total, cacheBadge))
 			p1.WriteString(fmt.Sprintf("  • Status & Time  : %s | %s", e.Status, timeStr))
 		} else {
-			p1.WriteString(fmt.Sprintf("  • Origin         : Human Client Inbound Intent (Step #%03d | Status: %s | %s)\n", e.StepIndex, e.Status, timeStr))
+			p1.WriteString(fmt.Sprintf("  • Origin / Role        : HUMAN CLIENT Intent (Step #%03d | Status: %s | %s)\n", e.StepIndex, e.Status, timeStr))
 			p1.WriteString(fmt.Sprintf("  • Prompt Payload : %d Tokens (Local Inbound Intent)  %s\n", total, cacheBadge))
 			p1.WriteString("  • Billing Status : Inbound Intent ➔ Settled on Next Cloud Inference Turn ☁️")
 		}
@@ -472,16 +472,19 @@ func (m Model) renderDashboardView() string {
 		p1Title := "TRACK 1: SYSTEM COMPACTION (CHECKPOINT)" + playbackSuffix
 		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 		if contentWidth < 80 {
-			p1.WriteString(fmt.Sprintf("  • Event          : Harness Context Compaction (Step #%03d)\n", e.StepIndex))
+			p1.WriteString(fmt.Sprintf("  • Event / Role   : %s Context Compaction (Step #%03d)\n", e.GetAgentRole(), e.StepIndex))
 			p1.WriteString(fmt.Sprintf("  • Summary Size   : %d Tokens  %s\n", total, cacheBadge))
 			p1.WriteString(fmt.Sprintf("  • Status & Time  : %s | %s", e.Status, timeStr))
 		} else {
-			p1.WriteString(fmt.Sprintf("  • Origin         : Harness Middleware (Sidecar Context GC | Step #%03d | Status: %s | %s)\n", e.StepIndex, e.Status, timeStr))
+			p1.WriteString(fmt.Sprintf("  • Origin / Role        : %s Middleware (Sidecar Context GC | Step #%03d | Status: %s | %s)\n", e.GetAgentRole(), e.StepIndex, e.Status, timeStr))
 			p1.WriteString(fmt.Sprintf("  • Summary Size   : %d Tokens (Replaces ~200k+ Old Historical Tokens)  %s\n", total, cacheBadge))
 			p1.WriteString("  • Action Status  : Injected into Context ➔ Re-anchors Active Window Base for Next Turn")
 		}
 	} else {
 		p1Title := "TRACK 1: OFFICIAL CLOUD TELEMETRY" + playbackSuffix
+		if e.IsSubagent || e.GetAgentRole() == "SUBAGENT" {
+			p1Title = "TRACK 1: SUBAGENT CLOUD TELEMETRY" + playbackSuffix
+		}
 		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 
 		modelName := t.OfficialModel
@@ -490,16 +493,16 @@ func (m Model) renderDashboardView() string {
 		}
 
 		if contentWidth < 80 {
-			p1.WriteString(fmt.Sprintf("  • Backend Model  : %s (Step #%03d)\n",
-				lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(modelName, contentWidth-24)), e.StepIndex))
+			p1.WriteString(fmt.Sprintf("  • Agent / Model  : [%s] %s (Step #%03d)\n",
+				e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(modelName, contentWidth-28)), e.StepIndex))
 			p1.WriteString(fmt.Sprintf("  • Active Context : %s Tok (%4.1f%% of %dk Window) %s\n",
 				lipgloss.NewStyle().Bold(true).Render(formatTokShort(total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
 			p1.WriteString(fmt.Sprintf("  • Cached vs. New : %s Cached (%.1f%%) | %s New\n",
 				formatTokShort(t.CachedTokens), t.CacheHitRate, formatTokShort(t.NewTokens)))
 			p1.WriteString(fmt.Sprintf("  • Status & Time  : Status: %s | %s", e.Status, timeStr))
 		} else {
-			p1.WriteString(fmt.Sprintf("  • Backend Model        : %s  (Step #%03d | Status: %s | %s)\n",
-				lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName), e.StepIndex, e.Status, timeStr))
+			p1.WriteString(fmt.Sprintf("  • Agent / Model        : [%s] %s  (Step #%03d | Status: %s | %s)\n",
+				e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName), e.StepIndex, e.Status, timeStr))
 			p1.WriteString(fmt.Sprintf("  • Step Active Context  : %s Tokens (%5.1f%% of %dk Window)  %s\n",
 				lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
 			p1.WriteString(fmt.Sprintf("  • Cache Optimization   : %s Tokens Cached (%.1f%% Hit) | %s Tokens Uncached New (%.1f%% Cold)",
@@ -1153,6 +1156,9 @@ func (m Model) formatHistoryCard(
 
 	if isCloudTop {
 		typeStr := formatStepType(string(e.Type))
+		if e.IsSubagent || e.GetAgentRole() == "SUBAGENT" {
+			typeStr = "👥 SUBAGENT"
+		}
 		cacheTag := formatShortCache(e)
 		var text1 string
 		if cacheTag != "" {
@@ -1178,7 +1184,10 @@ func (m Model) formatHistoryCard(
 		if e.Status == "BLOCKED" {
 			badge = lipgloss.NewStyle().Foreground(ColorDanger).Render("(Blocked)")
 			tag = "🛡️ BLOCKED"
-		} else if e.Source == "SYSTEM" {
+		} else if e.IsSubagent || e.GetAgentRole() == "SUBAGENT" {
+			badge = lipgloss.NewStyle().Foreground(ColorSecondary).Render("(Subagent)")
+			tag = "👥 SUBAGENT"
+		} else if e.Source == "SYSTEM" || e.GetAgentRole() == "INTERNAL" {
 			badge = lipgloss.NewStyle().Foreground(ColorMuted).Render("(Internal)")
 			tag = "⚙️ INTERNAL"
 		}

@@ -319,6 +319,8 @@ func MergeMissingSQLiteSteps(events []core.UnifiedAgentEvent, dbPath string, ses
 	var merged []core.UnifiedAgentEvent
 	merged = append(merged, events...)
 
+	uuidRegex := regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
+
 	for rows.Next() {
 		var idx, stepType, status int
 		var metadata []byte
@@ -331,8 +333,19 @@ func MergeMissingSQLiteSteps(events []core.UnifiedAgentEvent, dbPath string, ses
 
 		toolName := "internal"
 		summary := fmt.Sprintf("Internal background execution #%d", idx)
+		isSub := false
+		agentRole := "INTERNAL"
+
 		if len(metadata) > 0 {
 			metaStr := string(metadata)
+			uuids := uuidRegex.FindAllString(metaStr, -1)
+			for _, u := range uuids {
+				if u != sessionID {
+					isSub = true
+					agentRole = "SUBAGENT"
+					break
+				}
+			}
 			if m := toolRegex.FindStringSubmatch(metaStr); len(m) > 1 {
 				toolName = m[1]
 			}
@@ -345,6 +358,9 @@ func MergeMissingSQLiteSteps(events []core.UnifiedAgentEvent, dbPath string, ses
 
 		statusLabel := "DONE"
 		stepScope := core.ScopeLocalExecution
+		if isSub {
+			stepScope = core.ScopeSubagent
+		}
 		stType := core.StepTypeRunCommand
 		if status == 7 {
 			statusLabel = "BLOCKED"
@@ -359,13 +375,15 @@ func MergeMissingSQLiteSteps(events []core.UnifiedAgentEvent, dbPath string, ses
 		}
 
 		internalEvent := core.UnifiedAgentEvent{
-			SessionID: sessionID,
-			StepIndex: idx,
-			Source:    "SYSTEM",
-			Type:      stType,
-			Status:    statusLabel,
-			Scope:     stepScope,
-			Summary:   summary,
+			SessionID:  sessionID,
+			StepIndex:  idx,
+			Source:     "SYSTEM",
+			Type:       stType,
+			Status:     statusLabel,
+			Scope:      stepScope,
+			AgentRole:  agentRole,
+			IsSubagent: isSub,
+			Summary:    summary,
 			Tokens: core.TokenBreakdown{
 				TotalTokens:      0,
 				CachedTokens:     0,
