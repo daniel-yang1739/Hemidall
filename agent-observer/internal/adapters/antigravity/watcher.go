@@ -182,6 +182,8 @@ func (w *Watcher) parseLine(line string) (core.UnifiedAgentEvent, error) {
 	t, err := time.Parse(time.RFC3339, raw.CreatedAt)
 	if err != nil {
 		t = time.Now()
+	} else {
+		t = t.Local()
 	}
 
 	var stepType core.StepType

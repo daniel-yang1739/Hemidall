@@ -79,7 +79,7 @@ func (m Model) renderDashboardView() string {
 		modelName = "gemini-3.7-flash-high"
 	}
 
-	timeStr := e.Timestamp.Format("2006-01-02 15:04:05")
+	timeStr := e.Timestamp.Local().Format("2006-01-02 15:04:05")
 	if e.Timestamp.IsZero() {
 		timeStr = "N/A"
 	}
@@ -137,7 +137,7 @@ func (m Model) renderDashboardView() string {
 			for i := startIdx; i < len(m.history); i++ {
 				ev := m.history[i]
 				typeBadge := fmt.Sprintf("[%03d|%-5s]", ev.StepIndex, shortenType(string(ev.Type)))
-				timeStr := ev.Timestamp.Format("15:04:05")
+				timeStr := ev.Timestamp.Local().Format("15:04:05")
 				eventLine := fmt.Sprintf("  %s %s  %s", typeBadge, timeStr, ev.Summary)
 				p3Lines = append(p3Lines, truncateVisualWidth(eventLine, contentWidth))
 			}

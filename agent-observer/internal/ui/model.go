@@ -322,16 +322,53 @@ func (m Model) getHistoryVisibleCards() int {
 	if m.historyOffset > 0 {
 		availLines--
 	}
-	filtered := m.getFilteredHistory()
-	if len(filtered) > 0 && len(filtered) > (m.historyOffset+availLines/2) {
-		availLines--
+	if availLines < 1 {
+		availLines = 1
 	}
 
-	maxCards := availLines / 2
-	if maxCards < 1 {
-		maxCards = 1
+	filtered := m.getFilteredHistory()
+	if len(filtered) == 0 {
+		return 1
 	}
-	return maxCards
+
+	usedLines := 0
+	cardCount := 0
+	for i := m.historyOffset; i < len(filtered); i++ {
+		realIdx := len(filtered) - 1 - i
+		e := filtered[realIdx]
+		linesNeeded := 1
+		isLocal := e.IsLocalStep() || e.Scope == core.ScopeLocalExecution
+		if isLocal {
+			toolName := m.getLocalToolName(e)
+			if toolName != "" && toolName != "OUTPUT" {
+				linesNeeded = 2
+			}
+		} else {
+			modelName := m.getStepModelName(e)
+			if modelName != "" {
+				linesNeeded = 2
+			}
+		}
+
+		if i < len(filtered)-1 {
+			// Reserve 1 line for bottom "..." if there are more cards
+			if usedLines+linesNeeded > (availLines - 1) && cardCount > 0 {
+				break
+			}
+		} else {
+			if usedLines+linesNeeded > availLines && cardCount > 0 {
+				break
+			}
+		}
+
+		usedLines += linesNeeded
+		cardCount++
+	}
+
+	if cardCount < 1 {
+		cardCount = 1
+	}
+	return cardCount
 }
 
 func (m Model) Init() tea.Cmd {
@@ -432,7 +469,7 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 	}
 	var lines []string
 	t := e.Tokens
-	timeStr := e.Timestamp.Format("15:04:05")
+	timeStr := e.Timestamp.Local().Format("15:04:05")
 
 	if isCompact {
 		// ==================== COMPACT MODE (STRUCTURED SUB-BULLETS, ZERO TRUNCATION) ====================
