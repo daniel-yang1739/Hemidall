@@ -20,6 +20,7 @@ const (
 	StepTypeAskQuestion   StepType = "ASK_QUESTION"
 	StepTypeGeneric       StepType = "GENERIC"
 	StepTypeError         StepType = "ERROR_MESSAGE"
+	StepTypeCheckpoint    StepType = "CHECKPOINT"
 	StepTypeUnknown       StepType = "UNKNOWN"
 )
 
@@ -63,11 +64,32 @@ type TokenBreakdown struct {
 type StepScope string
 
 const (
-	ScopeUserInteraction StepScope = "USER"   // 👤 User Intent / Prompts (Network billed)
-	ScopeCloudInference  StepScope = "CLOUD"  // ☁️ Cloud LLM Inference / Tool Calls (GPU billed)
-	ScopeLocalExecution  StepScope = "LOCAL"  // 💻 Local Machine Process (Offline, 0 tokens)
-	ScopeSystemBootstrap StepScope = "SYSTEM" // ⚙️ System Init / History / Checkpoints
+	ScopeUserInteraction  StepScope = "USER"       // 👤 User Intent / Prompts (Network billed)
+	ScopeCloudInference   StepScope = "CLOUD"      // ☁️ Cloud LLM Inference / Tool Calls (GPU billed)
+	ScopeLocalExecution   StepScope = "LOCAL"      // 💻 Local Machine Process (Offline, 0 tokens)
+	ScopeSystemCompaction StepScope = "COMPACTION" // ⚙️ Out-of-band context compaction & truncation injection
+	ScopeSystemBootstrap  StepScope = "SYSTEM"     // 📜 System Init / Rules / Static configurations
 )
+
+// ClassifyCacheStatus provides the single source of truth for cache classification across the entire codebase
+func ClassifyCacheStatus(hitRate float64, cachedTokens, totalTokens int, isExpired bool) string {
+	if isExpired {
+		return "EXPIRED"
+	}
+	if totalTokens == 0 {
+		return ""
+	}
+	if cachedTokens == 0 {
+		return "MISS"
+	}
+	if hitRate >= 80.0 {
+		return "HIT"
+	}
+	if hitRate > 0.0 {
+		return "PARTIAL"
+	}
+	return "MISS"
+}
 
 // UnifiedAgentEvent is the standardized domain event model across agent backends
 type UnifiedAgentEvent struct {
@@ -77,7 +99,7 @@ type UnifiedAgentEvent struct {
 	Source      string           `json:"source"`       // USER_EXPLICIT, MODEL, SYSTEM
 	Type        StepType         `json:"type"`         // Step category
 	Status      string           `json:"status"`       // DONE, RUNNING, ERROR
-	Scope       StepScope        `json:"scope"`        // USER, CLOUD, LOCAL, SYSTEM
+	Scope       StepScope        `json:"scope"`        // USER, CLOUD, LOCAL, COMPACTION, SYSTEM
 
 	// Causality & Hierarchy Linkage
 	ParentStepIdx       int      `json:"parent_step_idx,omitempty"`        // The triggering parent step index
@@ -109,11 +131,15 @@ func (e UnifiedAgentEvent) IsLocalStep() bool {
 		e.Type == StepTypeError
 }
 
+// IsCompactionStep returns true if the step is a system-injected context compaction/checkpoint event
+func (e UnifiedAgentEvent) IsCompactionStep() bool {
+	return e.Scope == ScopeSystemCompaction || e.Type == StepTypeCheckpoint || e.Type == "CHECKPOINT"
+}
+
 // IsCloudStep returns true if the step is a remote LLM generation / decision turn
 func (e UnifiedAgentEvent) IsCloudStep() bool {
-	return e.Scope == ScopeCloudInference ||
-		e.Type == StepTypeModelResponse ||
-		e.Type == StepTypeToolCall
+	return !e.IsLocalStep() && !e.IsCompactionStep() && e.Type != StepTypeUserInput &&
+		(e.Scope == ScopeCloudInference || e.Type == StepTypeModelResponse || e.Type == StepTypeToolCall)
 }
 
 // ModelTokenStats holds aggregate token metrics and effective pricing for a specific model

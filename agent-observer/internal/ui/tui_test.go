@@ -979,5 +979,64 @@ func TestSpaceBetweenRowDistribution(t *testing.T) {
 	}
 }
 
+func TestCacheFilterStrictCloudIsolation(t *testing.T) {
+	m := NewModel("test-session", true)
+	m.width = 120
+	m.height = 30
+	m.activeView = ViewHistory
+
+	m.history = []core.UnifiedAgentEvent{
+		{StepIndex: 0, Type: core.StepTypeUserInput, Summary: "User prompt"},
+		{StepIndex: 1, Type: core.StepTypeModelResponse, CacheStatus: "HIT", Tokens: core.TokenBreakdown{TotalTokens: 1000, CachedTokens: 900, CacheHitRate: 90.0}, Summary: "Model Response 1"},
+		{StepIndex: 2, Type: core.StepTypeRunCommand, Summary: "cat file.go"},
+		{StepIndex: 3, Type: core.StepTypeCheckpoint, Summary: "Checkpoint 1"},
+		{StepIndex: 4, Type: core.StepTypeModelResponse, CacheStatus: "PARTIAL", Tokens: core.TokenBreakdown{TotalTokens: 1000, CachedTokens: 740, CacheHitRate: 74.0}, Summary: "Model Response 2"},
+	}
+
+	// 1. Partial Filter: should only match Step 4 (Cloud Model Response with 74% hit rate)
+	m.historyCacheFilter = CacheFilterPartial
+	filtered := m.getFilteredHistory()
+	if len(filtered) != 1 {
+		t.Fatalf("Expected exactly 1 partial event (Step 4), got %d: %v", len(filtered), filtered)
+	}
+	if filtered[0].StepIndex != 4 {
+		t.Errorf("Expected Step 4, got Step %d", filtered[0].StepIndex)
+	}
+
+	// 2. Hit Filter: should only match Step 1 (Cloud Model Response with 90% hit rate)
+	m.historyCacheFilter = CacheFilterHit
+	filtered = m.getFilteredHistory()
+	if len(filtered) != 1 {
+		t.Fatalf("Expected exactly 1 hit event (Step 1), got %d: %v", len(filtered), filtered)
+	}
+	if filtered[0].StepIndex != 1 {
+		t.Errorf("Expected Step 1, got Step %d", filtered[0].StepIndex)
+	}
+}
+
+func TestCompactionInspectorPanel(t *testing.T) {
+	m := NewModel("test-session", true)
+	cpEvent := core.UnifiedAgentEvent{
+		StepIndex:  779,
+		Type:       core.StepTypeCheckpoint,
+		Scope:      core.ScopeSystemCompaction,
+		Status:     "DONE",
+		RawContent: "{{ CHECKPOINT 4 }} Summary of truncated context...",
+	}
+
+	linesCompact := m.buildTelemetryPanelLines(cpEvent, 40, true)
+	compactStr := strings.Join(linesCompact, "\n")
+	if !strings.Contains(compactStr, "Context Compaction") {
+		t.Errorf("Compact panel missing 'Context Compaction':\n%s", compactStr)
+	}
+
+	linesFull := m.buildTelemetryPanelLines(cpEvent, 80, false)
+	fullStr := strings.Join(linesFull, "\n")
+	if !strings.Contains(fullStr, "CONTEXT COMPACTION (CHECKPOINT)") {
+		t.Errorf("Full panel missing 'CONTEXT COMPACTION (CHECKPOINT)':\n%s", fullStr)
+	}
+}
+
+
 
 

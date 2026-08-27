@@ -968,11 +968,15 @@ func shortenType(t string) string {
 }
 
 func formatShortCache(e core.UnifiedAgentEvent) string {
-	// USER_INPUT and Local OUTPUT are client/local operations, NOT cloud LLM generations!
-	if e.Type == core.StepTypeUserInput || e.Scope == core.ScopeUserInteraction || e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
+	// Only cloud inference steps have GPU KV-Cache telemetry
+	if !e.IsCloudStep() {
 		return ""
 	}
-	switch e.CacheStatus {
+	status := e.CacheStatus
+	if status == "" {
+		status = core.ClassifyCacheStatus(e.Tokens.CacheHitRate, e.Tokens.CachedTokens, e.Tokens.TotalTokens, false)
+	}
+	switch status {
 	case "HIT":
 		return lipgloss.NewStyle().Foreground(ColorSuccess).Render(fmt.Sprintf("[HIT %.0f%%]", e.Tokens.CacheHitRate))
 	case "PARTIAL":
@@ -984,13 +988,6 @@ func formatShortCache(e core.UnifiedAgentEvent) string {
 	case "MISS":
 		return lipgloss.NewStyle().Foreground(ColorDanger).Render("[MISS]")
 	default:
-		if e.Tokens.CacheHitRate >= 70.0 {
-			return lipgloss.NewStyle().Foreground(ColorSuccess).Render(fmt.Sprintf("[HIT %.0f%%]", e.Tokens.CacheHitRate))
-		} else if e.Tokens.CacheHitRate > 0.0 {
-			return lipgloss.NewStyle().Foreground(ColorWarning).Render(fmt.Sprintf("[PART %.0f%%]", e.Tokens.CacheHitRate))
-		} else if e.StepIndex == 0 {
-			return lipgloss.NewStyle().Foreground(ColorSecondary).Render("[WRITE]")
-		}
 		return ""
 	}
 }
@@ -1152,6 +1149,8 @@ func formatStepType(t string) string {
 		return "💻 OUTPUT"
 	case "ERROR_MESSAGE":
 		return "⚠️ ERROR"
+	case "CHECKPOINT":
+		return "⚙️ CHECKPOINT"
 	case "SYSTEM_INIT":
 		return "⚙️ SYSTEM"
 	default:

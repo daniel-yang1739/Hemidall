@@ -206,25 +206,25 @@ func matchCacheFilter(e core.UnifiedAgentEvent, filter CacheFilter) bool {
 	if filter == CacheFilterAll {
 		return true
 	}
-	// Local execution steps and user inputs are offline/local operations (not LLM inference calls),
-	// they do not make cloud calls and thus have no cache status of their own!
-	if e.IsLocalStep() || e.Type == core.StepTypeUserInput || e.Scope == core.ScopeLocalExecution {
+	// Only cloud inference steps have GPU KV-Cache telemetry and participate in cache filtering!
+	if !e.IsCloudStep() {
 		return false
+	}
+	status := e.CacheStatus
+	if status == "" {
+		status = core.ClassifyCacheStatus(e.Tokens.CacheHitRate, e.Tokens.CachedTokens, e.Tokens.TotalTokens, false)
 	}
 	switch filter {
 	case CacheFilterHit:
-		return e.CacheStatus == "HIT" || e.Tokens.CacheHitRate >= 80.0
+		return status == "HIT"
 	case CacheFilterPartial:
-		return e.CacheStatus == "PARTIAL" || (e.Tokens.CacheHitRate > 0 && e.Tokens.CacheHitRate < 80.0)
+		return status == "PARTIAL"
 	case CacheFilterWrite:
-		return e.CacheStatus == "WRITE" || (e.StepIndex == 0 && e.Tokens.CachedTokens == 0)
+		return status == "WRITE" || (e.StepIndex == 0 && e.Tokens.CachedTokens == 0)
 	case CacheFilterExpired:
-		return e.CacheStatus == "EXPIRED" || e.CacheStatus == "TTL_EXPIRED"
+		return status == "EXPIRED" || status == "TTL_EXPIRED"
 	case CacheFilterMiss:
-		if e.CacheStatus == "EXPIRED" || e.CacheStatus == "TTL_EXPIRED" || e.CacheStatus == "WRITE" {
-			return false
-		}
-		return e.CacheStatus == "MISS" || (e.Tokens.TotalTokens > 0 && e.Tokens.CachedTokens == 0 && e.Tokens.NewTokens > 0)
+		return status == "MISS"
 	}
 	return true
 }
@@ -531,11 +531,17 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 			} else {
 				lines = append(lines, truncateVisualWidth("• Status : Inbound (Awaiting Cloud Turn)", maxWidth))
 			}
+		} else if e.IsCompactionStep() || e.Scope == core.ScopeSystemCompaction {
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
+			lines = append(lines, truncateVisualWidth("• Event : Context Compaction (Checkpoint)", maxWidth))
+			lines = append(lines, truncateVisualWidth("• Scope : Harness Middleware (Sidecar GC)", maxWidth))
+			summaryTok := core.CountTokens(e.RawContent)
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Summary: ~%s Tok (Prunes Old Turns)", formatCompactNumber(summaryTok)), maxWidth))
+			lines = append(lines, truncateVisualWidth("• Status: Active Context Re-anchored", maxWidth))
 		} else {
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Type  : %s", e.Type), maxWidth))
-			lines = append(lines, truncateVisualWidth("• Status: System Bootstrap", maxWidth))
-			lines = append(lines, truncateVisualWidth("• Scope : Local Host Context", maxWidth))
+			lines = append(lines, truncateVisualWidth("• Scope : System Bootstrap & Rules", maxWidth))
 		}
 		return lines
 	}
@@ -588,9 +594,16 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 		} else {
 			lines = append(lines, truncateVisualWidth("• Billing: Staged ➔ Awaiting next Cloud Inference Step for official cache settlement ⏳", maxWidth))
 		}
+	} else if e.IsCompactionStep() || e.Scope == core.ScopeSystemCompaction {
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step #%04d (%s) at %s | ⚙️ CONTEXT COMPACTION (CHECKPOINT)", e.StepIndex, e.Status, timeStr), maxWidth))
+		lines = append(lines, truncateVisualWidth("• Event  : Background AI Compaction & Truncation Injection", maxWidth))
+		lines = append(lines, truncateVisualWidth("• Scope  : Harness Middleware (Sidecar Context GC)", maxWidth))
+		summaryTok := core.CountTokens(e.RawContent)
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Payload: ~%d Summary Tokens (Replaces ~200k+ historical context)", summaryTok), maxWidth))
+		lines = append(lines, truncateVisualWidth("• Action : Prepend [System + Tools + Checkpoint Summary] ➔ Re-anchor Window Base", maxWidth))
 	} else {
-		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step #%04d (%s) at %s | ⚙️ SYSTEM BOOTSTRAP (%s)", e.StepIndex, e.Status, timeStr, e.Type), maxWidth))
-		lines = append(lines, truncateVisualWidth("• Scope  : Local Process Context", maxWidth))
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step #%04d (%s) at %s | 📜 SYSTEM BOOTSTRAP", e.StepIndex, e.Status, timeStr), maxWidth))
+		lines = append(lines, truncateVisualWidth("• Scope  : Static Rules, Identity & Environment Configuration", maxWidth))
 	}
 
 	if len(e.ToolCalls) > 0 {

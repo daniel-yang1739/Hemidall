@@ -130,3 +130,94 @@ func TestFormatTable(t *testing.T) {
 		t.Fatalf("expected non-empty table output")
 	}
 }
+
+func TestClassifyCacheStatus_SingleSourceOfTruth(t *testing.T) {
+	cases := []struct {
+		hitRate      float64
+		cachedTokens int
+		totalTokens  int
+		isExpired    bool
+		expected     string
+	}{
+		{hitRate: 0.0, cachedTokens: 0, totalTokens: 0, isExpired: false, expected: ""},
+		{hitRate: 0.0, cachedTokens: 0, totalTokens: 1000, isExpired: false, expected: "MISS"},
+		{hitRate: 50.0, cachedTokens: 500, totalTokens: 1000, isExpired: true, expected: "EXPIRED"},
+		{hitRate: 74.0, cachedTokens: 740, totalTokens: 1000, isExpired: false, expected: "PARTIAL"},
+		{hitRate: 79.9, cachedTokens: 799, totalTokens: 1000, isExpired: false, expected: "PARTIAL"},
+		{hitRate: 80.0, cachedTokens: 800, totalTokens: 1000, isExpired: false, expected: "HIT"},
+		{hitRate: 98.5, cachedTokens: 985, totalTokens: 1000, isExpired: false, expected: "HIT"},
+	}
+
+	for _, c := range cases {
+		actual := ClassifyCacheStatus(c.hitRate, c.cachedTokens, c.totalTokens, c.isExpired)
+		if actual != c.expected {
+			t.Errorf("For rate=%.1f cached=%d total=%d expired=%v: expected '%s', got '%s'",
+				c.hitRate, c.cachedTokens, c.totalTokens, c.isExpired, c.expected, actual)
+		}
+	}
+}
+
+func TestCheckpointScopeAndContextReanchoring(t *testing.T) {
+	analyzer := NewPayloadAnalyzer()
+
+	// Step 0: User Input (Local)
+	step0 := UnifiedAgentEvent{
+		SessionID:  "sess-compaction-test",
+		StepIndex:  0,
+		Type:       StepTypeUserInput,
+		RawContent: "Hello assistant!",
+	}
+	analyzer.AnalyzeStep(&step0)
+	if step0.Scope != ScopeUserInteraction {
+		t.Errorf("Expected ScopeUserInteraction, got %v", step0.Scope)
+	}
+	if step0.CacheStatus != "" {
+		t.Errorf("User step should have empty CacheStatus, got '%s'", step0.CacheStatus)
+	}
+
+	// Step 1: Model Response (Cloud - Cold write)
+	step1 := UnifiedAgentEvent{
+		SessionID:  "sess-compaction-test",
+		StepIndex:  1,
+		Type:       StepTypeModelResponse,
+		RawContent: "Hello! How can I help you today?",
+	}
+	analyzer.AnalyzeStep(&step1)
+	if step1.Scope != ScopeCloudInference {
+		t.Errorf("Expected ScopeCloudInference, got %v", step1.Scope)
+	}
+	if step1.CacheStatus != "WRITE" {
+		t.Errorf("Initial turn expected WRITE, got '%s'", step1.CacheStatus)
+	}
+
+	// Step 2: CHECKPOINT (Compaction Injection)
+	step2 := UnifiedAgentEvent{
+		SessionID:  "sess-compaction-test",
+		StepIndex:  2,
+		Type:       StepTypeCheckpoint,
+		RawContent: "{{ CHECKPOINT 1 }} # Truncated history summary with 500 tokens of decisions.",
+	}
+	analyzer.AnalyzeStep(&step2)
+	if step2.Scope != ScopeSystemCompaction {
+		t.Errorf("Expected ScopeSystemCompaction, got %v", step2.Scope)
+	}
+	if step2.CacheStatus != "" {
+		t.Errorf("Checkpoint step must have empty CacheStatus, got '%s'", step2.CacheStatus)
+	}
+
+	// Step 3: Next Model Response after compaction
+	step3 := UnifiedAgentEvent{
+		SessionID:  "sess-compaction-test",
+		StepIndex:  3,
+		Type:       StepTypeModelResponse,
+		RawContent: "Continuing after checkpoint...",
+	}
+	analyzer.AnalyzeStep(&step3)
+	if step3.Scope != ScopeCloudInference {
+		t.Errorf("Expected ScopeCloudInference, got %v", step3.Scope)
+	}
+	if step3.CacheStatus != "HIT" {
+		t.Errorf("Next turn after checkpoint should hit re-anchored cache, got '%s'", step3.CacheStatus)
+	}
+}
+

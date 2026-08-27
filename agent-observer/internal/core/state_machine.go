@@ -19,6 +19,10 @@ func (t *StepLinkageTracker) ProcessEvent(e *UnifiedAgentEvent) {
 		t.lastUserPromptIdx = e.StepIndex
 		t.lastParentToolCallIdx = 0
 		t.pendingStagedSteps = nil
+	} else if e.IsCompactionStep() {
+		e.Scope = ScopeSystemCompaction
+		t.lastParentToolCallIdx = 0
+		t.pendingStagedSteps = nil
 	} else if e.IsLocalStep() {
 		e.Scope = ScopeLocalExecution
 		e.ParentStepIdx = t.lastParentToolCallIdx

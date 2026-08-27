@@ -92,7 +92,39 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 	}
 	event.Tokens.RawLocalAccumulated = rawAllTimeTokens
 
-	// 2. Dual-Track Official Telemetry Fusion with Reverse Sliding Window
+	// 2. Compaction Checkpoint Anchor
+	if event.IsCompactionStep() {
+		event.Scope = ScopeSystemCompaction
+		event.Tokens.ActiveTurnTokens = stepTokens
+		event.Tokens.TotalTokens = stepTokens
+		event.CacheStatus = ""
+		state.PrevTotalTokens = state.BaseSystem + state.BaseToolsDef + stepTokens
+		state.HasInitialized = true
+		if !event.Timestamp.IsZero() {
+			state.LastEventTime = event.Timestamp
+		}
+		return
+	}
+
+	// 3. Local offline steps (User inputs, tool outputs)
+	if !event.IsCloudStep() {
+		if event.Type == StepTypeUserInput {
+			event.Scope = ScopeUserInteraction
+			event.Tokens.ActiveTurnTokens = stepTokens
+		} else {
+			event.Scope = ScopeLocalExecution
+			event.Tokens.ToolResultTokens = stepTokens
+		}
+		event.Tokens.TotalTokens = stepTokens
+		event.CacheStatus = ""
+		if !event.Timestamp.IsZero() {
+			state.LastEventTime = event.Timestamp
+		}
+		return
+	}
+
+	// 4. Cloud Inference: Dual-Track Official Telemetry Fusion with Reverse Sliding Window
+	event.Scope = ScopeCloudInference
 	if event.Tokens.IsOfficialData && event.Tokens.TotalTokens > 0 {
 		officialTotal := event.Tokens.TotalTokens
 
@@ -108,7 +140,7 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 			budget = 0
 		}
 
-		// 3. REVERSE SLIDING WINDOW: Iterate backwards from newest step to fill budget
+		// REVERSE SLIDING WINDOW: Iterate backwards from newest step to fill budget
 		accResults := 0
 		accHistory := 0
 		accActive := 0
@@ -173,22 +205,13 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 		if officialTotal > 0 {
 			event.Tokens.CacheHitRate = float64(event.Tokens.CachedTokens) / float64(officialTotal) * 100.0
 		}
-		event.CacheStatus = determineCacheStatus(event.Tokens.CachedTokens, officialTotal, event.Tokens.CacheHitRate)
+		event.CacheStatus = ClassifyCacheStatus(event.Tokens.CacheHitRate, event.Tokens.CachedTokens, officialTotal, false)
 		state.PrevTotalTokens = officialTotal
 	} else {
 		// ==================== FALLBACK: INCREMENTAL SLIDING WINDOW ====================
 		event.Tokens.SystemTokens = state.BaseSystem
 		event.Tokens.ToolsDefTokens = state.BaseToolsDef
-
-		var currentStepTokens int = stepTokens
-		switch event.Type {
-		case StepTypeUserInput, StepTypeModelResponse, StepTypeToolCall:
-			event.Tokens.ActiveTurnTokens = currentStepTokens
-		case StepTypeRunCommand, StepTypeViewFile, StepTypeCodeAction, StepTypeListDirectory, StepTypeToolResult:
-			event.Tokens.ToolResultTokens = currentStepTokens
-		default:
-			event.Tokens.ActiveTurnTokens = currentStepTokens
-		}
+		event.Tokens.ActiveTurnTokens = stepTokens
 
 		isTTLExpired := false
 		if !state.LastEventTime.IsZero() && !event.Timestamp.IsZero() {
@@ -198,7 +221,6 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 		}
 
 		if isTTLExpired && state.PrevTotalTokens > 0 {
-			// Physical TTL Expired: Context is still ~165k, but GPU cache is 0! All 165k tokens are New billable!
 			totalTokens := state.PrevTotalTokens + stepTokens
 			event.Tokens.TotalTokens = totalTokens
 			event.Tokens.CachedTokens = 0
@@ -207,13 +229,12 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 			event.CacheStatus = "EXPIRED"
 			state.PrevTotalTokens = totalTokens
 
-			hist := totalTokens - (state.BaseSystem + state.BaseToolsDef + currentStepTokens)
+			hist := totalTokens - (state.BaseSystem + state.BaseToolsDef + stepTokens)
 			if hist < 0 {
 				hist = 0
 			}
 			event.Tokens.HistoryTokens = hist
 		} else if !state.HasInitialized || state.PrevTotalTokens == 0 {
-			// First-ever Cold Start turn
 			event.Tokens.TotalTokens = state.BaseSystem + state.BaseToolsDef + stepTokens
 			event.Tokens.CachedTokens = 0
 			event.Tokens.NewTokens = event.Tokens.TotalTokens
@@ -223,7 +244,6 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 			state.HasInitialized = true
 			state.PrevTotalTokens = event.Tokens.TotalTokens
 		} else {
-			// Hot Cache Incremental Turn
 			maxContextLimit := event.Tokens.OfficialContextLimit
 			if maxContextLimit == 0 {
 				maxContextLimit = 256000
@@ -250,34 +270,18 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 			event.Tokens.CachedTokens = cachedTokens
 			event.Tokens.NewTokens = newTokens
 			event.Tokens.CacheHitRate = hitRate
-			event.CacheStatus = determineCacheStatus(cachedTokens, totalTokens, hitRate)
-			// Do NOT overwrite state.PrevTotalTokens on intermediate steps so they don't compound
+			event.CacheStatus = ClassifyCacheStatus(hitRate, cachedTokens, totalTokens, isTTLExpired)
 
-			hist := totalTokens - (state.BaseSystem + state.BaseToolsDef + currentStepTokens)
+			hist := totalTokens - (state.BaseSystem + state.BaseToolsDef + stepTokens)
 			if hist < 0 {
 				hist = 0
 			}
 			event.Tokens.HistoryTokens = hist
+			state.PrevTotalTokens = totalTokens
 		}
-	}
-
-	if !event.IsCloudStep() {
-		event.CacheStatus = ""
 	}
 
 	if !event.Timestamp.IsZero() {
 		state.LastEventTime = event.Timestamp
 	}
-}
-
-func determineCacheStatus(cached, total int, hitRate float64) string {
-	if cached == 0 {
-		return "MISS"
-	}
-	if hitRate >= 80.0 {
-		return "HIT"
-	} else if hitRate > 0.0 {
-		return "PARTIAL"
-	}
-	return "MISS"
 }
