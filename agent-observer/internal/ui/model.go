@@ -157,6 +157,27 @@ func NewModel(sessionID string, openSwitcherOnStart bool) Model {
 	return m
 }
 
+func (m Model) getHistoryVisibleCards() int {
+	innerRowsLimit := m.height - 4
+	if innerRowsLimit < 4 {
+		innerRowsLimit = 4
+	}
+	availLines := innerRowsLimit - 1 // 1 line for title
+
+	if m.historyOffset > 0 {
+		availLines--
+	}
+	if len(m.history) > 0 && len(m.history) > (m.historyOffset+availLines/2) {
+		availLines--
+	}
+
+	maxCards := availLines / 2
+	if maxCards < 1 {
+		maxCards = 1
+	}
+	return maxCards
+}
+
 func (m Model) Init() tea.Cmd {
 	return nil
 }
@@ -596,10 +617,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				maxScroll = 0
 			}
 
-			maxVisibleCards := (m.height - 5) / 2
-			if maxVisibleCards < 1 {
-				maxVisibleCards = 1
-			}
+			maxVisibleCards := m.getHistoryVisibleCards()
 
 			if m.focusPane == FocusDetail {
 				if key == "v" || key == "V" {
@@ -703,8 +721,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if m.selectedIdx < len(m.history)-1 {
 						m.selectedIdx++
 						m.detailScroll = 0
-						if m.selectedIdx >= m.historyOffset+maxVisibleCards {
-							m.historyOffset = m.selectedIdx - maxVisibleCards + 1
+						for m.selectedIdx >= m.historyOffset+m.getHistoryVisibleCards() {
+							m.historyOffset++
 						}
 					}
 				} else {
@@ -740,8 +758,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.selectedIdx = len(m.history) - 1
 					}
 					m.detailScroll = 0
-					if m.selectedIdx >= m.historyOffset+maxVisibleCards {
-						m.historyOffset = m.selectedIdx - maxVisibleCards + 1
+					for m.selectedIdx >= m.historyOffset+m.getHistoryVisibleCards() {
+						m.historyOffset++
 					}
 				}
 			case "ctrl+b", "pgup":
@@ -771,8 +789,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if len(m.history) > 0 {
 						m.selectedIdx = len(m.history) - 1
 						m.detailScroll = 0
-						if len(m.history) > maxVisibleCards {
-							m.historyOffset = len(m.history) - maxVisibleCards
+						for m.selectedIdx >= m.historyOffset+m.getHistoryVisibleCards() {
+							m.historyOffset++
 						}
 					}
 				} else {

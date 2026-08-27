@@ -180,24 +180,10 @@ func (m Model) renderHistoryView() string {
 	if len(m.history) == 0 {
 		leftLines = append(leftLines, truncateVisualWidth("  No events yet...", listContentWidth))
 	} else {
-		availLines := innerRowsLimit - 1
-		if m.historyOffset > 0 {
-			availLines--
-		}
-		maxCards := availLines / 2
-		if maxCards < 1 {
-			maxCards = 1
-		}
+		maxCards := m.getHistoryVisibleCards()
 		endIdx := m.historyOffset + maxCards
 		if endIdx > len(m.history) {
 			endIdx = len(m.history)
-		}
-		if endIdx < len(m.history) && (availLines-(endIdx-m.historyOffset)*2) <= 0 && maxCards > 1 {
-			maxCards--
-			endIdx = m.historyOffset + maxCards
-			if endIdx > len(m.history) {
-				endIdx = len(m.history)
-			}
 		}
 
 		// Top indicator: only if there are newer steps above (m.historyOffset > 0)

@@ -276,6 +276,22 @@ func TestHistoryStepListScrollIndicators(t *testing.T) {
 	if !strings.Contains(vMid, "...") {
 		t.Error("Expected '...' scroll indicators when scrolled into the middle")
 	}
+
+	// Case 3: Step-by-step navigation down (j) through all 20 steps
+	// Verified that selected step is ALWAYS visible on screen (never cut off below)
+	m.historyOffset = 0
+	m.selectedIdx = 0
+	for step := 0; step < 20; step++ {
+		v := m.renderHistoryView()
+		expectedStepIdx := 19 - step
+		expectedBadge := fmt.Sprintf("[%03d|", expectedStepIdx)
+		if !strings.Contains(v, "> ") || !strings.Contains(v, expectedBadge) {
+			t.Fatalf("Step %d (selectedIdx=%d, offset=%d, badge=%s) was not visible on screen! Rendered view:\n%s", expectedStepIdx, m.selectedIdx, m.historyOffset, expectedBadge, v)
+		}
+		// Press 'j'
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+		m = updated.(Model)
+	}
 }
 
 func TestAllViewsZeroHeightVariationAcrossSizes(t *testing.T) {
