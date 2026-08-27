@@ -29,4 +29,5 @@
 * `2026-08-27_155000_dashboard_aggregate_metrics_and_multi_turn_trend_charts_plan_v1.md` (v1.0 初代條列企劃)
 * `2026-08-27_162500_dashboard_aggregate_metrics_and_multi_turn_trend_charts_plan_v2.md` (v2.0 方案 A/B/C 提案與多模型折扣矩陣)
 * `2026-08-27_173000_dashboard_aggregate_metrics_and_responsive_layout_implementation_v3.md` (v3.0 最終實裝規格、無框 KPI 條與雙模響應式佈局)
+* `2026-08-27_223500_harness_middleware_context_compaction_and_injection_mechanics.md` (架構研究：中介層上下文壓縮、Sidecar 模型調用與自建 Proxy 介入注入機制)
 
