@@ -965,4 +965,19 @@ func TestDashboardHalfWidthResponsiveRendering(t *testing.T) {
 	}
 }
 
+func TestSpaceBetweenRowDistribution(t *testing.T) {
+	cols := []string{"Model Name", "Turns", "Processed", "Cached (Hit %)", "Cached Saved (%)"}
+	minWidths := []int{18, 5, 10, 16, 16}
+	leftAligns := []bool{true, false, false, false, false}
+
+	for _, targetW := range []int{76, 90, 116, 150, 180} {
+		res := formatSpaceBetweenRow(cols, minWidths, leftAligns, targetW)
+		actualW := lipgloss.Width(res)
+		if actualW != targetW {
+			t.Errorf("Target width %d, but got %d: '%s'", targetW, actualW, res)
+		}
+	}
+}
+
+
 

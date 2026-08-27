@@ -114,63 +114,141 @@ func renderBorderlessKpiStrip(tot core.ModelTokenStats, width int) string {
 	return fmt.Sprintf("%s\n%s\n%s", truncateVisualWidth(row1, width), truncateVisualWidth(row2, width), truncateVisualWidth(row3, width))
 }
 
+func formatSpaceBetweenRow(cols []string, minWidths []int, leftAlign []bool, targetWidth int) string {
+	k := len(cols)
+	if k == 0 {
+		return ""
+	}
+	if k == 1 {
+		return cols[0]
+	}
+
+	sumMin := 0
+	for _, w := range minWidths {
+		sumMin += w
+	}
+
+	extra := targetWidth - sumMin
+	if extra < k-1 {
+		extra = k - 1 // At least 1 space per gap
+	}
+
+	baseGap := extra / (k - 1)
+	remGap := extra % (k - 1)
+
+	var sb strings.Builder
+	for i := 0; i < k; i++ {
+		w := minWidths[i]
+		txt := cols[i]
+		if leftAlign[i] {
+			sb.WriteString(fmt.Sprintf("%-*s", w, truncateVisualWidth(txt, w)))
+		} else {
+			sb.WriteString(fmt.Sprintf("%*s", w, truncateVisualWidth(txt, w)))
+		}
+
+		if i < k-1 {
+			gap := baseGap
+			if i < remGap {
+				gap++
+			}
+			sb.WriteString(strings.Repeat(" ", gap))
+		}
+	}
+	return sb.String()
+}
+
 func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTokenStats, width int) string {
 	var sb strings.Builder
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("  MULTI-MODEL TOKEN & SAVINGS BREAKDOWN:") + "\n")
 
+	targetWidth := width - 4
+	if targetWidth < 40 {
+		targetWidth = 40
+	}
+
 	if width < 110 {
-		// Responsive 5-Column Compact Table for Half-Width / Narrow Terminals (< 110 cols)
-		header := fmt.Sprintf("  %-18s %5s %10s %16s %16s",
-			"Model Name", "Turns", "Processed", "Cached (Hit %)", "Cached Saved (%)")
-		sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(truncateVisualWidth(header, width)) + "\n")
+		// Responsive 5-Column Compact Table with space-between dynamic layout (< 110 cols)
+		minWidths := []int{18, 5, 10, 16, 16}
+		leftAligns := []bool{true, false, false, false, false}
+
+		headers := []string{"Model Name", "Turns", "Processed", "Cached (Hit %)", "Cached Saved (%)"}
+		headerStr := "  " + formatSpaceBetweenRow(headers, minWidths, leftAligns, targetWidth)
+		sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(headerStr) + "\n")
 
 		for _, m := range models {
-			mName := truncateVisualWidth(m.ModelName, 18)
 			hitStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(m.TotalCached), m.CacheHitRate)
 			savStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(m.TokensSaved), m.SavingsPercentage)
-
-			line := fmt.Sprintf("  %-18s %5d %10s %16s %16s",
-				mName, m.TurnCount, formatTokShort(m.TotalProcessed), hitStr, savStr)
-			sb.WriteString(truncateVisualWidth(line, width) + "\n")
+			rowCols := []string{
+				m.ModelName,
+				fmt.Sprintf("%d", m.TurnCount),
+				formatTokShort(m.TotalProcessed),
+				hitStr,
+				savStr,
+			}
+			rowStr := "  " + formatSpaceBetweenRow(rowCols, minWidths, leftAligns, targetWidth)
+			sb.WriteString(rowStr + "\n")
 		}
 
-		sep := "  " + strings.Repeat("─", min(width-4, 70))
-		sb.WriteString(lipgloss.NewStyle().Foreground(ColorBorder).Render(truncateVisualWidth(sep, width)) + "\n")
+		sep := "  " + strings.Repeat("─", targetWidth)
+		sb.WriteString(lipgloss.NewStyle().Foreground(ColorBorder).Render(sep) + "\n")
 
 		totHitStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(total.TotalCached), total.CacheHitRate)
 		totSavStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(total.TokensSaved), total.SavingsPercentage)
-		totLine := fmt.Sprintf("  %-18s %5d %10s %16s %16s",
-			"TOTAL SUMMARY", total.TurnCount, formatTokShort(total.TotalProcessed), totHitStr, totSavStr)
-		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(truncateVisualWidth(totLine, width)))
+		totCols := []string{
+			"TOTAL SUMMARY",
+			fmt.Sprintf("%d", total.TurnCount),
+			formatTokShort(total.TotalProcessed),
+			totHitStr,
+			totSavStr,
+		}
+		totStr := "  " + formatSpaceBetweenRow(totCols, minWidths, leftAligns, targetWidth)
+		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(totStr))
 
 		return sb.String()
 	}
 
-	// 7-Column Full Table with Generous Spacing for Wide Terminals (>= 110 cols)
-	header := fmt.Sprintf("  %-24s %6s %13s %18s %13s %19s %17s",
-		"Model Name", "Turns", "Processed", "Cached (Hit %)", "Uncached", "Effective (Factor)", "Cached Saved (%)")
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(truncateVisualWidth(header, width)) + "\n")
+	// 7-Column Full Table with space-between dynamic layout (>= 110 cols)
+	minWidths := []int{24, 6, 12, 18, 12, 18, 17}
+	leftAligns := []bool{true, false, false, false, false, false, false}
+
+	headers := []string{"Model Name", "Turns", "Processed", "Cached (Hit %)", "Uncached", "Effective (Factor)", "Cached Saved (%)"}
+	headerStr := "  " + formatSpaceBetweenRow(headers, minWidths, leftAligns, targetWidth)
+	sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(headerStr) + "\n")
 
 	for _, m := range models {
-		mName := truncateVisualWidth(m.ModelName, 24)
 		hitStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(m.TotalCached), m.CacheHitRate)
 		effStr := fmt.Sprintf("%s (%s)", formatTokShort(m.EffectiveTokens), m.DiscountLabel)
 		savStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(m.TokensSaved), m.SavingsPercentage)
-
-		line := fmt.Sprintf("  %-24s %6d %13s %18s %13s %19s %17s",
-			mName, m.TurnCount, formatTokShort(m.TotalProcessed), hitStr, formatTokShort(m.TotalNew), effStr, savStr)
-		sb.WriteString(truncateVisualWidth(line, width) + "\n")
+		rowCols := []string{
+			m.ModelName,
+			fmt.Sprintf("%d", m.TurnCount),
+			formatTokShort(m.TotalProcessed),
+			hitStr,
+			formatTokShort(m.TotalNew),
+			effStr,
+			savStr,
+		}
+		rowStr := "  " + formatSpaceBetweenRow(rowCols, minWidths, leftAligns, targetWidth)
+		sb.WriteString(rowStr + "\n")
 	}
 
-	sep := "  " + strings.Repeat("─", width-4)
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorBorder).Render(truncateVisualWidth(sep, width)) + "\n")
+	sep := "  " + strings.Repeat("─", targetWidth)
+	sb.WriteString(lipgloss.NewStyle().Foreground(ColorBorder).Render(sep) + "\n")
 
 	totHitStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(total.TotalCached), total.CacheHitRate)
 	totEffStr := fmt.Sprintf("%s (%s)", formatTokShort(total.EffectiveTokens), total.DiscountLabel)
 	totSavStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(total.TokensSaved), total.SavingsPercentage)
-	totLine := fmt.Sprintf("  %-24s %6d %13s %18s %13s %19s %17s",
-		"TOTAL SUMMARY", total.TurnCount, formatTokShort(total.TotalProcessed), totHitStr, formatTokShort(total.TotalNew), totEffStr, totSavStr)
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(truncateVisualWidth(totLine, width)))
+	totCols := []string{
+		"TOTAL SUMMARY",
+		fmt.Sprintf("%d", total.TurnCount),
+		formatTokShort(total.TotalProcessed),
+		totHitStr,
+		formatTokShort(total.TotalNew),
+		totEffStr,
+		totSavStr,
+	}
+	totStr := "  " + formatSpaceBetweenRow(totCols, minWidths, leftAligns, targetWidth)
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(totStr))
 
 	return sb.String()
 }
