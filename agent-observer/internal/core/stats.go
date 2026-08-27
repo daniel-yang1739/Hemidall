@@ -10,15 +10,15 @@ func GetModelDiscount(modelName string) (discountRate float64, priceFactor float
 	name := strings.ToLower(modelName)
 	switch {
 	case strings.Contains(name, "claude"):
-		return 0.90, 0.10, "0.10x (90% OFF)"
+		return 0.90, 0.10, "0.10x"
 	case strings.Contains(name, "gemini"):
-		return 0.75, 0.25, "0.25x (75% OFF)"
+		return 0.75, 0.25, "0.25x"
 	case strings.Contains(name, "gpt-4") || strings.Contains(name, "o1") || strings.Contains(name, "o3"):
-		return 0.50, 0.50, "0.50x (50% OFF)"
+		return 0.50, 0.50, "0.50x"
 	case strings.Contains(name, "deepseek"):
-		return 0.90, 0.10, "0.10x (90% OFF)"
+		return 0.90, 0.10, "0.10x"
 	default:
-		return 0.75, 0.25, "0.25x (75% OFF)" // Default Gemini standard
+		return 0.75, 0.25, "0.25x" // Default Gemini standard
 	}
 }
 
@@ -109,7 +109,7 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 		CacheHitRate:      totalHitRate,
 		DiscountRate:      0.75,
 		PriceFactor:       0.25,
-		DiscountLabel:     "0.25x (75% OFF)",
+		DiscountLabel:     "0.25x",
 		EffectiveTokens:   weightedEffectiveTotal,
 		TokensSaved:       totalSavings,
 		SavingsPercentage: totalSavingsPct,

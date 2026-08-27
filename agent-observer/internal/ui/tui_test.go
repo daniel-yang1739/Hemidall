@@ -922,4 +922,47 @@ func TestDashboardSparklinesAndKpiRendering(t *testing.T) {
 	}
 }
 
+func TestDashboardHalfWidthResponsiveRendering(t *testing.T) {
+	m := NewModel("test-session-half-width", false)
+	m.width = 80
+	m.height = 30
+
+	m.history = append(m.history, core.UnifiedAgentEvent{
+		StepIndex: 1,
+		Scope:     core.ScopeCloudInference,
+		Type:      core.StepTypeModelResponse,
+		Tokens: core.TokenBreakdown{
+			OfficialModel: "gemini-3.7-flash",
+			TotalTokens:   120000,
+			CachedTokens:  100000,
+			NewTokens:     20000,
+			CacheHitRate:  83.3,
+		},
+	})
+	m.latestEvent = m.history[0]
+
+	m.activeView = ViewDashboard
+	viewStr := m.View()
+
+	// In half-width (80 cols), ensure 2-column KPI labels are complete without truncation
+	if !strings.Contains(viewStr, "TOTAL PROCESSED") {
+		t.Error("Half-width dashboard missing complete TOTAL PROCESSED label")
+	}
+	if !strings.Contains(viewStr, "CACHE HIT VOLUME") {
+		t.Error("Half-width dashboard missing complete CACHE HIT VOLUME label")
+	}
+	if !strings.Contains(viewStr, "UNCACHED INBOUND") {
+		t.Error("Half-width dashboard missing complete UNCACHED INBOUND label")
+	}
+
+	// Ensure lines do not exceed 80 columns
+	lines := strings.Split(viewStr, "\n")
+	for i, l := range lines {
+		w := lipgloss.Width(l)
+		if w > 80 {
+			t.Errorf("Line %d width %d exceeds 80 columns: %s", i, w, l)
+		}
+	}
+}
+
 
