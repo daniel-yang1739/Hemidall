@@ -30,4 +30,5 @@
 * `2026-08-27_162500_dashboard_aggregate_metrics_and_multi_turn_trend_charts_plan_v2.md` (v2.0 方案 A/B/C 提案與多模型折扣矩陣)
 * `2026-08-27_223500_harness_middleware_context_compaction_and_injection_mechanics.md` (架構研究：中介層上下文壓縮、Sidecar 模型調用與自建 Proxy 介入注入機制)
 * `2026-08-27_235000_cloud_telemetry_forensics_safety_classifier_and_usage_query_mechanics.md` (法醫取證：SQLite/Protobuf 本地儲存解碼、Safety Classifier 免費安檢機制、前綴快取物理推導與 /usage 遠端查詢架構)
+* `2026-08-27_235900_dashboard_cost_converter_and_currency_toggle_plan.md` (企劃書：Dashboard 即時金額換算、多模型計價矩陣與快捷鍵切換 $ 實裝企劃)
 
