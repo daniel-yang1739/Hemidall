@@ -243,14 +243,11 @@ func (m Model) renderHistoryViewVertical() string {
 
 		for i := m.historyOffset; i < endIdx; i++ {
 			realIdx := len(filtered) - 1 - i
-			e := filtered[realIdx]
 
-			prefix := "  "
 			headerStyle := DimRowStyle
 			summaryStyle := lipgloss.NewStyle().Foreground(ColorMuted)
 
 			if i == m.selectedIdx {
-				prefix = "> "
 				if m.focusPane == FocusList {
 					headerStyle = SelectedRowStyle
 					summaryStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorPrimary)
@@ -260,31 +257,7 @@ func (m Model) renderHistoryViewVertical() string {
 				}
 			}
 
-			isLocal := e.IsLocalStep() || e.Scope == core.ScopeLocalExecution
-
-			var cardLine1 string
-			var cardLine2 string
-
-			if isLocal {
-				cardLine1 = fmt.Sprintf("%s└── [%04d] 💻 OUTPUT %s", prefix, e.StepIndex, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
-				toolName := m.getLocalToolName(e)
-				if toolName != "" && toolName != "OUTPUT" {
-					cardLine2 = "        Tool: " + toolName
-				}
-			} else {
-				typeStr := formatStepType(string(e.Type))
-				cacheTag := formatShortCache(e)
-				if cacheTag != "" {
-					cardLine1 = fmt.Sprintf("%s[%04d] %s %s", prefix, e.StepIndex, typeStr, cacheTag)
-				} else {
-					cardLine1 = fmt.Sprintf("%s[%04d] %s", prefix, e.StepIndex, typeStr)
-				}
-
-				modelName := m.getStepModelName(e)
-				if modelName != "" {
-					cardLine2 = "    Model: " + modelName
-				}
-			}
+			cardLine1, cardLine2 := m.formatHistoryCard(filtered, realIdx, i == m.selectedIdx)
 
 			leftLines = append(leftLines, headerStyle.Render(truncateVisualWidth(cardLine1, topLeftContentWidth)))
 			if cardLine2 != "" {
@@ -496,14 +469,11 @@ func (m Model) renderHistoryViewHorizontal() string {
 
 		for i := m.historyOffset; i < endIdx; i++ {
 			realIdx := len(filtered) - 1 - i
-			e := filtered[realIdx]
 
-			prefix := "  "
 			headerStyle := DimRowStyle
 			summaryStyle := lipgloss.NewStyle().Foreground(ColorMuted)
 
 			if i == m.selectedIdx {
-				prefix = "> "
 				if m.focusPane == FocusList {
 					headerStyle = SelectedRowStyle
 					summaryStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorPrimary)
@@ -513,31 +483,7 @@ func (m Model) renderHistoryViewHorizontal() string {
 				}
 			}
 
-			isLocal := e.IsLocalStep() || e.Scope == core.ScopeLocalExecution
-
-			var cardLine1 string
-			var cardLine2 string
-
-			if isLocal {
-				cardLine1 = fmt.Sprintf("%s└── [%04d] 💻 OUTPUT %s", prefix, e.StepIndex, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
-				toolName := m.getLocalToolName(e)
-				if toolName != "" && toolName != "OUTPUT" {
-					cardLine2 = "        Tool: " + toolName
-				}
-			} else {
-				typeStr := formatStepType(string(e.Type))
-				cacheTag := formatShortCache(e)
-				if cacheTag != "" {
-					cardLine1 = fmt.Sprintf("%s[%04d] %s %s", prefix, e.StepIndex, typeStr, cacheTag)
-				} else {
-					cardLine1 = fmt.Sprintf("%s[%04d] %s", prefix, e.StepIndex, typeStr)
-				}
-
-				modelName := m.getStepModelName(e)
-				if modelName != "" {
-					cardLine2 = "    Model: " + modelName
-				}
-			}
+			cardLine1, cardLine2 := m.formatHistoryCard(filtered, realIdx, i == m.selectedIdx)
 
 			leftLines = append(leftLines, headerStyle.Render(truncateVisualWidth(cardLine1, listContentWidth)))
 			if cardLine2 != "" {
@@ -776,6 +722,88 @@ func formatShortCache(e core.UnifiedAgentEvent) string {
 		}
 		return ""
 	}
+}
+
+func (m Model) formatHistoryCard(
+	filtered []core.UnifiedAgentEvent,
+	realIdx int,
+	isSelected bool,
+) (string, string) {
+	e := filtered[realIdx]
+	prefix := "  "
+	if isSelected {
+		prefix = "> "
+	}
+
+	isCloud := e.IsCloudStep() || e.Scope == core.ScopeCloudInference || e.Type == core.StepTypeModelResponse || e.Type == core.StepTypeToolCall
+	isLocal := e.IsLocalStep() || e.Scope == core.ScopeLocalExecution
+	isUser := e.Type == core.StepTypeUserInput || e.Scope == core.ScopeUserInteraction
+
+	isCloudTop := false
+	if isCloud && realIdx > 0 {
+		eBelow := filtered[realIdx-1]
+		if eBelow.IsLocalStep() || eBelow.Scope == core.ScopeLocalExecution || eBelow.Type == core.StepTypeUserInput || eBelow.Scope == core.ScopeUserInteraction {
+			isCloudTop = true
+		}
+	}
+
+	isLocalInside := false
+	if (isLocal || isUser) && realIdx+1 < len(filtered) {
+		eAbove := filtered[realIdx+1]
+		if eAbove.IsCloudStep() || eAbove.Scope == core.ScopeCloudInference || eAbove.Type == core.StepTypeModelResponse || eAbove.Type == core.StepTypeToolCall {
+			isLocalInside = true
+		}
+	}
+
+	modelName := m.getStepModelName(e)
+	toolName := m.getLocalToolName(e)
+
+	var cardLine1 string
+	var cardLine2 string
+
+	if isCloudTop {
+		typeStr := formatStepType(string(e.Type))
+		cacheTag := formatShortCache(e)
+		if cacheTag != "" {
+			cardLine1 = fmt.Sprintf("%s┌─ [%04d] %s %s", prefix, e.StepIndex, typeStr, cacheTag)
+		} else {
+			cardLine1 = fmt.Sprintf("%s┌─ [%04d] %s", prefix, e.StepIndex, typeStr)
+		}
+		if modelName != "" {
+			cardLine2 = fmt.Sprintf("  │     Model: %s", modelName)
+		}
+	} else if isLocal {
+		if toolName != "" && toolName != "OUTPUT" {
+			cardLine1 = fmt.Sprintf("%s│  [%04d] 💻 OUTPUT %s", prefix, e.StepIndex, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
+			cardLine2 = fmt.Sprintf("  └─   Tool: %s", toolName)
+		} else {
+			if isLocalInside {
+				cardLine1 = fmt.Sprintf("%s└─ [%04d] 💻 OUTPUT %s", prefix, e.StepIndex, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
+			} else {
+				cardLine1 = fmt.Sprintf("%s   [%04d] 💻 OUTPUT %s", prefix, e.StepIndex, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
+			}
+		}
+	} else if isUser {
+		if isLocalInside {
+			cardLine1 = fmt.Sprintf("%s└─ [%04d] 👤 USER", prefix, e.StepIndex)
+		} else {
+			cardLine1 = fmt.Sprintf("%s   [%04d] 👤 USER", prefix, e.StepIndex)
+		}
+	} else {
+		// Standalone step (CHECKPOINT, SYSTEM_INIT, etc.)
+		typeStr := formatStepType(string(e.Type))
+		cacheTag := formatShortCache(e)
+		if cacheTag != "" {
+			cardLine1 = fmt.Sprintf("%s   [%04d] %s %s", prefix, e.StepIndex, typeStr, cacheTag)
+		} else {
+			cardLine1 = fmt.Sprintf("%s   [%04d] %s", prefix, e.StepIndex, typeStr)
+		}
+		if modelName != "" {
+			cardLine2 = fmt.Sprintf("       Model: %s", modelName)
+		}
+	}
+
+	return cardLine1, cardLine2
 }
 
 func formatStepType(t string) string {

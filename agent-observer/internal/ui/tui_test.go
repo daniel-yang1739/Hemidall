@@ -414,8 +414,11 @@ func TestHistoryTreeAndDistinctiveLabels(t *testing.T) {
 	}
 
 	rendered := m.renderHistoryView()
-	if !strings.Contains(rendered, "└──") {
-		t.Fatalf("Expected '└──' tree connector in rendered history view, got:\n%s", rendered)
+	if !strings.Contains(rendered, "┌─") {
+		t.Fatalf("Expected '┌─' bracket top connector in rendered history view, got:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "└─") {
+		t.Fatalf("Expected '└─' bracket bottom connector in rendered history view, got:\n%s", rendered)
 	}
 	if !strings.Contains(rendered, "Model: ") {
 		t.Fatalf("Expected 'Model: ' prefix in rendered history view, got:\n%s", rendered)
