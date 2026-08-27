@@ -21,7 +21,7 @@ func TestSQLiteTelemetryReader_RealDB(t *testing.T) {
 	t.Logf("Latest Gen: %d | Step: %d | Total: %d | Cached: %d | HitRate: %.2f%% | Model: %s",
 		latest.GenIndex, latest.LastStepIdx, latest.TotalTokens, latest.CachedTokens, latest.CacheHitRate, latest.ModelName)
 
-	for step := 2280; step <= 2340; step++ {
+	for step := 5510; step <= 5590; step++ {
 		if m := reader.GetTelemetryForStep(step); m != nil {
 			t.Logf("Found Gen for Step %d: Total=%d, Cached=%d, New=%d, HitRate=%.2f%%, Model=%s",
 				step, m.TotalTokens, m.CachedTokens, m.TotalTokens-m.CachedTokens, m.CacheHitRate, m.ModelName)

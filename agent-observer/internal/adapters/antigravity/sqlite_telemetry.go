@@ -66,12 +66,18 @@ func (r *SQLiteTelemetryReader) PollLatest() error {
 	return nil
 }
 
-// GetTelemetryForStep retrieves official telemetry for a specific step index
+// GetTelemetryForStep retrieves official telemetry for a specific step index (checking exact and adjacent input indices)
 func (r *SQLiteTelemetryReader) GetTelemetryForStep(stepIdx int) *GeminiGenerationMetadata {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	if meta, exists := r.records[stepIdx]; exists {
+		return meta
+	}
+	if meta, exists := r.records[stepIdx-1]; exists {
+		return meta
+	}
+	if meta, exists := r.records[stepIdx+1]; exists {
 		return meta
 	}
 	return nil
