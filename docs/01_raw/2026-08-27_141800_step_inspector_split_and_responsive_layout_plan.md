@@ -1,4 +1,4 @@
-# 📐 Step Inspector 雙框拆分與雙模式響應式佈局設計方案 (Technical Design & Implementation Plan)
+# 📐 Step Inspector 雙框拆分與雙模式響應式佈局設計方案 (v2 零截斷與高可讀性優化)
 
 > **Document Type**: Architecture & Layout Specification  
 > **Date**: 2026-08-27  
@@ -13,14 +13,14 @@
 
 1. **`STEP TELEMETRY & METRICS`（狀態與遙測面版）**：
    - 專門承載步驟編號、時間戳、執行範疇、後端模型、Token 統計、快取命中率、5 維度上下文分解、計費狀態與工具調用參數。
-   - 固定高度（約 7~9 行），資訊高密度、零干擾。
+   - 固定高度（約 8~10 行），資訊高密度、零截斷、排版對齊。
 2. **`CONTENT PAYLOAD`（內容載荷面板）**：
    - 專門承載思考鏈（Thinking/CoT）、實際對話內容、終端機輸出（stdout/stderr）、代碼變更 Diff 與錯誤訊息。
    - 具備獨立捲動（`j`/`k`、`Ctrl+u`/`Ctrl+d`、`g`/`G`）、Visual 模式多行反白（`v`）與剪貼簿複製（`y`）。
 
 ---
 
-## 🖥️ 2. 佈局架構設計 (Dual-Mode Responsive Architecture)
+## 🖥️ 2. 佈局架構與零截斷字元寬度演算 (Dual-Mode Architecture & Exact Width Bounds)
 
 ### 模式 A：全螢幕模式 (Full-Width Mode: 寬度 $\ge 100$ 欄)
 在寬螢幕下，採用 **「左側清單 + 右側上下分割」** 的高效率工作站架構：
@@ -30,7 +30,7 @@
 │ STEPS (6536) < [T:All] [C:All]     ││ STEP TELEMETRY & METRICS                                         │
 │ > [4258] MODEL_RESP [HIT 100%]     ││ • Step 4258 (DONE) at 06:00:30 | ☁️ CLOUD INFERENCE TURN          │
 │     Model: Gemini 3.7 Flash        ││ • Model  : Gemini 3.7 Flash (High) (Official Telemetry)          │
-│   └── [4257] OUTPUT (Local)        ││ • Tokens : Total: 151,479 | Cached: 150,866 (99.6%) | New: 613   │
+│   └── [4257] OUTPUT (Local)        ││ • Tokens : Total: 151,479 | Cached: 150,866 (99.6% HIT) | New:613│
 │         Tool: run_cmd              ││ • 5-Dims : Sys=3,806 | Tools=1,377 | Res=0 | Hist=145,683 | Act= │
 │   [4256] TOOL_CALL [HIT 100%]      │╰──────────────────────────────────────────────────────────────────╯
 │     Model: Gemini 3.7 Flash        │╭──────────────────────────────────────────────────────────────────╮
@@ -41,41 +41,63 @@
 ╰────────────────────────────────────╯╰──────────────────────────────────────────────────────────────────╯
 ```
 
-* **左欄**：固定 `38 欄`，全高度 `innerRowsLimit`。
-* **右上框**：寬度 `m.width - 38`，高度固定 8~9 行，展示完整遙測與 Token 數據。
-* **右下框**：寬度 `m.width - 38`，佔據剩餘全部高度，獨立捲動載荷內容。
+#### 📏 全螢幕模式寬度精確計算：
+| 面板名稱 | 外部寬度 (`Outer Width`) | 內部淨寬 (`Content Width`) | 最長文字行長度 | 剩餘安全邊距 |
+| :--- | :--- | :--- | :--- | :--- |
+| **左欄：Step List** | 固定 `38 欄` | `34 欄` | `29 欄` (`> [4258] MODEL_RESP [HIT 100%]`) | ✅ `+5 欄` (零截斷) |
+| **右上：Telemetry** | `m.width - 38` ($\ge 62$ 欄) | $\ge 58$ 欄 | `54 欄` (Token 明細行) | ✅ `+4~20 欄` (零截斷) |
+| **右下：Payload** | `m.width - 38` ($\ge 62$ 欄) | $\ge 58$ 欄 | 自動依淨寬 Word-Wrap 換行 | ✅ (零溢出、流暢捲動) |
 
 ---
 
-### 模式 B：半螢幕模式 (Half-Width Mode: 寬度 $< 100$ 欄)
+### 模式 B：半螢幕模式 (Half-Width Mode: 寬度 $< 100$ 欄，以標準 80 欄為例)
 在 80 欄窄螢幕或半螢幕分頁下，採用 **「上方左右並排 + 下方全寬展開」** 的黃金分割架構：
 
 ```text
-╭──────────────────────────────╮╭──────────────────────────────────────────────╮
-│ STEPS (6536) < [T:All][C:All]││ STEP TELEMETRY                               │
-│ > [4258] MODEL_RESP [HIT 100%││ • Step 4258 at 06:00:30 | ☁️ CLOUD INFERENCE  │
-│     Model: Gemini 3.7 Flash  ││ • Model : Gemini 3.7 Flash                   │
-│   └── [4257] OUTPUT (Local)  ││ • Tokens: Total: 151k | Cached: 150k (99.6%) │
-│         Tool: run_cmd        ││ • 5-Dims: Sys=3.8k | Tools=1.3k | Hist=145k  │
-╰──────────────────────────────╯╰──────────────────────────────────────────────╯
+╭────────────────────────────────────╮╭────────────────────────────────────────╮
+│ STEPS (6536) < [T:All] [C:All]     ││ STEP TELEMETRY                         │
+│ > [4258] MODEL_RESP [HIT 100%]     ││ • Step 4258 (DONE) at 06:00:30         │
+│     Model: Gemini 3.7 Flash        ││ • Scope : ☁️ CLOUD INFERENCE TURN      │
+│   └── [4257] OUTPUT (Local)        ││ • Model : Gemini 3.7 Flash (High)      │
+│         Tool: run_cmd              ││ • Tokens: 151,479 Total | New: 613     │
+│   [4256] TOOL_CALL [HIT 100%]      ││ • Cache : 150,866 (99.6% HIT)          │
+│     Model: Gemini 3.7 Flash        ││ • 5-Dims: Sys 3.8k | Tool 1.4k | H 145k│
+│   ...                              ││ • Parent: Step #4243 ➔ Consumed #4257  │
+╰────────────────────────────────────╯╰────────────────────────────────────────╯
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ CONTENT PAYLOAD < [Scroll: j/k, Copy: v/y]                                   │
 │ # 🎯 統一結構落地！`[編號] OUTPUT (Local)` + Tool Hint                         │
 │                                                                              │
 │ 完全照你的標準對齊！現在所有的步驟（無論是雲端還是本地）都遵循**最嚴謹的一致性語法**：│
-│   ...                                                                        │
+│   - 第一行（Step Header）：遵循標準的 [編號] TYPE [標籤]                       │
+│   - 第二行（Metadata Hint）：專門提供精確的下層元資料                         │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
-* **左上框**：寬度 `36~38 欄`，高度約 9~10 行，展示緊湊步驟階層清單。
-* **右上框**：寬度 `m.width - (36~38)`，高度與左上框一致（9~10 行），展示步驟元資料與 Token 狀態。
-* **下方框**：寬度 **100% 全螢幕 (80 欄)**，高度佔據剩餘所有垂直高度，代碼與終端輸出完全不被橫向擠壓！
+#### 📏 半螢幕模式寬度精確計算 (以 80 欄為例)：
+| 面板名稱 | 外部寬度 (`Outer Width`) | 內部淨寬 (`Content Width`) | 最長文字行長度 | 剩餘安全邊距 |
+| :--- | :--- | :--- | :--- | :--- |
+| **左上：Step List** | 固定 `38 欄` | `34 欄` | `29 欄` (`> [4258] MODEL_RESP [HIT 100%]`) | ✅ `+5 欄` (零截斷) |
+| **右上：Telemetry** | $80 - 38 = 42$ 欄 | `38 欄` | `35 欄` (`• 5-Dims: Sys 3.8k | Tool 1.4k | H 145k`) | ✅ `+3 欄` (零截斷) |
+| **下方：Payload** | **`80 欄` (100% 全寬)** | **`76 欄`** | 自動依 76 欄 Word-Wrap 換行 | ✅ (代碼與輸出極致舒展) |
 
 ---
 
-## 🔄 3. 焦點切換與鍵盤互動 (Focus Navigation Matrix)
+## 🎨 3. 資訊可讀性優化 (Readability & Typography Guidelines)
 
-我們支援自然直覺的焦點循環與滾動管理：
+1. **Telemetry 面板排版優化**：
+   * **標籤強化**：`• Step`, `• Model`, `• Tokens`, `• Cache`, `• 5-Dims` 採用青色粗體（Bold Cyan）。
+   * **數值突出**：總 Token 採用白色，快取命中率採用亮綠色 `(99.6% HIT)` 或鮮黃色 `(PARTIAL)`。
+   * **半螢幕多行緊湊格式**：在 $< 100$ 欄時，自動將長字串拆為兩行（如 `Tokens` 與 `Cache` 分行，`5-Dims` 簡化為 `k` 單位），確保**絕不發生文字被邊界硬切截斷的醜態**！
+2. **Content Payload 面板排版優化**：
+   * **思考鏈（Thinking）獨立區塊**：若該步驟包含模型思考過程，以淡紫色斜體區塊呈現，並以柔和虛線 `···` 與實體回答分隔。
+   * **標題狀態列**：動態顯示 `CONTENT PAYLOAD (Line 1/120 | [v] Visual Mode | [y] Copy)`。
+
+---
+
+## 🔄 4. 焦點切換與鍵盤互動 (Focus Navigation Matrix)
+
+我們支援自然直覺的 3 區焦點循環：
 
 | 按鍵 | 當前焦點：Step List | 當前焦點：Telemetry | 當前焦點：Content Payload |
 | :--- | :--- | :--- | :--- |
@@ -87,11 +109,11 @@
 
 ---
 
-## 🛠️ 4. 具體程式碼變更計畫 (Proposed Changes)
+## 🛠️ 5. 具體程式碼變更計畫 (Proposed Changes)
 
 ### 1. `internal/ui/model.go`
 * **拆分 Inspector 內容生成器**：
-  - `buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int) []string`：專注於生成結構化 Metadata 與 Token 分解。
+  - `buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, isCompact bool) []string`：專注於生成結構化 Metadata 與 Token 分解，依 `isCompact` 動態調整單行或分行。
   - `buildContentPayloadLines(e core.UnifiedAgentEvent, maxWidth int) []string`：專注於生成思考鏈與長文本載荷。
 * **動態計算可視卡片與滾動高度**：
   - 半螢幕模式下：Step List 容納行數由 Top-Left 框高度決定。
@@ -107,7 +129,7 @@
   - 左上：Step List
   - 右上：Telemetry Panel
   - `lipgloss.JoinHorizontal` 組裝上方橫排。
-  - 下方：Content Payload Panel（全寬）。
+  - 下方：Content Payload Panel（全寬 80 欄）。
   - `lipgloss.JoinVertical` 組裝上下兩層。
 * **保證零抖動、零高度溢出（Zero-Height Variation Invariant）**：
   - 嚴格保證無論哪種模式，總輸出高度恆等於 `m.height`。
@@ -120,7 +142,7 @@
 
 ---
 
-## 🧪 5. 驗證計畫 (Verification Plan)
+## 🧪 6. 驗證計畫 (Verification Plan)
 
 ### 自動化測試 (Automated Tests)
 ```bash
