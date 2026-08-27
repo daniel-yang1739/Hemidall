@@ -442,18 +442,27 @@ func (m Model) renderDashboardView() string {
 		} else if e.Source == "SYSTEM" {
 			p1Title = "TRACK 1: INTERNAL HARNESS BACKGROUND TASK" + playbackSuffix
 		}
+		invokedModel := m.getStepModelName(e)
+		if invokedModel == "" {
+			invokedModel = "Gemini 3.7 Flash"
+		}
+		packagedInfo := "Staged for Next Cloud Turn"
+		if e.PackagedInStepIdx > 0 {
+			packagedInfo = fmt.Sprintf("Billed in Cloud Turn #%04d ☁️", e.PackagedInStepIdx)
+		}
+
 		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 		if contentWidth < 80 {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role  : %s (%s | Step #%03d)\n", e.GetAgentRole(), e.Type, e.StepIndex))
-			p1.WriteString(fmt.Sprintf("  • Tool Output    : %d Tokens  %s\n", total, cacheBadge))
-			p1.WriteString(fmt.Sprintf("  • Status & Time  : %s | %s", e.Status, timeStr))
+			p1.WriteString(fmt.Sprintf("  • Model & Size   : %s | %d Tok\n", truncateVisualWidth(invokedModel, contentWidth-20), total))
+			p1.WriteString(fmt.Sprintf("  • Status & Bill  : %s | %s", e.Status, packagedInfo))
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role        : %s (%s | Step #%03d | Status: %s | %s)\n", e.GetAgentRole(), e.Type, e.StepIndex, e.Status, timeStr))
-			p1.WriteString(fmt.Sprintf("  • Output Payload : %d Tokens (Tool Result Data)  %s\n", total, cacheBadge))
+			p1.WriteString(fmt.Sprintf("  • Model & Payload      : %s | %d Tokens (Tool Result Data)  %s\n", lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(invokedModel), total, cacheBadge))
 			if e.Status == "BLOCKED" {
-				p1.WriteString("  • Action Status  : Blocked by System Permission Guard (0 GPU Tokens Billed) 🛡️")
+				p1.WriteString("  • Action Status        : Blocked by System Permission Guard (0 GPU Tokens Billed) 🛡️")
 			} else {
-				p1.WriteString("  • Billing Status : Offline Machine Subprocess (0 GPU Tokens Billed) ➔ Staged for Next Cloud Turn")
+				p1.WriteString(fmt.Sprintf("  • Billing Attribution  : Local Offline Subprocess (0 GPU Tokens) ➔ %s", packagedInfo))
 			}
 		}
 	} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
