@@ -284,7 +284,7 @@ func TestHistoryStepListScrollIndicators(t *testing.T) {
 	for step := 0; step < 20; step++ {
 		v := m.renderHistoryView()
 		expectedStepIdx := 19 - step
-		expectedBadge := fmt.Sprintf("[%03d|", expectedStepIdx)
+		expectedBadge := fmt.Sprintf("[%04d]", expectedStepIdx)
 		if !strings.Contains(v, "> ") || !strings.Contains(v, expectedBadge) {
 			t.Fatalf("Step %d (selectedIdx=%d, offset=%d, badge=%s) was not visible on screen! Rendered view:\n%s", expectedStepIdx, m.selectedIdx, m.historyOffset, expectedBadge, v)
 		}

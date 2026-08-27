@@ -151,9 +151,9 @@ func (m Model) renderDashboardView() string {
 }
 
 func (m Model) renderHistoryView() string {
-	leftOuterWidth := int(float64(m.width) * 0.33)
-	if leftOuterWidth < 28 {
-		leftOuterWidth = 28
+	leftOuterWidth := int(float64(m.width) * 0.38)
+	if leftOuterWidth < 36 {
+		leftOuterWidth = 36
 	}
 	if leftOuterWidth > 65 {
 		leftOuterWidth = 65
@@ -203,12 +203,7 @@ func (m Model) renderHistoryView() string {
 		cacheBadgeStr = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("[C:%s]", m.historyCacheFilter))
 	}
 
-	var titleLine string
-	if listContentWidth < 28 {
-		titleLine = fmt.Sprintf("%s %s%s", TitleStyle.Render(leftTitle), typeBadgeStr, cacheBadgeStr)
-	} else {
-		titleLine = fmt.Sprintf("%s %s %s", TitleStyle.Render(leftTitle), typeBadgeStr, cacheBadgeStr)
-	}
+	titleLine := fmt.Sprintf("%s %s %s", TitleStyle.Render(leftTitle), typeBadgeStr, cacheBadgeStr)
 	leftLines = append(leftLines, truncateVisualWidth(titleLine, listContentWidth))
 
 	if m.isHistorySearching || m.historyStepQuery != "" {
@@ -256,20 +251,20 @@ func (m Model) renderHistoryView() string {
 			}
 
 			isLocal := e.IsLocalStep() || e.Scope == core.ScopeLocalExecution
-			typeBadge := fmt.Sprintf("[%03d|%-4s]", e.StepIndex, shortenType(string(e.Type)))
+			typeStr := formatStepType(string(e.Type))
 
 			var cardLine1 string
 			var cardLine2 string
 
 			if isLocal {
-				cardLine1 = fmt.Sprintf("%s└── %s %s", prefix, typeBadge, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
+				cardLine1 = fmt.Sprintf("%s└── [%04d] %s %s", prefix, e.StepIndex, typeStr, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
 				cardLine2 = "      " + e.Summary
 			} else {
 				cacheTag := formatShortCache(e)
 				if cacheTag != "" {
-					cardLine1 = fmt.Sprintf("%s%s %s", prefix, typeBadge, cacheTag)
+					cardLine1 = fmt.Sprintf("%s[%04d] %s %s", prefix, e.StepIndex, typeStr, cacheTag)
 				} else {
-					cardLine1 = fmt.Sprintf("%s%s", prefix, typeBadge)
+					cardLine1 = fmt.Sprintf("%s[%04d] %s", prefix, e.StepIndex, typeStr)
 				}
 
 				if e.Type == core.StepTypeToolCall && len(e.ToolCalls) > 0 {
@@ -490,80 +485,30 @@ func formatShortCache(e core.UnifiedAgentEvent) string {
 	}
 }
 
-func getStepDistinctiveLabel(e core.UnifiedAgentEvent) string {
-	switch e.Type {
-	case core.StepTypeToolCall:
-		if len(e.ToolCalls) == 1 {
-			return shortenToolName(e.ToolCalls[0].ToolName)
-		} else if len(e.ToolCalls) > 1 {
-			return fmt.Sprintf("%s +%d", shortenToolName(e.ToolCalls[0].ToolName), len(e.ToolCalls)-1)
-		}
-		return "tool_call"
-	case core.StepTypeRunCommand:
-		return "run_cmd"
-	case core.StepTypeViewFile:
-		return "view_file"
-	case core.StepTypeCodeAction:
-		return "code_diff"
-	case core.StepTypeListDirectory:
-		return "list_dir"
-	case core.StepTypeAskQuestion:
-		return "ask_user"
-	case core.StepTypeGeneric, core.StepTypeToolResult:
-		return "Output"
-	case core.StepTypeError:
-		return "Error"
-	case core.StepTypeUserInput:
-		return "Prompt"
-	case core.StepTypeModelResponse:
-		if e.Tokens.OfficialModel != "" {
-			return shortenModelName(e.Tokens.OfficialModel)
-		}
-		return "Gemini"
-	case core.StepTypeSystemInit:
-		return "System"
+func formatStepType(t string) string {
+	switch t {
+	case "USER_INPUT":
+		return "USER_INPUT"
+	case "MODEL_RESPONSE":
+		return "MODEL_RESP"
+	case "TOOL_CALL":
+		return "TOOL_CALL"
+	case "RUN_COMMAND":
+		return "RUN_CMD"
+	case "VIEW_FILE":
+		return "VIEW_FILE"
+	case "CODE_ACTION":
+		return "CODE_DIFF"
+	case "LIST_DIRECTORY":
+		return "LIST_DIR"
+	case "GENERIC":
+		return "OUTPUT"
+	case "ERROR_MESSAGE":
+		return "ERROR"
+	case "SYSTEM_INIT":
+		return "SYSTEM"
 	default:
-		if e.IsLocalStep() {
-			return "Output"
-		}
-		return string(e.Type)
+		return t
 	}
-}
-
-func shortenToolName(n string) string {
-	switch n {
-	case "run_command":
-		return "run_cmd"
-	case "view_file":
-		return "view_file"
-	case "replace_file_content", "write_to_file":
-		return "edit_file"
-	case "list_dir":
-		return "list_dir"
-	case "grep_search", "find_by_name":
-		return "search"
-	default:
-		if len(n) > 9 {
-			return n[:9]
-		}
-		return n
-	}
-}
-
-func shortenModelName(m string) string {
-	m = strings.TrimPrefix(m, "models/")
-	if strings.Contains(m, "3.7-flash") {
-		return "Gemini 3.7"
-	}
-	if strings.Contains(m, "3.7-pro") {
-		return "Gemini 3.7 Pro"
-	}
-	if strings.Contains(m, "flash") {
-		return "Gemini Flash"
-	}
-	if strings.Contains(m, "pro") {
-		return "Gemini Pro"
-	}
-	return m
 }
 
