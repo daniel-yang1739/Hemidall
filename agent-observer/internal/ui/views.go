@@ -45,26 +45,42 @@ func formatTokShort(n int) string {
 	return fmt.Sprintf("%d", n)
 }
 
-func renderKpiCard(title string, value string, sub string, valStyle lipgloss.Style, cardWidth int) string {
-	if cardWidth < 12 {
-		cardWidth = 12
+func renderBorderlessKpiStrip(tot core.ModelTokenStats, width int) string {
+	colW := (width - 4) / 5
+	if colW < 14 {
+		colW = 14
 	}
-	innerWidth := cardWidth - 4 // Account for left+right padding (2) and left+right border (2)
-	if innerWidth < 6 {
-		innerWidth = 6
-	}
-	t := lipgloss.NewStyle().Foreground(ColorMuted).Bold(true).Render(truncateVisualWidth(title, innerWidth))
-	v := valStyle.Bold(true).Render(truncateVisualWidth(value, innerWidth))
-	s := lipgloss.NewStyle().Foreground(ColorMuted).Render(truncateVisualWidth(sub, innerWidth))
 
-	content := fmt.Sprintf("%s\n%s\n%s", t, v, s)
-	return lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(ColorBorder).
-		Padding(0, 1).
-		Width(innerWidth).
-		Align(lipgloss.Center).
-		Render(content)
+	hStyle := lipgloss.NewStyle().Foreground(ColorMuted).Bold(true)
+	subStyle := lipgloss.NewStyle().Foreground(ColorMuted)
+
+	h1 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "TOTAL PROCESSED"), colW))
+	h2 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "CACHE HIT VOLUME"), colW))
+	h3 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "UNCACHED INBOUND"), colW))
+	h4 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "EFFECTIVE TOKENS"), colW))
+	h5 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "TOKENS SAVED (%)"), colW))
+
+	v1 := lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatTokShort(tot.TotalProcessed)+" Tok"), colW))
+	v2 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatTokShort(tot.TotalCached)+" Tok"), colW))
+	v3 := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatTokShort(tot.TotalNew)+" Tok"), colW))
+	v4 := lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatTokShort(tot.EffectiveTokens)+" Tok"), colW))
+	v5 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatTokShort(tot.TokensSaved)+" Tok"), colW))
+
+	s1 := subStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%d Cloud Turns", tot.TurnCount)), colW))
+	s2 := lipgloss.NewStyle().Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%.1f%% Hit Rate", tot.CacheHitRate)), colW))
+	s3 := lipgloss.NewStyle().Foreground(ColorHighlight).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%.1f%% Cold In", 100.0-tot.CacheHitRate)), colW))
+	effPct := 0.0
+	if tot.TotalProcessed > 0 {
+		effPct = float64(tot.EffectiveTokens) / float64(tot.TotalProcessed) * 100.0
+	}
+	s4 := lipgloss.NewStyle().Foreground(ColorSecondary).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%.1f%% of Raw", effPct)), colW))
+	s5 := lipgloss.NewStyle().Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%.1f%% Net Saved", tot.SavingsPercentage)), colW))
+
+	row1 := fmt.Sprintf("  %s %s %s %s %s", h1, h2, h3, h4, h5)
+	row2 := fmt.Sprintf("  %s %s %s %s %s", v1, v2, v3, v4, v5)
+	row3 := fmt.Sprintf("  %s %s %s %s %s", s1, s2, s3, s4, s5)
+
+	return fmt.Sprintf("%s\n%s\n%s", truncateVisualWidth(row1, width), truncateVisualWidth(row2, width), truncateVisualWidth(row3, width))
 }
 
 func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTokenStats, width int) string {
@@ -218,22 +234,7 @@ func (m Model) renderDashboardView() string {
 	var p0 strings.Builder
 	p0.WriteString(TitleStyle.Render("📊 SESSION TOKEN AGGREGATES & MULTI-MODEL EFFICIENCY") + "\n\n")
 
-	// Render 5 KPI Cards
-	numCards := 5
-	cardGap := 1
-	cardWidth := (contentWidth - (numCards-1)*cardGap) / numCards
-	if cardWidth < 14 {
-		cardWidth = 14
-	}
-
-	c1 := renderKpiCard("TOTAL PROCESSED", formatTokShort(tot.TotalProcessed)+" Tok", fmt.Sprintf("%d Cloud Turns", tot.TurnCount), lipgloss.NewStyle().Foreground(ColorLightText), cardWidth)
-	c2 := renderKpiCard("CACHE HIT VOLUME", formatTokShort(tot.TotalCached)+" Tok", fmt.Sprintf("%.1f%% Hit Rate", tot.CacheHitRate), lipgloss.NewStyle().Foreground(ColorSuccess), cardWidth)
-	c3 := renderKpiCard("UNCACHED INBOUND", formatTokShort(tot.TotalNew)+" Tok", fmt.Sprintf("%.1f%% Cold In", 100.0-tot.CacheHitRate), lipgloss.NewStyle().Foreground(ColorHighlight), cardWidth)
-	c4 := renderKpiCard("EFFECTIVE TOKENS", formatTokShort(tot.EffectiveTokens)+" Tok", fmt.Sprintf("%.1f%% of Raw", float64(tot.EffectiveTokens)/float64(max(tot.TotalProcessed, 1))*100.0), lipgloss.NewStyle().Foreground(ColorSecondary), cardWidth)
-	c5 := renderKpiCard("TOKENS SAVED (%)", formatTokShort(tot.TokensSaved)+" Tok", fmt.Sprintf("%.1f%% Net Saved", tot.SavingsPercentage), lipgloss.NewStyle().Foreground(ColorSuccess), cardWidth)
-
-	kpiRow := lipgloss.JoinHorizontal(lipgloss.Top, c1, " ", c2, " ", c3, " ", c4, " ", c5)
-	p0.WriteString(kpiRow + "\n\n")
+	p0.WriteString(renderBorderlessKpiStrip(tot, contentWidth) + "\n\n")
 
 	// Render Multi-Model Breakdown Table (if height permits or models exist)
 	if len(agg.ModelStats) > 0 {
