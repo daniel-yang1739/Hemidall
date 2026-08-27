@@ -344,11 +344,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				m.isSessionSwitcherOpen = false
 				return m, nil
-			case "[":
-				m.prevAgentTab()
-				return m, nil
-			case "]":
+			case "tab", "]":
 				m.nextAgentTab()
+				return m, nil
+			case "shift+tab", "backtab", "[":
+				m.prevAgentTab()
 				return m, nil
 			case "up", "ctrl+k":
 				if m.switcherSelectedIdx > 0 {

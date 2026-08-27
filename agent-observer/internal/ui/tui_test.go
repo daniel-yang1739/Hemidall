@@ -431,21 +431,21 @@ func TestSessionSwitcherKeyboardNavigationAndActions(t *testing.T) {
 		t.Errorf("Expected switcherSelectedIdx=0 after Ctrl+k, got %d", m.switcherSelectedIdx)
 	}
 
-	// 3. Test Agent Tab Cycle with ']'
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("]")})
+	// 3. Test Agent Tab Cycle with Tab key
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(Model)
 	if m.selectedAgentTab != core.AgentTypeClaudeCode {
-		t.Errorf("Expected selectedAgentTab=core.AgentTypeClaudeCode after ']', got %s", m.selectedAgentTab)
+		t.Errorf("Expected selectedAgentTab=core.AgentTypeClaudeCode after Tab, got %s", m.selectedAgentTab)
 	}
 	if len(m.filteredSessions) != 1 || m.filteredSessions[0].SessionID != "session-claude-999999" {
 		t.Fatalf("Expected 1 Claude session, got %d", len(m.filteredSessions))
 	}
 
-	// 4. Test Agent Tab Cycle back with '['
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("[")})
+	// 4. Test Agent Tab Cycle back with Shift+Tab
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	m = updated.(Model)
 	if m.selectedAgentTab != core.AgentTypeAntigravity {
-		t.Errorf("Expected selectedAgentTab=core.AgentTypeAntigravity after '[', got %s", m.selectedAgentTab)
+		t.Errorf("Expected selectedAgentTab=core.AgentTypeAntigravity after Shift+Tab, got %s", m.selectedAgentTab)
 	}
 
 	// 5. Test Typing Filter for path or prompt keywords
