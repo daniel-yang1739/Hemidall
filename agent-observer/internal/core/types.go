@@ -57,6 +57,16 @@ type TokenBreakdown struct {
 	RawLocalAccumulated  int     `json:"raw_local_accumulated"`  // Raw uncompressed log tokens (e.g. ~400k)
 }
 
+// StepScope defines the universal computing origin and billing nature of an agent event
+type StepScope string
+
+const (
+	ScopeUserInteraction StepScope = "USER"   // 👤 User Intent / Prompts (Network billed)
+	ScopeCloudInference  StepScope = "CLOUD"  // ☁️ Cloud LLM Inference / Tool Calls (GPU billed)
+	ScopeLocalExecution  StepScope = "LOCAL"  // 💻 Local Machine Process (Offline, 0 tokens)
+	ScopeSystemBootstrap StepScope = "SYSTEM" // ⚙️ System Init / History / Checkpoints
+)
+
 // UnifiedAgentEvent is the standardized domain event model across agent backends
 type UnifiedAgentEvent struct {
 	SessionID   string           `json:"session_id"`   // Unique session identifier
@@ -65,6 +75,12 @@ type UnifiedAgentEvent struct {
 	Source      string           `json:"source"`       // USER_EXPLICIT, MODEL, SYSTEM
 	Type        StepType         `json:"type"`         // Step category
 	Status      string           `json:"status"`       // DONE, RUNNING, ERROR
+	Scope       StepScope        `json:"scope"`        // USER, CLOUD, LOCAL, SYSTEM
+
+	// Causality & Hierarchy Linkage
+	ParentStepIdx       int      `json:"parent_step_idx,omitempty"`        // The triggering parent step index
+	PackagedInStepIdx   int      `json:"packaged_in_step_idx,omitempty"`    // Cloud step index where this local step was billed
+	ConsumedStepIndices []int    `json:"consumed_step_indices,omitempty"`  // Local step indices consumed by this cloud turn
 	
 	// Content and summaries
 	Summary     string           `json:"summary"`      // Single-line summary for CLI display
@@ -75,5 +91,23 @@ type UnifiedAgentEvent struct {
 	
 	// 5-dimension breakdown (injected by Analyzer)
 	Tokens      TokenBreakdown   `json:"tokens"`
-	CacheStatus string           `json:"cache_status"` // HIT, MISS, WRITE, EXPIRED, UNKNOWN
+	CacheStatus string           `json:"cache_status"` // HIT, PARTIAL, WRITE, EXPIRED, MISS, UNKNOWN
+}
+
+// IsLocalStep returns true if the step is an offline execution on the local host machine
+func (e UnifiedAgentEvent) IsLocalStep() bool {
+	return e.Scope == ScopeLocalExecution ||
+		e.Type == StepTypeRunCommand ||
+		e.Type == StepTypeViewFile ||
+		e.Type == StepTypeCodeAction ||
+		e.Type == StepTypeListDirectory ||
+		e.Type == StepTypeToolResult ||
+		e.Type == StepTypeAskQuestion
+}
+
+// IsCloudStep returns true if the step is a remote LLM generation / decision turn
+func (e UnifiedAgentEvent) IsCloudStep() bool {
+	return e.Scope == ScopeCloudInference ||
+		e.Type == StepTypeModelResponse ||
+		e.Type == StepTypeToolCall
 }

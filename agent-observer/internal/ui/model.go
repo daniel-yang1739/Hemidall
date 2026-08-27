@@ -342,6 +342,28 @@ func (m Model) getSessionModelName() string {
 	return "gemini-3.7-flash"
 }
 
+func (m *Model) jumpToStep(targetStepIdx int) bool {
+	filtered := m.getFilteredHistory()
+	for i, e := range filtered {
+		if e.StepIndex == targetStepIdx {
+			m.selectedIdx = len(filtered) - 1 - i
+			m.detailScroll = 0
+
+			visCards := m.getHistoryVisibleCards()
+			if m.selectedIdx < m.historyOffset {
+				m.historyOffset = m.selectedIdx
+			} else if m.selectedIdx >= m.historyOffset+visCards {
+				m.historyOffset = m.selectedIdx - visCards + 1
+				if m.historyOffset < 0 {
+					m.historyOffset = 0
+				}
+			}
+			return true
+		}
+	}
+	return false
+}
+
 func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) []string {
 	if maxWidth <= 10 {
 		maxWidth = 60
@@ -349,36 +371,97 @@ func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) [
 	var lines []string
 	t := e.Tokens
 
-	modelName := t.OfficialModel
-	if modelName == "" {
-		if e.Type == core.StepTypeModelResponse || e.Type == core.StepTypeToolCall || e.Type == core.StepTypeUserInput {
-			modelName = m.getSessionModelName()
-		} else {
-			modelName = "n/a (Local Step)"
-		}
-	}
-
-	headerLine1 := fmt.Sprintf("• Step %03d (%s) at %s | Type: %s | Model: %s",
-		e.StepIndex, e.Status, e.Timestamp.Format("15:04:05"), e.Type, modelName)
-	lines = append(lines, wrapVisualLines(headerLine1, maxWidth)...)
-
-	headerLine2 := fmt.Sprintf("• Tokens: %d | Cached: %d (%.1f%%) | New: %d",
-		t.TotalTokens, t.CachedTokens, t.CacheHitRate, t.NewTokens)
-	lines = append(lines, wrapVisualLines(headerLine2, maxWidth)...)
-
-	headerLine3 := fmt.Sprintf("• 5-Dims: Sys=%d | Tools=%d | Res=%d | Hist=%d | Act=%d",
-		t.SystemTokens, t.ToolsDefTokens, t.ToolResultTokens, t.HistoryTokens, t.ActiveTurnTokens)
-	lines = append(lines, wrapVisualLines(headerLine3, maxWidth)...)
-
 	sepWidth := maxWidth
 	if sepWidth > 80 {
 		sepWidth = 80
 	}
+
+	timeStr := e.Timestamp.Format("15:04:05")
+
+	if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
+		// 💻 Local Execution Step
+		header1 := fmt.Sprintf("• Step %03d (%s) at %s | 💻 LOCAL EXECUTION STEP", e.StepIndex, e.Status, timeStr)
+		lines = append(lines, wrapVisualLines(header1, maxWidth)...)
+
+		header2 := fmt.Sprintf("• Origin : Local Host Process (%s)", e.Type)
+		lines = append(lines, wrapVisualLines(header2, maxWidth)...)
+
+		if e.ParentStepIdx > 0 {
+			parentText := fmt.Sprintf("• Parent : Triggered by Tool Call in Step #%03d  [p] Jump", e.ParentStepIdx)
+			lines = append(lines, wrapVisualLines(parentText, maxWidth)...)
+		}
+
+		var billingText string
+		if e.PackagedInStepIdx > 0 {
+			billingText = fmt.Sprintf("• Billing: Offline (0 tok) ➔ Packaged in Step #%03d  [n] Jump", e.PackagedInStepIdx)
+		} else {
+			estTok := t.ActiveTurnTokens + t.ToolResultTokens
+			if estTok == 0 {
+				estTok = core.CountTokens(e.RawContent)
+			}
+			billingText = fmt.Sprintf("• Billing: Offline (0 tok) ➔ Staged (~%d tok, Pending Next Turn ⏳)", estTok)
+		}
+		lines = append(lines, wrapVisualLines(billingText, maxWidth)...)
+
+	} else if e.IsCloudStep() || e.Scope == core.ScopeCloudInference {
+		// ☁️ Cloud Inference Turn
+		modelName := t.OfficialModel
+		if modelName == "" {
+			modelName = m.getSessionModelName()
+		}
+
+		header1 := fmt.Sprintf("• Step %03d (%s) at %s | ☁️ CLOUD INFERENCE TURN", e.StepIndex, e.Status, timeStr)
+		lines = append(lines, wrapVisualLines(header1, maxWidth)...)
+
+		header2 := fmt.Sprintf("• Model  : %s (Official Telemetry)", modelName)
+		lines = append(lines, wrapVisualLines(header2, maxWidth)...)
+
+		if e.ParentStepIdx > 0 {
+			parentText := fmt.Sprintf("• Parent : User Request in Step #%03d  [p] Jump", e.ParentStepIdx)
+			lines = append(lines, wrapVisualLines(parentText, maxWidth)...)
+		}
+
+		if len(e.ConsumedStepIndices) > 0 {
+			var childStrs []string
+			for _, c := range e.ConsumedStepIndices {
+				childStrs = append(childStrs, fmt.Sprintf("#%03d", c))
+			}
+			consumedText := fmt.Sprintf("• Input  : Consumed Local Step %s  [n] Jump", strings.Join(childStrs, ", "))
+			lines = append(lines, wrapVisualLines(consumedText, maxWidth)...)
+		}
+
+		tokensText := fmt.Sprintf("• Tokens : Total: %d | Cached: %d (%.1f%%) | New: %d",
+			t.TotalTokens, t.CachedTokens, t.CacheHitRate, t.NewTokens)
+		lines = append(lines, wrapVisualLines(tokensText, maxWidth)...)
+
+		fiveDimsText := fmt.Sprintf("• 5-Dims : Sys=%d | Tools=%d | Res=%d | Hist=%d | Act=%d",
+			t.SystemTokens, t.ToolsDefTokens, t.ToolResultTokens, t.HistoryTokens, t.ActiveTurnTokens)
+		lines = append(lines, wrapVisualLines(fiveDimsText, maxWidth)...)
+
+	} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
+		// 👤 User Input
+		header1 := fmt.Sprintf("• Step %03d (%s) at %s | 👤 USER INPUT", e.StepIndex, e.Status, timeStr)
+		lines = append(lines, wrapVisualLines(header1, maxWidth)...)
+
+		tokensText := fmt.Sprintf("• Tokens : Total: %d | Cached: %d (%.1f%%) | New: %d",
+			t.TotalTokens, t.CachedTokens, t.CacheHitRate, t.NewTokens)
+		lines = append(lines, wrapVisualLines(tokensText, maxWidth)...)
+
+		fiveDimsText := fmt.Sprintf("• 5-Dims : Sys=%d | Tools=%d | Res=%d | Hist=%d | Act=%d",
+			t.SystemTokens, t.ToolsDefTokens, t.ToolResultTokens, t.HistoryTokens, t.ActiveTurnTokens)
+		lines = append(lines, wrapVisualLines(fiveDimsText, maxWidth)...)
+
+	} else {
+		// ⚙️ System Bootstrap / Other
+		header1 := fmt.Sprintf("• Step %03d (%s) at %s | ⚙️ SYSTEM BOOTSTRAP (%s)", e.StepIndex, e.Status, timeStr, e.Type)
+		lines = append(lines, wrapVisualLines(header1, maxWidth)...)
+	}
+
 	lines = append(lines, strings.Repeat("─", sepWidth))
 
 	if len(e.ToolCalls) > 0 {
 		for _, tc := range e.ToolCalls {
-			tcText := fmt.Sprintf("Tool: %s (args: %v)", tc.ToolName, tc.Arguments)
+			tcText := fmt.Sprintf("Tool Call: %s (args: %v)", tc.ToolName, tc.Arguments)
 			lines = append(lines, wrapVisualLines(tcText, maxWidth)...)
 		}
 		lines = append(lines, strings.Repeat("─", sepWidth))
@@ -1015,6 +1098,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					m.detailScroll = maxScroll
 				}
+			case "p":
+				if m.focusPane == FocusDetail {
+					if curr, ok := m.getSelectedEvent(); ok && curr.ParentStepIdx > 0 {
+						m.jumpToStep(curr.ParentStepIdx)
+					}
+				}
+			case "n":
+				if m.focusPane == FocusDetail {
+					if curr, ok := m.getSelectedEvent(); ok {
+						if len(curr.ConsumedStepIndices) > 0 {
+							m.jumpToStep(curr.ConsumedStepIndices[0])
+						} else if curr.PackagedInStepIdx > 0 {
+							m.jumpToStep(curr.PackagedInStepIdx)
+						}
+					}
+				}
 			}
 		}
 	}
@@ -1141,8 +1240,8 @@ func (m Model) renderFooter() string {
 			hints = fmt.Sprintf(" %s Type  %s Cache  %s Step #  %s Focus  %s Cycle  %s Shortcuts  %s Quit",
 				KeyStyle.Render("[t]"), KeyStyle.Render("[c]"), KeyStyle.Render("[/]"), KeyStyle.Render("[l]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"), KeyStyle.Render("[q]"))
 		} else {
-			hints = fmt.Sprintf(" %s Focus List  %s Visual  %s Scroll  %s Cycle  %s Shortcuts  %s Quit",
-				KeyStyle.Render("[h/Esc]"), KeyStyle.Render("[v]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s Parent  %s Child  %s List  %s Visual  %s Scroll  %s Cycle  %s ?",
+				KeyStyle.Render("[p]"), KeyStyle.Render("[n]"), KeyStyle.Render("[h/Esc]"), KeyStyle.Render("[v]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"))
 		}
 	} else {
 		if len(m.history) > 0 {

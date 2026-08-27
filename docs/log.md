@@ -1,6 +1,15 @@
 # ⏱️ LLM Wiki Chrono Log
 
-## [2026-08-27] feat | History 步驟多維度過濾與 '/' Step 編號極速搜尋 (History Multi-Dimension Filter & Step Search v0.8.4)：
+## [2026-08-27] feat | Universal Step Scopes, Causality Linkage FSM & Inspector 'p'/'n' Parent-Child Navigation (v0.9.0)：
+1. **通用 4 大計算與計費範疇 (Universal 4 Scopes)**：在 `UnifiedAgentEvent` 引入物理完備的 4 大範疇（`USER` 使用者意圖、`CLOUD` 雲端 LLM 決策/計費、`LOCAL` 本機離線 0 元執行、`SYSTEM` 系統開局約束），消除所有 Token 計費與模型歸屬混淆；
+2. **確定性單執行緒狀態機 (`StepLinkageTracker`)**：以 $O(N)$ 線性單次遍歷精確關聯 `ParentStepIdx`（觸發父層）、`PackagedInStepIdx`（打包計費雲端輪次）與 `ConsumedStepIndices`（消耗本機步驟清單），100% 支援單輪平行多工具呼叫 (Parallel Tool Calls)；
+3. **Step Inspector 雙軌管線與自解釋渲染**：本地步驟清晰標註 `• Origin: Local Host Process`、`• Billing: Offline (0 tok) ➔ Packaged in Step #N (+X tok) [n] Jump`；雲端步驟標註 `• Model: Gemini 3.7 Flash (Official Telemetry)`、`• Input: Consumed Local Step #N [n] Jump` 與官方 5 維 Token 分佈；
+4. **焦點在 Inspector 時支援 `p` / `n` 階層極速跳轉**：
+   * 按 **`p` (Parent)**：直接向上跳轉至當前步驟的父層（如從 `RUN_COMMAND` 跳回觸發它的 `TOOL_CALL`，或從 `TOOL_CALL` 跳回原始 `USER_INPUT`）；
+   * 按 **`n` (Next / Child / Consumed)**：直接向下跳轉至子層（如從 `TOOL_CALL` 跳至執行的 `RUN_COMMAND`，或從 `RUN_COMMAND` 跳至打包計費它的雲端輪次）；
+   * 同步更新左欄選取框並動態校準 `historyOffset`，保證選取卡片永遠位處螢幕可視區；
+5. **左欄清單樹狀分支符號渲染**：第二層本地執行步驟自動以 `└── [012|CMD  ] 10:18:40 (Local)` 縮排呈現，第一層齊左凸顯雲端關鍵計費節點，視覺心智模型極致清晰；
+6. **全單元測試 100% 通過**：新增 `TestStepLinkageTracker_ParallelToolsAndTurns` 與 `TestHistoryParentChildNavigationPN`，保證跨 Agent 架構移植性與 TUI 導航穩定性
 1. **Step Type 類別過濾 (`t` / `T`)**：按 `t` 鍵快速循環切換 `[T:All]` $\to$ `[T:Tool]` $\to$ `[T:Model]` $\to$ `[T:User]` $\to$ `[T:Code]` $\to$ `[T:Generic]` $\to$ `[T:All]`，瞬間萃取目標步驟；
 2. **Cache 狀態過濾 (`c` / `C`)**：按 `c` 鍵快速循環切換 `[C:All]` $\to$ `[C:Hit]` $\to$ `[C:Partial]` $\to$ `[C:Miss]` $\to$ `[C:Broken]` $\to$ `[C:All]`，精確鎖定快取命中或斷裂點；
 3. **'/' 數字步驟編號極速搜尋與跳轉**：按 `/` 喚出 `Filter: [#14█]` 搜尋列，輸入任意數字（如 `14`），清單毫秒級篩選並跳轉至 `#014`，按 `Esc` 瞬間清空復原；

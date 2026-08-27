@@ -285,5 +285,7 @@ func LoadSessionHistory(sessionID string, analyzer *core.PayloadAnalyzer) ([]cor
 		}
 	}
 
+	core.BackfillPackagedIn(events)
+
 	return events, nil
 }

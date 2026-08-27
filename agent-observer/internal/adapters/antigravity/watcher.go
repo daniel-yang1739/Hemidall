@@ -36,6 +36,7 @@ type Watcher struct {
 	sessionID    string
 	analyzer     *core.PayloadAnalyzer
 	sqliteReader *SQLiteTelemetryReader
+	tracker      *core.StepLinkageTracker
 	lastStepIdx  int
 }
 
@@ -52,6 +53,7 @@ func NewWatcher(filePath string, sessionID string, analyzer *core.PayloadAnalyze
 		sessionID:    sessionID,
 		analyzer:     analyzer,
 		sqliteReader: sqliteReader,
+		tracker:      core.NewStepLinkageTracker(),
 		lastStepIdx:  -1,
 	}
 }
@@ -246,6 +248,10 @@ func (w *Watcher) parseLine(line string) (core.UnifiedAgentEvent, error) {
 		Thinking:    raw.Thinking,
 		ToolCalls:   toolCalls,
 		CacheStatus: "UNKNOWN",
+	}
+
+	if w.tracker != nil {
+		w.tracker.ProcessEvent(&event)
 	}
 
 	// Check if official telemetry from SQLite is available for this step

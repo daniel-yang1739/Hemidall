@@ -398,6 +398,66 @@ func TestHistoryFilteringAndStepSearch(t *testing.T) {
 	}
 }
 
+func TestHistoryParentChildNavigationPN(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 30
+	m.activeView = ViewHistory
+	m.focusPane = FocusDetail
+
+	// Structured turn with Parent/Child and Consumed linkages:
+	// Step 1 [USER] -> Step 2 [TOOL_CALL] -> Step 3 [RUN_CMD] -> Step 4 [MODEL_RESP]
+	m.history = []core.UnifiedAgentEvent{
+		{StepIndex: 1, Type: core.StepTypeUserInput, Scope: core.ScopeUserInteraction, Summary: "User question"},
+		{StepIndex: 2, Type: core.StepTypeToolCall, Scope: core.ScopeCloudInference, ParentStepIdx: 1, ConsumedStepIndices: nil, Summary: "Run command"},
+		{StepIndex: 3, Type: core.StepTypeRunCommand, Scope: core.ScopeLocalExecution, ParentStepIdx: 2, PackagedInStepIdx: 4, Summary: "Command output"},
+		{StepIndex: 4, Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, ParentStepIdx: 1, ConsumedStepIndices: []int{3}, Summary: "Final answer"},
+	}
+
+	// In getFilteredHistory(), realIdx = len(history) - 1 - selectedIdx
+	// So selectedIdx = 0 corresponds to Step 4 (last event)
+	// selectedIdx = 1 corresponds to Step 3 (RunCommand)
+	m.selectedIdx = 1
+	ev, ok := m.getSelectedEvent()
+	if !ok || ev.StepIndex != 3 {
+		t.Fatalf("Expected selected event to be Step 3, got %+v", ev)
+	}
+
+	// 1. On Local Step 3, press 'p' -> Should jump to Parent Step 2 (TOOL_CALL)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
+	m = updated.(Model)
+	ev, ok = m.getSelectedEvent()
+	if !ok || ev.StepIndex != 2 {
+		t.Fatalf("Expected jump to Step 2 after 'p', got Step %d", ev.StepIndex)
+	}
+
+	// 2. On Tool Call Step 2, press 'p' -> Should jump to User Input Step 1
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
+	m = updated.(Model)
+	ev, ok = m.getSelectedEvent()
+	if !ok || ev.StepIndex != 1 {
+		t.Fatalf("Expected jump to Step 1 after 'p', got Step %d", ev.StepIndex)
+	}
+
+	// 3. On Step 3 (Local RunCommand), press 'n' -> Should jump to PackagedIn Step 4
+	m.selectedIdx = 1 // Step 3
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	m = updated.(Model)
+	ev, ok = m.getSelectedEvent()
+	if !ok || ev.StepIndex != 4 {
+		t.Fatalf("Expected jump to Step 4 after 'n', got Step %d", ev.StepIndex)
+	}
+
+	// 4. On Step 4 (Model Response consuming Step 3), press 'n' -> Should jump to Consumed Step 3
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	m = updated.(Model)
+	ev, ok = m.getSelectedEvent()
+	if !ok || ev.StepIndex != 3 {
+		t.Fatalf("Expected jump to Consumed Step 3 after 'n', got Step %d", ev.StepIndex)
+	}
+}
+
+
 func TestAllViewsZeroHeightVariationAcrossSizes(t *testing.T) {
 	for _, size := range []struct{ w, h int }{{80, 24}, {100, 30}, {120, 35}, {140, 40}} {
 		for _, view := range []ActiveView{ViewDashboard, ViewHistory, ViewDocs} {

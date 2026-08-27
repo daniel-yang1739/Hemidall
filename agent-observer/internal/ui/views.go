@@ -246,21 +246,36 @@ func (m Model) renderHistoryView() string {
 				}
 			}
 
+			isLocal := e.IsLocalStep() || e.Scope == core.ScopeLocalExecution
 			typeBadge := fmt.Sprintf("[%03d|%-5s]", e.StepIndex, shortenType(string(e.Type)))
 			timeStr := e.Timestamp.Format("15:04:05")
 
-			cacheTag := formatShortCache(e)
-			cardLine1 := fmt.Sprintf("%s%s %s", prefix, typeBadge, timeStr)
-			if cacheTag != "" {
-				cardLine1 = fmt.Sprintf("%s%s %s %s", prefix, typeBadge, timeStr, cacheTag)
-			}
-			leftLines = append(leftLines, headerStyle.Render(truncateVisualWidth(cardLine1, listContentWidth)))
+			var cardLine1 string
+			var cardLine2 string
 
-			summaryText := e.Summary
-			if summaryText == "" {
-				summaryText = "(empty content)"
+			if isLocal {
+				localBadge := lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)")
+				cardLine1 = fmt.Sprintf("%s└── %s %s %s", prefix, typeBadge, timeStr, localBadge)
+				summaryText := e.Summary
+				if summaryText == "" {
+					summaryText = "(empty content)"
+				}
+				cardLine2 = "      " + summaryText
+			} else {
+				cacheTag := formatShortCache(e)
+				if cacheTag != "" {
+					cardLine1 = fmt.Sprintf("%s%s %s %s", prefix, typeBadge, timeStr, cacheTag)
+				} else {
+					cardLine1 = fmt.Sprintf("%s%s %s", prefix, typeBadge, timeStr)
+				}
+				summaryText := e.Summary
+				if summaryText == "" {
+					summaryText = "(empty content)"
+				}
+				cardLine2 = "  " + summaryText
 			}
-			cardLine2 := "  " + summaryText
+
+			leftLines = append(leftLines, headerStyle.Render(truncateVisualWidth(cardLine1, listContentWidth)))
 			leftLines = append(leftLines, summaryStyle.Render(truncateVisualWidth(cardLine2, listContentWidth)))
 		}
 
