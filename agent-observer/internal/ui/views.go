@@ -243,11 +243,6 @@ func (m Model) renderDashboardView() string {
 
 	panel0Box := PanelStyle.Width(panelInnerWidth).Render(p0.String())
 
-	// ==================== PANEL 0.5: MULTI-TURN CONTEXT & CACHE HIT TREND ====================
-	trend := core.ExtractTurnTrendSeries(m.history, 80)
-	trendContent := renderTrendPanel(trend, contentWidth)
-	panelTrendBox := PanelStyle.Width(panelInnerWidth).Render(trendContent)
-
 	// ==================== PANEL 1: LATEST STEP TELEMETRY & 5-DIMENSION CONTEXT ====================
 	var p1 strings.Builder
 	p1Title := "TRACK 1: OFFICIAL TELEMETRY & STEP CONTEXT ANATOMY"
@@ -277,11 +272,11 @@ func (m Model) renderDashboardView() string {
 	panel1Box := PanelStyle.Width(panelInnerWidth).Render(p1.String())
 
 	// Responsive vertical layout
-	if m.height >= 38 && len(m.history) > 0 {
+	if m.height >= 30 && len(m.history) > 0 {
 		var p3Lines []string
 		p3Lines = append(p3Lines, TitleStyle.Render("RECENT LIVE EVENTS (Press [Enter] or [2] to inspect history)"))
 
-		maxEventLines := 4
+		maxEventLines := 5
 		startIdx := len(m.history) - maxEventLines
 		if startIdx < 0 {
 			startIdx = 0
@@ -294,10 +289,10 @@ func (m Model) renderDashboardView() string {
 			p3Lines = append(p3Lines, truncateVisualWidth(eventLine, contentWidth))
 		}
 		panel3Box := PanelStyle.Width(panelInnerWidth).Render(strings.Join(p3Lines, "\n"))
-		return lipgloss.JoinVertical(lipgloss.Left, panel0Box, panelTrendBox, panel1Box, panel3Box)
+		return lipgloss.JoinVertical(lipgloss.Left, panel0Box, panel1Box, panel3Box)
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, panel0Box, panelTrendBox, panel1Box)
+	return lipgloss.JoinVertical(lipgloss.Left, panel0Box, panel1Box)
 }
 
 func (m Model) renderHistoryView() string {
