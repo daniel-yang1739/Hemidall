@@ -27,6 +27,7 @@ type SessionContextState struct {
 	StepRecords     []StepTokenRecord // Historical log of all steps for reverse sliding window extraction
 	HasInitialized  bool              // Indicates if the initial cache write turn has completed
 	PrevTotalTokens int               // Previous turn's total context tokens (LCP comparison baseline)
+	PrevModel       string            // Previous turn's model name to detect model switching
 	LastEventTime   time.Time         // Timestamp of previous turn to detect TTL expiration
 }
 
@@ -209,7 +210,14 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 			}
 		}
 
-		if event.Tokens.CachedTokens == 0 && state.PrevTotalTokens > 0 && !isTTLExpired {
+		isModelSwitched := false
+		if state.PrevModel != "" && event.Tokens.OfficialModel != "" && state.PrevModel != event.Tokens.OfficialModel {
+			isModelSwitched = true
+		}
+
+		if (isTTLExpired || isModelSwitched) && event.Tokens.CachedTokens == 0 {
+			event.Tokens.CachedTokens = 0
+		} else if event.Tokens.CachedTokens == 0 && state.PrevTotalTokens > 0 {
 			cached := state.PrevTotalTokens
 			if cached > officialTotal {
 				cached = officialTotal
@@ -226,7 +234,13 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 			event.Tokens.CacheHitRate = float64(event.Tokens.CachedTokens) / float64(officialTotal) * 100.0
 		}
 		event.CacheStatus = ClassifyCacheStatus(event.Tokens.CacheHitRate, event.Tokens.CachedTokens, officialTotal, isTTLExpired)
+		if isModelSwitched {
+			event.CacheStatus = "WRITE"
+		}
 		state.PrevTotalTokens = officialTotal
+		if event.Tokens.OfficialModel != "" {
+			state.PrevModel = event.Tokens.OfficialModel
+		}
 	} else {
 		// ==================== FALLBACK: INCREMENTAL SLIDING WINDOW ====================
 		event.Tokens.SystemTokens = state.BaseSystem
