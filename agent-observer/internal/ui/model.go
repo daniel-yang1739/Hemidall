@@ -416,128 +416,135 @@ func (m *Model) jumpToChildOrNext(curr core.UnifiedAgentEvent) bool {
 	return false
 }
 
-func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) []string {
+func formatCompactNumber(n int) string {
+	if n >= 1_000_000 {
+		return fmt.Sprintf("%.1fM", float64(n)/1_000_000.0)
+	}
+	if n >= 1_000 {
+		return fmt.Sprintf("%.1fk", float64(n)/1000.0)
+	}
+	return fmt.Sprintf("%d", n)
+}
+
+func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, isCompact bool) []string {
 	if maxWidth <= 10 {
-		maxWidth = 60
+		maxWidth = 40
 	}
 	var lines []string
 	t := e.Tokens
-
-	sepWidth := maxWidth
-	if sepWidth > 80 {
-		sepWidth = 80
-	}
-
 	timeStr := e.Timestamp.Format("15:04:05")
 
-	if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
-		// 💻 Local Execution Step
-		header1 := fmt.Sprintf("• Step %03d (%s) at %s | 💻 LOCAL EXECUTION STEP", e.StepIndex, e.Status, timeStr)
-		lines = append(lines, wrapVisualLines(header1, maxWidth)...)
-
-		header2 := fmt.Sprintf("• Origin : Local Host Process (%s)", e.Type)
-		lines = append(lines, wrapVisualLines(header2, maxWidth)...)
-
-		if e.ParentStepIdx > 0 {
-			parentText := fmt.Sprintf("• Parent : Triggered by Tool Call in Step #%03d", e.ParentStepIdx)
-			lines = append(lines, wrapVisualLines(parentText, maxWidth)...)
+	if isCompact {
+		// ==================== COMPACT MODE (4 ESSENTIAL BULLET POINTS) ====================
+		if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
+			toolName := m.getLocalToolName(e)
+			if toolName == "" {
+				toolName = string(e.Type)
+			}
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Action: Tool Output (%s)", toolName), maxWidth))
+			lines = append(lines, truncateVisualWidth("• Status: Offline (0 tok)", maxWidth))
+			if e.ParentStepIdx > 0 {
+				lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Parent: Triggered by #%04d", e.ParentStepIdx), maxWidth))
+			} else {
+				lines = append(lines, truncateVisualWidth("• Origin: Local Execution", maxWidth))
+			}
+		} else if e.IsCloudStep() || e.Scope == core.ScopeCloudInference {
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
+			modelName := m.getStepModelName(e)
+			if modelName == "" {
+				modelName = "Gemini Flash"
+			}
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Model : %s", modelName), maxWidth))
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Cache : %s / %s (%.1f%% HIT)", formatCompactNumber(t.CachedTokens), formatCompactNumber(t.TotalTokens), t.CacheHitRate), maxWidth))
+			if e.ParentStepIdx > 0 {
+				lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Parent: Step #%04d (User Prompt)", e.ParentStepIdx), maxWidth))
+			} else {
+				lines = append(lines, truncateVisualWidth("• Scope : Cloud Inference Turn", maxWidth))
+			}
+		} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
+			lines = append(lines, truncateVisualWidth("• Origin: Human Client Prompt", maxWidth))
+			if t.TotalTokens > 0 {
+				lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Tokens: ~%s Inbound Context", formatCompactNumber(t.TotalTokens)), maxWidth))
+			} else {
+				lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Tokens: ~%s Prompt Tokens", formatCompactNumber(core.CountTokens(e.RawContent))), maxWidth))
+			}
+			lines = append(lines, truncateVisualWidth("• Status: Client Inbound Turn", maxWidth))
+		} else {
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Type  : %s", e.Type), maxWidth))
+			lines = append(lines, truncateVisualWidth("• Status: System Bootstrap", maxWidth))
+			lines = append(lines, truncateVisualWidth("• Scope : Local Host Context", maxWidth))
 		}
+		return lines
+	}
 
-		var billingText string
+	// ==================== FULL-WIDTH MODE (DETAILED TELEMETRY) ====================
+	if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step #%04d (%s) at %s | 💻 LOCAL EXECUTION STEP", e.StepIndex, e.Status, timeStr), maxWidth))
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Origin : Local Host Process (%s)", e.Type), maxWidth))
+		if e.ParentStepIdx > 0 {
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Parent : Triggered by Tool Call in Step #%04d", e.ParentStepIdx), maxWidth))
+		}
 		if e.PackagedInStepIdx > 0 {
-			billingText = fmt.Sprintf("• Billing: Offline (0 tok) ➔ Packaged in Step #%03d", e.PackagedInStepIdx)
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Billing: Offline (0 tok) ➔ Packaged in Step #%04d", e.PackagedInStepIdx), maxWidth))
 		} else {
 			estTok := t.ActiveTurnTokens + t.ToolResultTokens
 			if estTok == 0 {
 				estTok = core.CountTokens(e.RawContent)
 			}
-			billingText = fmt.Sprintf("• Billing: Offline (0 tok) ➔ Staged (~%d tok, Pending Next Turn ⏳)", estTok)
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Billing: Offline (0 tok) ➔ Staged (~%d tok, Pending Next Turn ⏳)", estTok), maxWidth))
 		}
-		lines = append(lines, wrapVisualLines(billingText, maxWidth)...)
-
 	} else if e.IsCloudStep() || e.Scope == core.ScopeCloudInference {
-		// ☁️ Cloud Inference Turn
 		modelName := t.OfficialModel
 		if modelName == "" {
 			modelName = m.getSessionModelName()
 		}
-
-		header1 := fmt.Sprintf("• Step %03d (%s) at %s | ☁️ CLOUD INFERENCE TURN", e.StepIndex, e.Status, timeStr)
-		lines = append(lines, wrapVisualLines(header1, maxWidth)...)
-
-		header2 := fmt.Sprintf("• Model  : %s (Official Telemetry)", modelName)
-		lines = append(lines, wrapVisualLines(header2, maxWidth)...)
-
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step #%04d (%s) at %s | ☁️ CLOUD INFERENCE TURN", e.StepIndex, e.Status, timeStr), maxWidth))
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Model  : %s (Official Telemetry)", modelName), maxWidth))
 		if e.ParentStepIdx > 0 {
-			parentText := fmt.Sprintf("• Parent : User Request in Step #%03d", e.ParentStepIdx)
-			lines = append(lines, wrapVisualLines(parentText, maxWidth)...)
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Parent : User Request in Step #%04d", e.ParentStepIdx), maxWidth))
 		}
-
 		if len(e.ConsumedStepIndices) > 0 {
 			var childStrs []string
 			for _, c := range e.ConsumedStepIndices {
-				childStrs = append(childStrs, fmt.Sprintf("#%03d", c))
+				childStrs = append(childStrs, fmt.Sprintf("#%04d", c))
 			}
-			consumedText := fmt.Sprintf("• Input  : Consumed Local Step %s", strings.Join(childStrs, ", "))
-			lines = append(lines, wrapVisualLines(consumedText, maxWidth)...)
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Input  : Consumed Local Step %s", strings.Join(childStrs, ", ")), maxWidth))
 		}
-
-		tokensText := fmt.Sprintf("• Tokens : Total: %d | Cached: %d (%.1f%%) | New: %d",
-			t.TotalTokens, t.CachedTokens, t.CacheHitRate, t.NewTokens)
-		lines = append(lines, wrapVisualLines(tokensText, maxWidth)...)
-
-		fiveDimsText := fmt.Sprintf("• 5-Dims : Sys=%d | Tools=%d | Res=%d | Hist=%d | Act=%d",
-			t.SystemTokens, t.ToolsDefTokens, t.ToolResultTokens, t.HistoryTokens, t.ActiveTurnTokens)
-		lines = append(lines, wrapVisualLines(fiveDimsText, maxWidth)...)
-
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Tokens : Total: %d | Cached: %d (%.1f%% HIT) | New: %d", t.TotalTokens, t.CachedTokens, t.CacheHitRate, t.NewTokens), maxWidth))
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• 5-Dims : Sys=%d | Tools=%d | Res=%d | Hist=%d | Act=%d", t.SystemTokens, t.ToolsDefTokens, t.ToolResultTokens, t.HistoryTokens, t.ActiveTurnTokens), maxWidth))
 	} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
-		// 👤 User Input
-		header1 := fmt.Sprintf("• Step %03d (%s) at %s | 👤 USER INPUT", e.StepIndex, e.Status, timeStr)
-		lines = append(lines, wrapVisualLines(header1, maxWidth)...)
-
-		header2 := "• Origin : Human Client Prompt (Inbound to Remote GPU Cluster)"
-		lines = append(lines, wrapVisualLines(header2, maxWidth)...)
-
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step #%04d (%s) at %s | 👤 USER INPUT", e.StepIndex, e.Status, timeStr), maxWidth))
+		lines = append(lines, truncateVisualWidth("• Origin : Human Client Prompt (Inbound to Remote GPU Cluster)", maxWidth))
 		if t.TotalTokens > 0 {
-			tokensText := fmt.Sprintf("• Tokens : Total: %d | Cached: %d (%.1f%%) | New: %d",
-				t.TotalTokens, t.CachedTokens, t.CacheHitRate, t.NewTokens)
-			lines = append(lines, wrapVisualLines(tokensText, maxWidth)...)
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Tokens : Total: %d | Cached: %d (%.1f%% HIT) | New: %d", t.TotalTokens, t.CachedTokens, t.CacheHitRate, t.NewTokens), maxWidth))
 		}
-
-		var nextCloudTurnIdx int
-		for _, nextE := range m.history {
-			if nextE.StepIndex > e.StepIndex && (nextE.Type == core.StepTypeToolCall || nextE.Type == core.StepTypeModelResponse) {
-				nextCloudTurnIdx = nextE.StepIndex
-				break
-			}
-		}
-
-		var billingText string
-		if nextCloudTurnIdx > 0 {
-			billingText = fmt.Sprintf("• Billing: Inbound Prompt (~%d Context) ➔ Billed on Cloud Turn #%03d", t.TotalTokens, nextCloudTurnIdx)
-		} else {
-			billingText = fmt.Sprintf("• Billing: Inbound Prompt (~%d Context) ➔ Pending Cloud Response ⏳", t.TotalTokens)
-		}
-		lines = append(lines, wrapVisualLines(billingText, maxWidth)...)
-
-		fiveDimsText := fmt.Sprintf("• 5-Dims : Sys=%d | Tools=%d | Res=%d | Hist=%d | Act=%d",
-			t.SystemTokens, t.ToolsDefTokens, t.ToolResultTokens, t.HistoryTokens, t.ActiveTurnTokens)
-		lines = append(lines, wrapVisualLines(fiveDimsText, maxWidth)...)
-
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• 5-Dims : Sys=%d | Tools=%d | Res=%d | Hist=%d | Act=%d", t.SystemTokens, t.ToolsDefTokens, t.ToolResultTokens, t.HistoryTokens, t.ActiveTurnTokens), maxWidth))
 	} else {
-		// ⚙️ System Bootstrap / Other
-		header1 := fmt.Sprintf("• Step %03d (%s) at %s | ⚙️ SYSTEM BOOTSTRAP (%s)", e.StepIndex, e.Status, timeStr, e.Type)
-		lines = append(lines, wrapVisualLines(header1, maxWidth)...)
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step #%04d (%s) at %s | ⚙️ SYSTEM BOOTSTRAP (%s)", e.StepIndex, e.Status, timeStr, e.Type), maxWidth))
+		lines = append(lines, truncateVisualWidth("• Scope  : Local Process Context", maxWidth))
 	}
-
-	lines = append(lines, strings.Repeat("─", sepWidth))
 
 	if len(e.ToolCalls) > 0 {
 		for _, tc := range e.ToolCalls {
-			tcText := fmt.Sprintf("Tool Call: %s (args: %v)", tc.ToolName, tc.Arguments)
-			lines = append(lines, wrapVisualLines(tcText, maxWidth)...)
+			tcText := fmt.Sprintf("• Tool   : %s (args: %v)", tc.ToolName, tc.Arguments)
+			lines = append(lines, truncateVisualWidth(tcText, maxWidth))
 		}
-		lines = append(lines, strings.Repeat("─", sepWidth))
+	}
+
+	return lines
+}
+
+func (m Model) buildContentPayloadLines(e core.UnifiedAgentEvent, maxWidth int) []string {
+	if maxWidth <= 10 {
+		maxWidth = 60
+	}
+	var lines []string
+	sepWidth := maxWidth
+	if sepWidth > 80 {
+		sepWidth = 80
 	}
 
 	if strings.TrimSpace(e.Thinking) != "" {
@@ -558,6 +565,16 @@ func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) [
 	}
 
 	return lines
+}
+
+func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) []string {
+	telemetry := m.buildTelemetryPanelLines(e, maxWidth, false)
+	payload := m.buildContentPayloadLines(e, maxWidth)
+	var all []string
+	all = append(all, telemetry...)
+	all = append(all, strings.Repeat("─", maxWidth))
+	all = append(all, payload...)
+	return all
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -926,20 +943,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// ==================== HISTORY EXPLORER VIEW KEYBINDINGS ====================
 		if m.activeView == ViewHistory {
-			leftOuterWidth := int(float64(m.width) * 0.32)
-			detailInnerWidth := m.width - leftOuterWidth - 4 - 2
+			var detailInnerWidth int
+			var availableLines int
+			if m.width < 100 {
+				detailInnerWidth = m.width - 4
+				bodyHeight := m.height - 2
+				topHeight := 8
+				bottomInner := bodyHeight - topHeight - 2
+				availableLines = bottomInner - 1
+			} else {
+				detailInnerWidth = m.width - 38 - 4
+				innerRowsLimit := m.height - 4
+				topInner := 6
+				bottomInner := innerRowsLimit - topInner - 2
+				availableLines = bottomInner - 1
+			}
+			if availableLines < 1 {
+				availableLines = 1
+			}
 
 			selectedEvent, hasEvent := m.getSelectedEvent()
 			var fullLines []string
 			if hasEvent {
-				fullLines = m.buildFullInspectorLines(selectedEvent, detailInnerWidth)
+				fullLines = m.buildContentPayloadLines(selectedEvent, detailInnerWidth)
 			}
 			totalInspectorLines := len(fullLines)
 
-			availableLines := m.height - 5
-			if availableLines < 1 {
-				availableLines = 1
-			}
 			maxScroll := totalInspectorLines - availableLines
 			if maxScroll < 0 {
 				maxScroll = 0

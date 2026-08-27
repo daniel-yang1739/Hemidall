@@ -428,6 +428,58 @@ func TestHistoryTreeAndDistinctiveLabels(t *testing.T) {
 	}
 }
 
+func TestHistoryThreePanelSplitAndZeroTruncation(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.height = 30
+	m.activeView = ViewHistory
+	m.focusPane = FocusList
+
+	m.history = []core.UnifiedAgentEvent{
+		{
+			StepIndex:  1,
+			Type:       core.StepTypeUserInput,
+			Scope:      core.ScopeUserInteraction,
+			Summary:    "How do I optimize Gemini cache?",
+			RawContent: "How do I optimize Gemini cache in Antigravity?",
+		},
+		{
+			StepIndex:  2,
+			Type:       core.StepTypeModelResponse,
+			Scope:      core.ScopeCloudInference,
+			Summary:    "Model response with tool call",
+			RawContent: "Let me check the tools.",
+			Tokens: core.TokenBreakdown{
+				OfficialModel: "gemini-3.7-flash",
+				TotalTokens:   151479,
+				CachedTokens:  150866,
+				NewTokens:     613,
+				CacheHitRate:  99.6,
+			},
+		},
+	}
+	m.selectedIdx = 0
+
+	// 1. Full-Width (width >= 100)
+	m.width = 120
+	renderedFull := m.renderHistoryView()
+	if !strings.Contains(renderedFull, "STEP TELEMETRY & METRICS") {
+		t.Fatalf("Expected 'STEP TELEMETRY & METRICS' in full-width history view, got:\n%s", renderedFull)
+	}
+	if !strings.Contains(renderedFull, "CONTENT PAYLOAD") {
+		t.Fatalf("Expected 'CONTENT PAYLOAD' in full-width history view, got:\n%s", renderedFull)
+	}
+
+	// 2. Half-Width (width < 100)
+	m.width = 80
+	renderedHalf := m.renderHistoryView()
+	if !strings.Contains(renderedHalf, "STEP TELEMETRY") {
+		t.Fatalf("Expected 'STEP TELEMETRY' in half-width history view, got:\n%s", renderedHalf)
+	}
+	if !strings.Contains(renderedHalf, "CONTENT PAYLOAD") {
+		t.Fatalf("Expected 'CONTENT PAYLOAD' in half-width history view, got:\n%s", renderedHalf)
+	}
+}
+
 
 func TestAllViewsZeroHeightVariationAcrossSizes(t *testing.T) {
 	for _, size := range []struct{ w, h int }{{80, 24}, {100, 30}, {120, 35}, {140, 40}} {

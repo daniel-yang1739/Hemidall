@@ -162,33 +162,34 @@ func (m Model) renderHistoryViewVertical() string {
 	if bodyHeight < 8 {
 		bodyHeight = 8
 	}
-	contentRows := bodyHeight - 4
-	if contentRows < 6 {
-		contentRows = 6
-	}
-	topRows := contentRows * 4 / 10
-	if topRows < 3 {
-		topRows = 3
-	}
-	bottomRows := contentRows - topRows
-	if bottomRows < 3 {
-		bottomRows = 3
+
+	// Top Section: Horizontal Split (Left: Step List 38 cols, Right: Telemetry width - 38 cols)
+	topContentRows := 6
+	topBoxHeight := topContentRows + 2 // 8 lines
+
+	leftOuterWidth := 38
+	rightOuterWidth := m.width - leftOuterWidth
+	if rightOuterWidth < 20 {
+		rightOuterWidth = 20
+		leftOuterWidth = m.width - rightOuterWidth
 	}
 
-	boxInnerWidth := m.width - 2
-	contentWidth := boxInnerWidth - 2
+	topLeftInnerWidth := leftOuterWidth - 2
+	topRightInnerWidth := rightOuterWidth - 2
+	topLeftContentWidth := topLeftInnerWidth - 2
+	topRightContentWidth := topRightInnerWidth - 2
 
-	// 1. Top Box: Step List
+	// 1. Top-Left Box: Step List
 	filtered := m.getFilteredHistory()
-	var topLines []string
+	var leftLines []string
 
 	countStr := fmt.Sprintf("%d/%d", len(filtered), len(m.history))
 	if len(filtered) == len(m.history) {
 		countStr = fmt.Sprintf("%d", len(m.history))
 	}
-	topTitle := fmt.Sprintf("STEPS (%s)", countStr)
+	leftTitle := fmt.Sprintf("STEPS (%s)", countStr)
 	if m.focusPane == FocusList {
-		topTitle = fmt.Sprintf("STEPS (%s) <", countStr)
+		leftTitle = fmt.Sprintf("STEPS (%s) <", countStr)
 	}
 
 	var typeBadgeStr string
@@ -205,8 +206,8 @@ func (m Model) renderHistoryViewVertical() string {
 		cacheBadgeStr = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("[C:%s]", m.historyCacheFilter))
 	}
 
-	titleLine := fmt.Sprintf("%s %s %s", TitleStyle.Render(topTitle), typeBadgeStr, cacheBadgeStr)
-	topLines = append(topLines, truncateVisualWidth(titleLine, contentWidth))
+	titleLine := fmt.Sprintf("%s %s %s", TitleStyle.Render(leftTitle), typeBadgeStr, cacheBadgeStr)
+	leftLines = append(leftLines, truncateVisualWidth(titleLine, topLeftContentWidth))
 
 	if m.isHistorySearching || m.historyStepQuery != "" {
 		cursorChar := ""
@@ -214,13 +215,13 @@ func (m Model) renderHistoryViewVertical() string {
 			cursorChar = "█"
 		}
 		filterBox := fmt.Sprintf("Filter: [#%s%s]", m.historyStepQuery, lipgloss.NewStyle().Foreground(ColorHighlight).Render(cursorChar))
-		topLines = append(topLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(truncateVisualWidth(filterBox, contentWidth)))
-		topLines = append(topLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", contentWidth)))
+		leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(truncateVisualWidth(filterBox, topLeftContentWidth)))
+		leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", topLeftContentWidth)))
 	}
 
 	if len(filtered) == 0 {
-		topLines = append(topLines, truncateVisualWidth("  No matching steps...", contentWidth))
-		topLines = append(topLines, truncateVisualWidth("  Press [Esc] to reset", contentWidth))
+		leftLines = append(leftLines, truncateVisualWidth("  No matching steps...", topLeftContentWidth))
+		leftLines = append(leftLines, truncateVisualWidth("  Press [Esc] to reset", topLeftContentWidth))
 	} else {
 		maxCards := m.getHistoryVisibleCards()
 		endIdx := m.historyOffset + maxCards
@@ -229,7 +230,7 @@ func (m Model) renderHistoryViewVertical() string {
 		}
 
 		if m.historyOffset > 0 {
-			topLines = append(topLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  ..."))
+			leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  ..."))
 		}
 
 		for i := m.historyOffset; i < endIdx; i++ {
@@ -277,51 +278,80 @@ func (m Model) renderHistoryViewVertical() string {
 				}
 			}
 
-			topLines = append(topLines, headerStyle.Render(truncateVisualWidth(cardLine1, contentWidth)))
+			leftLines = append(leftLines, headerStyle.Render(truncateVisualWidth(cardLine1, topLeftContentWidth)))
 			if cardLine2 != "" {
-				topLines = append(topLines, summaryStyle.Render(truncateVisualWidth(cardLine2, contentWidth)))
+				leftLines = append(leftLines, summaryStyle.Render(truncateVisualWidth(cardLine2, topLeftContentWidth)))
 			}
 		}
 
-		if endIdx < len(filtered) && len(topLines) < topRows {
-			topLines = append(topLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  ..."))
+		if endIdx < len(filtered) && len(leftLines) < topContentRows {
+			leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  ..."))
 		}
 	}
-	for len(topLines) < topRows {
-		topLines = append(topLines, "")
+	for len(leftLines) < topContentRows {
+		leftLines = append(leftLines, "")
 	}
-	if len(topLines) > topRows {
-		topLines = topLines[:topRows]
+	if len(leftLines) > topContentRows {
+		leftLines = leftLines[:topContentRows]
 	}
 
-	var topBox string
+	var topLeftBox string
 	if m.focusPane == FocusList {
-		topBox = ActivePanelStyle.Width(boxInnerWidth).Render(strings.Join(topLines, "\n"))
+		topLeftBox = ActivePanelStyle.Width(topLeftInnerWidth).Render(strings.Join(leftLines, "\n"))
 	} else {
-		topBox = PanelStyle.Width(boxInnerWidth).Render(strings.Join(topLines, "\n"))
+		topLeftBox = PanelStyle.Width(topLeftInnerWidth).Render(strings.Join(leftLines, "\n"))
 	}
 
-	// 2. Bottom Box: Selected Step Inspector
+	// 2. Top-Right Box: Step Telemetry (Compact 4-core metrics)
+	var rightLines []string
+	rightLines = append(rightLines, TitleStyle.Render(truncateVisualWidth("STEP TELEMETRY", topRightContentWidth)))
+
+	selectedEvent, hasEvent := m.getSelectedEvent()
+	if hasEvent {
+		telemetryLines := m.buildTelemetryPanelLines(selectedEvent, topRightContentWidth, true)
+		for _, line := range telemetryLines {
+			rightLines = append(rightLines, truncateVisualWidth(line, topRightContentWidth))
+		}
+	} else {
+		rightLines = append(rightLines, truncateVisualWidth("  No step selected", topRightContentWidth))
+	}
+	for len(rightLines) < topContentRows {
+		rightLines = append(rightLines, "")
+	}
+	if len(rightLines) > topContentRows {
+		rightLines = rightLines[:topContentRows]
+	}
+	topRightBox := PanelStyle.Width(topRightInnerWidth).Render(strings.Join(rightLines, "\n"))
+
+	topRow := lipgloss.JoinHorizontal(lipgloss.Top, topLeftBox, topRightBox)
+
+	// 3. Bottom Box: Content Payload (Full Width)
+	bottomBoxInnerWidth := m.width - 2
+	bottomContentWidth := bottomBoxInnerWidth - 2
+	bottomContentRows := bodyHeight - topBoxHeight - 2
+	if bottomContentRows < 4 {
+		bottomContentRows = 4
+	}
+
 	var bottomLines []string
-	bottomTitle := "STEP INSPECTOR"
+	bottomTitle := "CONTENT PAYLOAD"
 	if m.isVisualMode {
 		start := m.visualStart
 		end := m.visualCursor
 		if start > end {
 			start, end = end, start
 		}
-		bottomTitle = fmt.Sprintf("STEP INSPECTOR (VISUAL: %d lines | [y] Copy)", end-start+1)
+		bottomTitle = fmt.Sprintf("CONTENT PAYLOAD (VISUAL: %d lines | [y] Copy)", end-start+1)
 	} else if m.focusPane == FocusDetail {
-		bottomTitle = "STEP INSPECTOR < [Scroll: j/k, Ctrl+u/d, g/G]"
+		bottomTitle = "CONTENT PAYLOAD < [Scroll: j/k, Ctrl+u/d, g/G]"
 	}
-	bottomLines = append(bottomLines, TitleStyle.Render(truncateVisualWidth(bottomTitle, contentWidth)))
+	bottomLines = append(bottomLines, TitleStyle.Render(truncateVisualWidth(bottomTitle, bottomContentWidth)))
 
-	selectedEvent, hasEvent := m.getSelectedEvent()
 	if hasEvent {
-		allInspectorLines := m.buildFullInspectorLines(selectedEvent, contentWidth)
-		totalInspectorLines := len(allInspectorLines)
+		payloadLines := m.buildContentPayloadLines(selectedEvent, bottomContentWidth)
+		totalInspectorLines := len(payloadLines)
 
-		availableLines := bottomRows - 1
+		availableLines := bottomContentRows - 1
 		if availableLines < 1 {
 			availableLines = 1
 		}
@@ -347,8 +377,8 @@ func (m Model) renderHistoryViewVertical() string {
 		}
 
 		for i := currentScroll; i < endLine; i++ {
-			rawLine := allInspectorLines[i]
-			lineText := truncateVisualWidth(rawLine, contentWidth)
+			rawLine := payloadLines[i]
+			lineText := truncateVisualWidth(rawLine, bottomContentWidth)
 			if m.isVisualMode && i >= vStart && i <= vEnd {
 				bottomLines = append(bottomLines, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorPrimary).Render(lineText))
 			} else {
@@ -356,26 +386,26 @@ func (m Model) renderHistoryViewVertical() string {
 			}
 		}
 	} else {
-		bottomLines = append(bottomLines, truncateVisualWidth("  Select a step above to inspect details.", contentWidth))
+		bottomLines = append(bottomLines, truncateVisualWidth("  Select a step above to inspect details.", bottomContentWidth))
 	}
 
-	for len(bottomLines) < bottomRows {
+	for len(bottomLines) < bottomContentRows {
 		bottomLines = append(bottomLines, "")
 	}
-	if len(bottomLines) > bottomRows {
-		bottomLines = bottomLines[:bottomRows]
+	if len(bottomLines) > bottomContentRows {
+		bottomLines = bottomLines[:bottomContentRows]
 	}
 
 	var bottomBox string
 	if m.isVisualMode {
-		bottomBox = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(ColorHighlight).Padding(0, 1).Width(boxInnerWidth).Render(strings.Join(bottomLines, "\n"))
+		bottomBox = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(ColorHighlight).Padding(0, 1).Width(bottomBoxInnerWidth).Render(strings.Join(bottomLines, "\n"))
 	} else if m.focusPane == FocusDetail {
-		bottomBox = ActivePanelStyle.Width(boxInnerWidth).Render(strings.Join(bottomLines, "\n"))
+		bottomBox = ActivePanelStyle.Width(bottomBoxInnerWidth).Render(strings.Join(bottomLines, "\n"))
 	} else {
-		bottomBox = PanelStyle.Width(boxInnerWidth).Render(strings.Join(bottomLines, "\n"))
+		bottomBox = PanelStyle.Width(bottomBoxInnerWidth).Render(strings.Join(bottomLines, "\n"))
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, topBox, bottomBox)
+	return lipgloss.JoinVertical(lipgloss.Left, topRow, bottomBox)
 }
 
 func (m Model) renderHistoryViewHorizontal() string {
@@ -387,10 +417,10 @@ func (m Model) renderHistoryViewHorizontal() string {
 	}
 
 	listInnerWidth := leftOuterWidth - 2
-	detailInnerWidth := rightOuterWidth - 2
+	rightInnerWidth := rightOuterWidth - 2
 
 	listContentWidth := listInnerWidth - 2
-	detailContentWidth := detailInnerWidth - 2
+	rightContentWidth := rightInnerWidth - 2
 
 	innerRowsLimit := m.height - 4
 	if innerRowsLimit < 4 {
@@ -520,27 +550,54 @@ func (m Model) renderHistoryViewHorizontal() string {
 		leftBox = PanelStyle.Width(listInnerWidth).Render(strings.Join(leftLines, "\n"))
 	}
 
-	// 2. Right Pane: Selected Step Detail Inspector
-	var rightLines []string
-	rightTitle := "STEP INSPECTOR"
+	// 2. Right Column (Top: Telemetry Panel, Bottom: Content Payload Panel)
+	topContentRows := 6
+	bottomContentRows := innerRowsLimit - topContentRows - 2
+	if bottomContentRows < 4 {
+		bottomContentRows = 4
+	}
+
+	selectedEvent, hasEvent := m.getSelectedEvent()
+
+	// 2a. Right-Top: Telemetry & Metrics Panel
+	var telemetryLines []string
+	telemetryLines = append(telemetryLines, TitleStyle.Render(truncateVisualWidth("STEP TELEMETRY & METRICS", rightContentWidth)))
+	if hasEvent {
+		tLines := m.buildTelemetryPanelLines(selectedEvent, rightContentWidth, false)
+		for _, line := range tLines {
+			telemetryLines = append(telemetryLines, truncateVisualWidth(line, rightContentWidth))
+		}
+	} else {
+		telemetryLines = append(telemetryLines, truncateVisualWidth("  No step selected", rightContentWidth))
+	}
+	for len(telemetryLines) < topContentRows {
+		telemetryLines = append(telemetryLines, "")
+	}
+	if len(telemetryLines) > topContentRows {
+		telemetryLines = telemetryLines[:topContentRows]
+	}
+	topTelemetryBox := PanelStyle.Width(rightInnerWidth).Render(strings.Join(telemetryLines, "\n"))
+
+	// 2b. Right-Bottom: Content Payload Panel
+	var payloadLines []string
+	payloadTitle := "CONTENT PAYLOAD"
 	if m.isVisualMode {
 		start := m.visualStart
 		end := m.visualCursor
 		if start > end {
 			start, end = end, start
 		}
-		rightTitle = fmt.Sprintf("STEP INSPECTOR (VISUAL: %d lines | [y] Copy)", end-start+1)
+		payloadTitle = fmt.Sprintf("CONTENT PAYLOAD (VISUAL: %d lines | [y] Copy)", end-start+1)
 	} else if m.focusPane == FocusDetail {
-		rightTitle = "STEP INSPECTOR < [Scroll: j/k, Ctrl+u/d, g/G]"
+		payloadTitle = "CONTENT PAYLOAD < [Scroll: j/k, Ctrl+u/d, g/G]"
 	}
-	rightLines = append(rightLines, TitleStyle.Render(truncateVisualWidth(rightTitle, detailContentWidth)))
+	payloadLines = append(payloadLines, TitleStyle.Render(truncateVisualWidth(payloadTitle, rightContentWidth)))
 
-	selectedEvent, hasEvent := m.getSelectedEvent()
 	if hasEvent {
-		allInspectorLines := m.buildFullInspectorLines(selectedEvent, detailContentWidth)
-		totalInspectorLines := len(allInspectorLines)
+		allPayloadLines := m.buildContentPayloadLines(selectedEvent, rightContentWidth)
+		totalInspectorLines := len(allPayloadLines)
 
-		availableLines := innerRowsLimit - 1
+		availableLines := bottomContentRows - 1
 		if availableLines < 1 {
 			availableLines = 1
 		}
@@ -566,35 +623,37 @@ func (m Model) renderHistoryViewHorizontal() string {
 		}
 
 		for i := currentScroll; i < endLine; i++ {
-			rawLine := allInspectorLines[i]
-			lineText := truncateVisualWidth(rawLine, detailContentWidth)
+			rawLine := allPayloadLines[i]
+			lineText := truncateVisualWidth(rawLine, rightContentWidth)
 			if m.isVisualMode && i >= vStart && i <= vEnd {
-				rightLines = append(rightLines, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorPrimary).Render(lineText))
+				payloadLines = append(payloadLines, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorPrimary).Render(lineText))
 			} else {
-				rightLines = append(rightLines, lineText)
+				payloadLines = append(payloadLines, lineText)
 			}
 		}
 	} else {
-		rightLines = append(rightLines, truncateVisualWidth("  Select a step on the left to inspect details.", detailContentWidth))
+		payloadLines = append(payloadLines, truncateVisualWidth("  Select a step on the left to inspect details.", rightContentWidth))
 	}
 
-	for len(rightLines) < innerRowsLimit {
-		rightLines = append(rightLines, "")
+	for len(payloadLines) < bottomContentRows {
+		payloadLines = append(payloadLines, "")
 	}
-	if len(rightLines) > innerRowsLimit {
-		rightLines = rightLines[:innerRowsLimit]
+	if len(payloadLines) > bottomContentRows {
+		payloadLines = payloadLines[:bottomContentRows]
 	}
 
-	var rightBox string
+	var bottomPayloadBox string
 	if m.isVisualMode {
-		rightBox = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(ColorHighlight).Padding(0, 1).Width(detailInnerWidth).Render(strings.Join(rightLines, "\n"))
+		bottomPayloadBox = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(ColorHighlight).Padding(0, 1).Width(rightInnerWidth).Render(strings.Join(payloadLines, "\n"))
 	} else if m.focusPane == FocusDetail {
-		rightBox = ActivePanelStyle.Width(detailInnerWidth).Render(strings.Join(rightLines, "\n"))
+		bottomPayloadBox = ActivePanelStyle.Width(rightInnerWidth).Render(strings.Join(payloadLines, "\n"))
 	} else {
-		rightBox = PanelStyle.Width(detailInnerWidth).Render(strings.Join(rightLines, "\n"))
+		bottomPayloadBox = PanelStyle.Width(rightInnerWidth).Render(strings.Join(payloadLines, "\n"))
 	}
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
+	rightCol := lipgloss.JoinVertical(lipgloss.Left, topTelemetryBox, bottomPayloadBox)
+
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightCol)
 }
 
 func renderColorBar(pct float64, totalBlocks int, color lipgloss.TerminalColor) string {
