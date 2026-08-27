@@ -180,9 +180,99 @@ graph TD
   * 開闢獨立的 DuckDB 或 SQLite 將日誌 ETL 轉存；
   * **缺點**：寫入放大 (Write Amplification)、磁碟佔用加倍、且需處理複雜的資料同步與快照過期問題。
 
+## ⚡ 七、通用 Agent 4 態有限狀態機與因果鏈路追蹤器 (Universal Agent FSM & Causality Linkage)
+
+### 1. 通用 Agent 4 態狀態機 (Universal 4-State Execution FSM)
+無論底層使用的是 Google Antigravity、Anthropic Claude Code、OpenCode 還是 Codex，現代自主型 AI Agent 的運行週期皆遵循高度一致的 4 態循環：
+
+```mermaid
+stateDiagram-v2
+    [*] --> S1_UserInteraction: 使用者發送 Prompt (Intent)
+    
+    S1_UserInteraction --> S2_CloudInference: 客戶端封裝上下文，送入雲端 LLM
+    
+    S2_CloudInference --> S3_LocalExecution: LLM 決定呼叫工具 (Tool Call / Parallel Tools)
+    S2_CloudInference --> S4_CloudSynthesis: LLM 無需呼叫工具，直接生成回覆
+    
+    S3_LocalExecution --> S2_CloudInference: 本地執行完成 (stdout/diff)，回傳下一輪推論
+    
+    S4_CloudSynthesis --> S1_UserInteraction: 輸出自然語言結論，等待使用者下一指令
+    S4_CloudSynthesis --> [*]: 會話結束
+```
+
+#### 🧭 圖表 4 維度深度精讀指南 (Diagram Walkthrough)：
+1. **【核心視野】**：揭示所有 Autonomous Coding Agent 的統一因果閉環：人類 Intent $\to$ 雲端決策 $\to$ 本地執行 $\to$ 雲端綜述。
+2. **【看圖路徑 (Step-by-Step)】**：
+   * $S_1$ `ScopeUserInteraction`：使用者在終端機輸入指令（如 `👤 USER_INPUT`），標誌著新輪次（Turn）的起點。
+   * $S_2$ `ScopeCloudInference`：雲端模型接收包含系統提示、工具定義、歷史與新輸入的上下文，執行前綴快取匹配並下達決策（`🛠️ TOOL_CALL`）。
+   * $S_3$ `ScopeLocalExecution`：本地宿主機執行具體工具（`💻 OUTPUT`：終端命令 `run_command`、檔案讀取 `view_file`、代碼編輯 `edit_file`），產生離線 Payload。
+   * $S_4$ `ScopeCloudInference`（Synthesis）：雲端模型吞吐前面所有的執行結果，輸出最終 Markdown 說明（`🤖 MODEL_RESPONSE`）。
+3. **【色彩與符號物理意義】**：
+   * 藍色箭頭代表本地-雲端跨界通信（HTTP/gRPC）；
+   * 黑色實線代表本地行程內的狀態流轉。
+4. **【底層隱藏工程細節】**：
+   * 本地執行狀態（$S_3$）為離線運作（0 Token），其計費被延後打包至後續的雲端步驟（$S_2 / S_4$）中統一結算。
+
 ---
 
-## ⚡ 七、本地永久保留 vs 雲端 GPU 5 分鐘 TTL 顯存淘汰
+### 2. 因果鏈路追蹤器 (`StepLinkageTracker`)
+為了在 TUI 中精確重構步驟間的親緣關係（Parent/Child Navigation），`agent-observer` 實作了雙向索引追蹤狀態機：
+
+```go
+// StepLinkageTracker maintains active turn context and links parent-child relationships
+type StepLinkageTracker struct {
+    mu                sync.RWMutex
+    lastUserStepIdx   int   // Root parent of the current dialogue turn
+    lastCloudStepIdx  int   // Immediate cloud step that triggered local tools
+    pendingLocalSteps []int // Local execution steps waiting to be packaged in next cloud turn
+}
+```
+
+#### 📌 三大核心關聯指標：
+* **`ParentStepIdx`（觸發父步驟）**：
+  * 對於 `OUTPUT`（本地執行）：指向下達該指令的 `TOOL_CALL` 步驟；
+  * 對於 `TOOL_CALL` / `MODEL_RESPONSE`（雲端推論）：指向發起該任務的 `USER_INPUT` 根步驟。
+* **`ConsumedStepIndices`（打包消費清單）**：
+  * 當雲端步驟啟動時，將先前所有排隊的本地步驟（`pendingLocalSteps`）整批歸入 `ConsumedStepIndices`，完成數據消費閉環。
+* **`PackagedInStepIdx`（結算宿主）**：
+  * 記錄本地步驟的輸出數據最終被哪一個雲端步驟送入 GPU 計算並付費。
+
+---
+
+### 3. 極簡 Input $\to$ 逐輪演繹 (Step 1..4) $\to$ Final Output 實例
+
+#### 📥 極簡真實 Input：
+使用者輸入：`"請幫我查看 main.go 並執行 go test"`。
+
+#### 🔄 狀態機逐輪演繹 (Step-by-Step State Transition Trace)：
+* **Turn 0 (Step #101 | `USER_INPUT`)**：
+  * `Scope` = `ScopeUserInteraction`, `ParentStepIdx` = `0` (Root)。
+  * Tracker 記錄：`lastUserStepIdx = 101`。
+* **Turn 1 (Step #102 | `TOOL_CALL: view_file`)**：
+  * `Scope` = `ScopeCloudInference`, `ParentStepIdx` = `101` (User Prompt)。
+  * Tracker 記錄：`lastCloudStepIdx = 102`。
+* **Turn 2 (Step #103 | `OUTPUT: view_file`)**：
+  * `Scope` = `ScopeLocalExecution`, `ParentStepIdx` = `102` (Triggered by Tool Call)。
+  * Tracker 狀態：`pendingLocalSteps = [103]`。
+* **Turn 3 (Step #104 | `TOOL_CALL: run_command`)**：
+  * `Scope` = `ScopeCloudInference`, `ParentStepIdx` = `101`。
+  * **消費結算**：`ConsumedStepIndices = [103]`, Step #103 標記 `PackagedInStepIdx = 104`。
+  * Tracker 狀態：`pendingLocalSteps = []`, `lastCloudStepIdx = 104`。
+* **Turn 4 (Step #105 | `OUTPUT: run_command`)**：
+  * `Scope` = `ScopeLocalExecution`, `ParentStepIdx` = `104`。
+  * Tracker 狀態：`pendingLocalSteps = [105]`。
+* **Turn 5 (Step #106 | `MODEL_RESPONSE: "測試已全部通過"`)**：
+  * `Scope` = `ScopeCloudInference`, `ParentStepIdx` = `101`。
+  * **消費結算**：`ConsumedStepIndices = [105]`, Step #105 標記 `PackagedInStepIdx = 106`。
+
+#### 📤 Final Output (TUI 遙測呈現)：
+* 在 Step #103 上按 `p` 鍵 $\to$ 瞬間跳轉至父步驟 `#102`；
+* 在 Step #104 上按 `c` 鍵 $\to$ 瞬間跳轉至已消費子步驟 `#103`；
+* 整個對話輪次的因果關係與計費打包 100% 精準對齊！
+
+---
+
+## ⚡ 八、本地永久保留 vs 雲端 GPU 5 分鐘 TTL 顯存淘汰
 
 * **本地磁碟層**：`conversation_summaries` 與 JSONL 是 **永久且不可變的 Append-Only 日誌**，對話歷史會隨步數一路增長至數十萬乃至數百萬字（`Raw Log Accumulated`）；
 * **雲端推論層**：Google GPU 叢集顯存遵循 **5 分鐘閒置淘汰 (5-min Idle Eviction TTL)**。閒置超過 5 分鐘後，GPU HBM 中的 KV Cache 會被釋放；
@@ -190,10 +280,12 @@ graph TD
 
 ---
 
-## 🔗 八、相關概念與延伸閱讀
+## 🔗 九、相關概念與延伸閱讀
 * [[01_Context_5_Dimensions]]：5 維度上下文分類模型。
 * [[02_Token_Calculation_and_LCP]]：Token 計算與最長公共前綴演算法。
 * [[06_Dual_Track_Telemetry_and_Window_Accounting]]：雙軌遙測引擎與倒推滑動窗口實作。
 * [[07_TUI_Engine_and_Terminal_Layout_Mechanics]]：全螢幕 TUI 引擎與終端機盒模型物理。
 * [[08_Interactive_Session_Switching_and_Anti_Jitter|互動式會話快切與防抖動機制]]：全域會話快切與動態目錄發現。
+* [[09_History_Explorer_and_Causality_Graph|歷史步進瀏覽器與因果拓撲圖譜]]：步驟因果導航與括號封裝渲染。
 * [[05_troubleshooting/02_Startup_Warmup_Double_Ingestion_and_Cache_Lag|實戰排查：開機預熱雙重分析與全域遙測誤用]]：開機預熱管線單一攝入修復。
+* [[05_troubleshooting/05_USER_Input_Inbound_Intent_vs_GPU_Cache_Settlement|實戰排查：USER 步驟誤標 MISS 與時序結算錯位]]：使用者輸入語意與官方帳單解耦。

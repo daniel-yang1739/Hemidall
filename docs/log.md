@@ -1,6 +1,20 @@
 # ⏱️ LLM Wiki Chrono Log
 
-## [2026-08-27] feat | Universal Step Scopes, Causality Linkage FSM & Inspector 'p'/'n' Parent-Child Navigation (v0.9.0)：
+## [2026-08-27] distill | 歷史步進瀏覽器、雙軌過濾隔離與三大實戰排查 Wiki 深度提煉 (Wiki Distillation & Codebase Truth-Tracing)：
+1. **全新架構卡片落地 (`02_architecture/09_History_Explorer_and_Causality_Graph.md`)**：
+   * 提煉雙軌正交過濾引擎（`[T:Type]` 與 `[C:Cache]` 嚴格隔離）；
+   * 提煉增量步驟搜尋（`/` 與 `n`/`N` 跳轉）、方案 B 緊湊連續括號（`┌[` / `│[` / `└[`）與雙向因果導航（`p` 跳父步驟，`c`/`C` 跳已消費子步驟）；
+   * 包含標準 4 維度圖解導讀與 Minimal Input $\to$ Step 1..n Trace $\to$ Final Output 實例；
+2. **核心架構卡片升級 (`02_architecture/03` & `02_architecture/07`)**：
+   * `03_Agent_Storage`：升級 Universal 4 態 FSM、`StepLinkageTracker` 親緣追蹤器與跨平台可移植性（Google Antigravity, Claude Code, OpenCode, Codex）；
+   * `07_TUI_Engine`：升級 3-Panel 雙模式響應式盒模型（全寬 $\ge 100$ 欄 vs 半寬 $< 100$ 欄）、方案 B 括號與動態行數打包演算法（Dynamic Line Packing）；
+3. **三大 SRE 四段式實戰故障覆盤卡片落地 (`05_troubleshooting/04..06`)**：
+   * `04_Filter_Isolation_and_Cache_Expired_Boundary_Leak.md`：EXPIRED 步驟洩漏至 MISS 篩選漏洞、顯式互斥排除守衛與 Runbook SOP；
+   * `05_USER_Input_Inbound_Intent_vs_GPU_Cache_Settlement.md`：USER 輸入步驟誤標合成 MISS 標籤與時序結算錯位、意圖暫存語意與雲端帳單解耦；
+   * `06_Single_Line_Card_Static_Packing_Blank_Gap.md`：單行卡片靜態除二計算導致清單底部 14 行留白、動態累加行數打包修復；
+4. **雙向拓撲互錨與 MOC 同步**：同步更新 `docs/index.md`、`02_wiki/index.md`、`02_architecture/index.md` 與 `05_troubleshooting/index.md`；
+5. **19 角色雙輪審查與全景報告書**：由 19 位世界前 1% 專家與讀者完成雙輪對抗審查，產出 `docs/reviews/2026-08-27_15-26-00_history_explorer_and_troubleshooting_audit_report.md`；
+6. **秘書長反饋庫沉澱與 Digest & Delete**：更新 `feedbacks/` 5 大記憶庫，並安全清理 `docs/01_raw/` 11 份已提煉素材。
 1. **通用 4 大計算與計費範疇 (Universal 4 Scopes)**：在 `UnifiedAgentEvent` 引入物理完備的 4 大範疇（`USER` 使用者意圖、`CLOUD` 雲端 LLM 決策/計費、`LOCAL` 本機離線 0 元執行、`SYSTEM` 系統開局約束），消除所有 Token 計費與模型歸屬混淆；
 2. **確定性單執行緒狀態機 (`StepLinkageTracker`)**：以 $O(N)$ 線性單次遍歷精確關聯 `ParentStepIdx`（觸發父層）、`PackagedInStepIdx`（打包計費雲端輪次）與 `ConsumedStepIndices`（消耗本機步驟清單），100% 支援單輪平行多工具呼叫 (Parallel Tool Calls)；
 3. **Step Inspector 雙軌管線與自解釋渲染**：本地步驟清晰標註 `• Origin: Local Host Process`、`• Billing: Offline (0 tok) ➔ Packaged in Step #N (+X tok) [n] Jump`；雲端步驟標註 `• Model: Gemini 3.7 Flash (Official Telemetry)`、`• Input: Consumed Local Step #N [n] Jump` 與官方 5 維 Token 分佈；

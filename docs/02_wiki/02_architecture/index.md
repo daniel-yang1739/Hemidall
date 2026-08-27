@@ -22,6 +22,8 @@
    * *終端機佈局物理*：以 Bubbletea 與 Lipgloss 打造全螢幕互動介面，攻克盒模型幾何陷阱、中文字元（CJK）2 倍列寬與軟換行虛擬緩衝區。
 8. **[[08_Interactive_Session_Switching_and_Anti_Jitter]]**：
    * *會話快切與防抖動*：全域會話快切中樞（`Ctrl+p`）、動態目錄發現與歷史步驟防抖動鎖定機制（Anti-Jitter Lock）。
+9. **[[09_History_Explorer_and_Causality_Graph]]**：
+   * *歷史步進瀏覽器與因果圖譜*：雙軌正交過濾引擎（`[T:Type]` 與 `[C:Cache]`）、增量搜尋、方案 B 緊湊括號封裝與雙向因果跳轉（`p`/`c`/`C`）。
 
 ---
 

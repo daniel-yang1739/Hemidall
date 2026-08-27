@@ -209,11 +209,105 @@ func wrapVisualLines(text string, maxWidth int) []string {
    * **`?` Shortcuts Modal**：輕量全域浮動快捷鍵面板；
    * **`[3] Docs` 獨立頁面**：具備 `/` 即時搜尋、多語言切換與全寬懸掛縮排的完整架構辭典。
 
+## ⚡ 九、3-Panel 響應式佈局、連續括號封裝與動態行數打包 (Responsive 3-Panel & Turn Brackets)
+
+### 1. 3-Panel 雙模式響應式佈局幾何 (Dual-Mode Responsive Architecture)
+為適應全寬螢幕（120~200 欄）與狹窄分割螢幕（80 欄），`agent-observer` 實作了雙模式響應式 3-Panel 佈局：
+
+```mermaid
+flowchart TD
+    subgraph FullWidth ["🖥️ 全寬模式 (Width >= 100 欄) - 左右橫向佈局"]
+        direction LR
+        FW_L["左欄 (38 欄固定寬度)<br/>步驟時序清單 (Step List)<br/>佔據全高 H-4 行"]
+        subgraph FW_R ["右欄 (剩餘寬度 W - 38 欄)"]
+            direction TB
+            FW_RT["右上：狀態與遙測面板 (Telemetry)<br/>固定 8 行高度"]
+            FW_RB["右下：內容載荷面板 (Payload)<br/>佔據剩餘高度，支援獨立滾動"]
+            FW_RT --> FW_RB
+        end
+        FW_L --- FW_R
+    end
+
+    subgraph HalfWidth ["📱 半寬模式 (Width < 100 欄，如 80x24) - 上下垂直堆疊"]
+        direction TB
+        subgraph HW_Top ["上部：水平二分 (佔據 45% 高度，至少 11 行)"]
+            direction LR
+            HW_TL["左上：步驟清單 (38 欄)"]
+            HW_TR["右上：緊湊遙測面板 (剩餘 42 欄)"]
+            HW_TL --- HW_TR
+        end
+        HW_Bot["下部：內容載荷面板 (Content Payload)<br/>獨佔 100% 全螢幕寬度 (80 欄)，提供極致易讀性"]
+        HW_Top --> HW_Bot
+    end
+```
+
+#### 🧭 圖表 4 維度深度精讀指南 (Diagram Walkthrough)：
+1. **【核心視野】**：揭示寬螢幕與窄螢幕下，空間優先級的動態重分配機制。
+2. **【看圖路徑 (Step-by-Step)】**：
+   * **全寬模式**：右側內容空間充裕，將狀態遙測（8 行）與內容載荷垂直切分，左側清單擁有全高度；
+   * **半寬模式**：若右欄過窄（$< 40$ 欄），代碼與 JSON 會發生嚴重折行；因此將「內容載荷」移至下方**獨佔 100% 全寬度**，上方保留 38 欄清單與 42 欄遙測。
+3. **【色彩與符號物理意義】**：
+   * 綠色區塊代表具備獨立滾動緩衝區的視圖；
+   * 灰色邊框嚴格遵循零外徑疊加守恆。
+4. **【底層隱藏工程細節】**：
+   * 垂直行數嚴格守恆：`topBoxHeight + bottomBoxHeight = bodyHeight`，總行數 $1 + \text{bodyHeight} + 1 \equiv H$，保證全尺寸 0 抖動！
+
 ---
 
-## 🔗 九、相關概念與延伸閱讀
+### 2. 因下果上 ＋ 方案 B 極致緊湊連續括號 (`┌[` / `│[` / `└[`)
+在歷史步驟清單中，時間由下往上遞進（下為舊，上為新）：
+* **因（Cause / Local Input）**：`USER_INPUT` 與 `OUTPUT (Local)` 處於下方；
+* **果（Effect / Cloud Inference）**：`TOOL_CALL` 與 `MODEL_RESPONSE` 處於上方。
+
+透過將連接符號與文字樣式徹底解耦，**整條連接線 100% 統一使用細線灰色 (`ColorMuted` `#636E72`)**：
+
+```text
+╭────────────────────────────────────╮
+│ STEPS (6054) <                     │
+│ Filters: [T:All] [C:All]           │
+│   ...                              │
+│ ┌[4446] 🛠️ TOOL [HIT 100%]         │  <-- 果 (Cloud Effect: Top of bracket)
+│ │  Model: Gemini 3.7 Flash         │  <-- Cloud Hint (統一 Muted 灰色細線)
+│ │[4445] 💻 OUTPUT (Local)         │  <-- 因 (Local Cause: Inside stem)
+│ └  Tool: edit_file                 │  <-- Local Hint (統一 Muted 灰色細線)
+│ ┌[4440] 🤖 MODEL [HIT 100%]        │  <-- 果 (Cloud Effect: Top of bracket)
+│ │  Model: Gemini 3.7 Flash         │  <-- Cloud Hint (統一 Muted 灰色細線)
+│ └[4433] 👤 USER                   │  <-- 因 (Local Cause: Bottom of bracket)
+╰────────────────────────────────────╯
+```
+
+---
+
+### 3. 動態行數打包演算法 (`Dynamic Line Packing`)
+為了解決單行卡片（如 `USER_INPUT` 佔 1 行）與雙行卡片（如 `TOOL_CALL` 佔 2 行）混排時的清單留白問題，`getHistoryVisibleCards()` 改採動態累加演算法：
+
+```go
+usedLines := 0
+cardCount := 0
+for i := m.historyOffset; i < len(filtered); i++ {
+    realIdx := len(filtered) - 1 - i
+    e := filtered[realIdx]
+    linesNeeded := 1
+    if hasHint(e) {
+        linesNeeded = 2
+    }
+    // 動態累加行數，填滿 availLines
+    if usedLines + linesNeeded > availLines {
+        break
+    }
+    usedLines += linesNeeded
+    cardCount++
+}
+```
+* **效果**：當使用者篩選 `[T:User]` 時，視窗能動態填滿 25~30 筆單行卡片，徹底消除底部 14 行的無效留白！
+
+---
+
+## 🔗 十、相關概念與延伸閱讀
 * [[03_Agent_Storage_and_State_Machine]]：SQLite 狀態機與 Protobuf 載荷。
 * [[06_Dual_Track_Telemetry_and_Window_Accounting]]：雙軌遙測與倒推滑動窗口。
 * [[04_Service_Plan_Agent_Observer]]：`agent-observer` 完整服務架構規劃。
 * [[08_Interactive_Session_Switching_and_Anti_Jitter|互動式會話快切與防抖動機制]]：全域會話快切與動態目錄發現。
+* [[09_History_Explorer_and_Causality_Graph|歷史步進瀏覽器與因果拓撲圖譜]]：步驟因果導航與括號封裝渲染。
 * [[05_troubleshooting/03_TUI_ANSI_Escape_Truncation_and_Overscroll_Lag|實戰排查：ANSI 字元隱形佔位腰斬折行與過度滾動卡頓]]：終端機排版三大黑天鵝排查。
+* [[05_troubleshooting/06_Single_Line_Card_Static_Packing_Blank_Gap|實戰排查：單行卡片靜態除二計算導致清單底部大片留白]]：動態行數打包演算法修復。

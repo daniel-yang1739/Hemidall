@@ -49,6 +49,28 @@
 
 ---
 
+### 📌 條目 02-E：歷史步驟清單必須使用「因下果上 ＋ 方案 B 緊湊連續括號」與「100% 統一 Muted 細線顏色」
+* **決策狀態**：🟢 **ACCEPTED (已採納為標準規範)**
+* **首次記錄**：2026-08-27 | **累犯次數**：1 次
+* **適用檔案**：`02_architecture/07_TUI_Engine_and_Terminal_Layout_Mechanics.md`, `02_architecture/09_History_Explorer_and_Causality_Graph.md`
+* **【採納理由】**：直觀表達「輸入因 $\to$ 推論果」的因果閉環，消除無效縮排浪費，並徹底杜絕白灰線條混雜。
+* **【強制執行標準】**：
+  * 括號頂部 `┌[` 代表雲端果，垂直中幹 `│[` 代表本地因，底部 `└[` 代表使用者輸入；
+  * 連接器符號與文字樣式徹底解耦，整條連接線 100% 統一使用 `ColorMuted` 灰色細線。
+
+---
+
+### 📌 條目 02-F：可變高度列表必須採用動態累加行數打包演算法 (Dynamic Line Packing)
+* **決策狀態**：🟢 **ACCEPTED (已採納為標準規範)**
+* **首次記錄**：2026-08-27 | **累犯次數**：1 次
+* **適用檔案**：`02_architecture/07_TUI_Engine_and_Terminal_Layout_Mechanics.md`, `05_troubleshooting/06_Single_Line_Card_Static_Packing_Blank_Gap.md`
+* **【採納理由】**：根除篩選單行步驟時底部出現大片無效留白的嚴重空間浪費。
+* **【強制執行標準】**：
+  * 嚴禁使用 `availLines / 2` 靜態整數除法；
+  * 必須即時遍歷判定每張卡片行高（1 行 vs 2 行）並動態累加至填滿可用高度。
+
+---
+
 ## 🔴 駁回警示 (REJECTED Guidelines - 嚴禁重複提出或實裝)
 
 ### 🚫 條目 02-R1：嚴禁為了追求理論通用性而將 Pure Go 實作重構為 Go/Python 雙語言混合

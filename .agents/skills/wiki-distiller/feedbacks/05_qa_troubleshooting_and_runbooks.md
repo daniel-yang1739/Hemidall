@@ -21,6 +21,12 @@
 ### 3. 【可執行的 Runbook SOP (Actionable Diagnostic SOP)】
 * **[規則]**：在總結處必須附帶具體、可立即執行的診斷指令或 Log 特徵檢查清單，使未來的工程師能快速驗證與排查。
 
+### 4. 【多狀態過濾器顯式互斥排除守衛 (Strict Exclusion Guards)】
+* **[規則]**：在枚舉型多狀態過濾中，嚴禁使用寬鬆的 Fallback 兜底條件，所有非目標狀態（如 `EXPIRED` 洩漏至 `MISS`）必須在前置 Guard 階段顯式攔截排除。
+
+### 5. 【本地意圖輸入與雲端 GPU 計費時序解耦 (Intent Ingestion vs Inference Settlement)】
+* **[規則]**：人類在終端機打字輸入意圖（`USER_INPUT`）時雲端尚未推論，嚴禁為輸入步驟合成虛假的 `[MISS]` 標籤與全額未命中帳單，必須定義為 `Staged Intent` 待下一輪雲端步驟結算。
+
 ---
 
 ## 🔴 [REJECTED] 駁回警示與邊界 (Rejected Patterns)

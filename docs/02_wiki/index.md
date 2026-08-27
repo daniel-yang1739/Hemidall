@@ -16,7 +16,7 @@ docs/02_wiki/
 │   ├── 03_Prompt_Caching_Lifecycle.md
 │   ├── 04_Context_Compaction_and_Summarization.md
 │   └── index.md
-├── 02_architecture/      # 🏛️ [系統落地] Context 5 維度、LCP 快取演算法、雙層 SQLite 狀態機、雙軌遙測、TUI 盒模型、會話快切
+├── 02_architecture/      # 🏛️ [系統落地] Context 5 維度、LCP 快取演算法、雙層 SQLite 狀態機、雙軌遙測、TUI 盒模型、會話快切、歷史因果圖譜
 │   ├── 01_Context_5_Dimensions.md
 │   ├── 02_Token_Calculation_and_LCP.md
 │   ├── 03_Agent_Storage_and_State_Machine.md
@@ -25,6 +25,7 @@ docs/02_wiki/
 │   ├── 06_Dual_Track_Telemetry_and_Window_Accounting.md
 │   ├── 07_TUI_Engine_and_Terminal_Layout_Mechanics.md
 │   ├── 08_Interactive_Session_Switching_and_Anti_Jitter.md
+│   ├── 09_History_Explorer_and_Causality_Graph.md
 │   └── index.md
 ├── 03_planning/          # 🏆 [系列藍圖] v1/ (初版存檔) 與 v2/ (萬能觀測與極致壓縮旗艦版)
 │   ├── v1/                   #    📜 [初版存檔] 單一 Agent 原型企劃與初版 30 天大綱
@@ -38,6 +39,9 @@ docs/02_wiki/
 │   ├── 01_Context_Inflation_and_Intermediate_Compounding.md
 │   ├── 02_Startup_Warmup_Double_Ingestion_and_Cache_Lag.md
 │   ├── 03_TUI_ANSI_Escape_Truncation_and_Overscroll_Lag.md
+│   ├── 04_Filter_Isolation_and_Cache_Expired_Boundary_Leak.md
+│   ├── 05_USER_Input_Inbound_Intent_vs_GPU_Cache_Settlement.md
+│   ├── 06_Single_Line_Card_Static_Packing_Blank_Gap.md
 │   └── index.md
 └── index.md              # 🧭 本導覽文件 (Wiki Root MOC)
 ```
@@ -49,10 +53,10 @@ docs/02_wiki/
 | 模組編號與名稱 | 認知職責與核心範疇 | 前置依賴與解鎖能力 |
 | :--- | :--- | :--- |
 | **`01_theory/`<br/>推論物理與數學模型** | **【認知起點】** 深入 Transformer 推論的底層硬體物理，建立 GEMM/GEMV、算術強度、KV 顯存占用 ($40GB)、前綴快取生命週期與長上下文雙水位線壓縮的硬核直覺。 | **零前置依賴**。讀完後解鎖「看穿所有 LLM 推論瓶頸、顯存溢出與成本來源」的底層物理直覺。 |
-| **`02_architecture/`<br/>通用系統與演算法** | **【系統落地】** 將物理直覺轉化為具體的系統架構。定義 Context 5 維度、LCP 快取比對演算法、雙層 SQLite 狀態機、雙軌遙測引擎、API 載荷協議、全螢幕 TUI 佈局與會話快切。 | **依賴 `01_theory/`**。讀完後解鎖「設計並實作工業級 Agent 觀測、遙測與記憶服務」的架構能力。 |
+| **`02_architecture/`<br/>通用系統與演算法** | **【系統落地】** 將物理直覺轉化為具體的系統架構。定義 Context 5 維度、LCP 快取比對演算法、雙層 SQLite 狀態機、雙軌遙測引擎、API 載荷協議、全螢幕 TUI 佈局、會話快切與歷史因果圖譜。 | **依賴 `01_theory/`**。讀完後解鎖「設計並實作工業級 Agent 觀測、遙測與記憶服務」的架構能力。 |
 | **`03_planning/`<br/>系列藍圖與規劃規格** | **【產品全景】** 從工程師視角躍升至產品架構師。梳理 30 天每日技術交付大綱、Go vs Python 選型決策與 5 階段路線圖。 | **依賴 `01_` 與 `02_`**。讀完後解鎖「規劃並交付完整工程專案」的全局視野。 |
 | **`04_meta/`<br/>AI 協同工程與方法論** | **【元架構體系】** 沉澱專案在 19 位 Multi-Agent 雙輪對抗審查、自我進化反饋庫、Obsidian 拓撲與專案協同憲法的最佳實踐。 | **全域通用**。解鎖「構建具備自我進化能力之頂級 AI 協同體系」的組織工程能力。 |
-| **`05_troubleshooting/`<br/>實戰故障排查與 Runbook** | **【實戰武器庫】** 收錄長程觀測中遭遇的重大真實 Bug（基線污染 89 萬字膨脹、開機雙重分析、ANSI 隱形佔位腰斬），以四段式 Postmortem 與 Runbook SOP 呈現。 | **依賴 `02_architecture/`**。解鎖「1 分鐘秒級定位並根治底層黑天鵝」的頂級 SRE 實戰能力。 |
+| **`05_troubleshooting/`<br/>實戰故障排查與 Runbook** | **【實戰武器庫】** 收錄長程觀測中遭遇的重大真實 Bug（基線污染、開機雙重分析、ANSI 隱形佔位、快取過濾洩漏、USER 誤標 MISS、單行留白），以四段式 Postmortem 與 Runbook SOP 呈現。 | **依賴 `02_architecture/`**。解鎖「1 分鐘秒級定位並根治底層黑天鵝」的頂級 SRE 實戰能力。 |
 
 ---
 
@@ -81,6 +85,7 @@ flowchart LR
 * [[06_Dual_Track_Telemetry_and_Window_Accounting]]：雙軌遙測引擎（Track 1 官方帳單 vs Track 2 本地解剖）、中間步驟非遞增基線與倒推滑動窗口會計演算法。
 * [[07_TUI_Engine_and_Terminal_Layout_Mechanics]]：全螢幕 TUI 引擎架構、ANSI 感知狀態機、全寬懸掛縮排、零過度滾動與嵌入式多語言 Markdown。
 * [[08_Interactive_Session_Switching_and_Anti_Jitter]]：全域會話快切中樞（`Ctrl+p`）、動態目錄發現與歷史步驟防抖動鎖定機制（Anti-Jitter Lock）。
+* [[09_History_Explorer_and_Causality_Graph]]：歷史步進瀏覽器、雙軌正交過濾引擎（`[T:Type]` 與 `[C:Cache]`）、方案 B 緊湊括號封裝與雙向因果跳轉（`p`/`c`/`C`）。
 
 ### 3. [[02_wiki/03_planning/index|🏆 03_planning: 系列藍圖與規格規劃]]
 * [[03_planning/v2/index|🚀 v2/ 旗艦版企劃與 30 天大綱 (當前主線)]]：萬能多 Agent 觀測中樞、開篇與終章「共舞」自白與極致壓縮。
@@ -96,9 +101,11 @@ flowchart LR
 * [[01_Context_Inflation_and_Intermediate_Compounding|01. 89 萬字膨脹與基線污染]]：中間步驟非遞增基線修復與 256k 物理窗口約束。
 * [[02_Startup_Warmup_Double_Ingestion_and_Cache_Lag|02. 開機預熱雙重分析與歷史遙測誤用]]：單一攝入責任鏈與開機 700+ 世代紀錄預載入。
 * [[03_TUI_ANSI_Escape_Truncation_and_Overscroll_Lag|03. ANSI 字元隱形佔位與滾動卡頓]]：ANSI 感知狀態機、29 格懸掛縮排與 `getDocsMaxScroll` 邊界約束。
+* [[04_Filter_Isolation_and_Cache_Expired_Boundary_Leak|04. EXPIRED 洩漏至 MISS 篩選漏洞]]：顯式互斥排除守衛與快取狀態嚴格正交隔離。
+* [[05_USER_Input_Inbound_Intent_vs_GPU_Cache_Settlement|05. USER 誤標 MISS 與結算錯位]]：使用者意圖與雲端推論時序解耦，移除合成標籤。
+* [[06_Single_Line_Card_Static_Packing_Blank_Gap|06. 單行卡片靜態除二清單大片留白]]：動態行數打包演算法修復與多高度緊湊排版。
 
 ---
 
 ## 🧭 導航
 * 🔙 回到頂層：[[index|知識庫頂層總導航]]
-
