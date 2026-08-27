@@ -68,7 +68,7 @@ func (m Model) renderSessionSwitcherModal() string {
 	}
 
 	leftTabs := tab1 + " " + tab2 + " " + tab3
-	tabHint := lipgloss.NewStyle().Foreground(ColorHighlight).Render("[[ / ]] Cycle Tab")
+	tabHint := lipgloss.NewStyle().Foreground(ColorHighlight).Render("[ / ] Switch Tab")
 	gapW := contentWidth - lipgloss.Width(leftTabs) - lipgloss.Width(tabHint)
 	if gapW < 1 {
 		gapW = 1
@@ -347,8 +347,8 @@ func (m Model) renderSessionSwitcherModal() string {
 
 	// 4. Modal Footer / Keybindings
 	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", contentWidth)))
-	footerHints := fmt.Sprintf(" %s Move  %s Attach  %s Tab  %s Cancel",
-		KeyStyle.Render("[Ctrl+j/k, ↑/↓]"), KeyStyle.Render("[Enter]"), KeyStyle.Render("[[ / ]]"), KeyStyle.Render("[Esc]"))
+	footerHints := fmt.Sprintf(" %s Move  %s Attach  %s Switch Tab  %s Cancel",
+		KeyStyle.Render("[Ctrl+j/k, ↑/↓]"), KeyStyle.Render("[Enter]"), KeyStyle.Render("[ / ]"), KeyStyle.Render("[Esc]"))
 	contentLines = append(contentLines, lipgloss.NewStyle().MaxWidth(contentWidth).Render(footerHints))
 
 	modalBox := lipgloss.NewStyle().
