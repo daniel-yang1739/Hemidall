@@ -151,16 +151,17 @@ func (m Model) renderDashboardView() string {
 }
 
 func (m Model) renderHistoryView() string {
-	leftOuterWidth := int(float64(m.width) * 0.30)
+	leftOuterWidth := int(float64(m.width) * 0.33)
 	if leftOuterWidth < 28 {
 		leftOuterWidth = 28
 	}
-	if leftOuterWidth > 34 {
-		leftOuterWidth = 34
+	if leftOuterWidth > 65 {
+		leftOuterWidth = 65
 	}
 	rightOuterWidth := m.width - leftOuterWidth
-	if rightOuterWidth < 30 {
-		rightOuterWidth = 30
+	if rightOuterWidth < 35 {
+		rightOuterWidth = 35
+		leftOuterWidth = m.width - rightOuterWidth
 	}
 
 	listInnerWidth := leftOuterWidth - 2
