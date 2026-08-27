@@ -64,20 +64,11 @@ func BackfillPackagedIn(events []UnifiedAgentEvent) {
 			}
 		}
 
-		// For USER_INPUT, look ahead to the immediate cloud turn that evaluated this prompt
+		// For USER_INPUT, record which cloud turn evaluated this prompt without copying its cache status
 		if events[i].Type == StepTypeUserInput {
 			for j := i + 1; j < len(events); j++ {
 				if events[j].IsCloudStep() {
-					if events[j].Tokens.TotalTokens > 0 {
-						events[i].Tokens.TotalTokens = events[j].Tokens.TotalTokens
-						events[i].Tokens.CachedTokens = events[j].Tokens.CachedTokens
-						events[i].Tokens.NewTokens = events[j].Tokens.NewTokens
-						events[i].Tokens.CacheHitRate = events[j].Tokens.CacheHitRate
-						events[i].Tokens.OfficialModel = events[j].Tokens.OfficialModel
-						events[i].Tokens.OfficialContextLimit = events[j].Tokens.OfficialContextLimit
-						events[i].Tokens.IsOfficialData = events[j].Tokens.IsOfficialData
-						events[i].CacheStatus = events[j].CacheStatus
-					}
+					events[i].PackagedInStepIdx = events[j].StepIndex
 					break
 				}
 			}

@@ -203,22 +203,24 @@ func matchTypeFilter(stepType core.StepType, filter TypeFilter) bool {
 }
 
 func matchCacheFilter(e core.UnifiedAgentEvent, filter CacheFilter) bool {
-	switch filter {
-	case CacheFilterAll:
+	if filter == CacheFilterAll {
 		return true
+	}
+	// Local execution steps and user inputs are offline/local operations (not LLM inference calls),
+	// they do not make cloud calls and thus have no cache status of their own!
+	if e.IsLocalStep() || e.Type == core.StepTypeUserInput || e.Scope == core.ScopeLocalExecution {
+		return false
+	}
+	switch filter {
 	case CacheFilterHit:
-		return e.CacheStatus == "HIT" || e.Tokens.CacheHitRate >= 70.0
+		return e.CacheStatus == "HIT" || e.Tokens.CacheHitRate >= 80.0
 	case CacheFilterPartial:
-		return e.CacheStatus == "PARTIAL" || (e.Tokens.CacheHitRate > 0 && e.Tokens.CacheHitRate < 70.0)
+		return e.CacheStatus == "PARTIAL" || (e.Tokens.CacheHitRate > 0 && e.Tokens.CacheHitRate < 80.0)
 	case CacheFilterWrite:
 		return e.CacheStatus == "WRITE" || (e.StepIndex == 0 && e.Tokens.CachedTokens == 0)
 	case CacheFilterExpired:
 		return e.CacheStatus == "EXPIRED" || e.CacheStatus == "TTL_EXPIRED"
 	case CacheFilterMiss:
-		// Local execution steps are offline operations (not LLM inference calls), NEVER a cache miss!
-		if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
-			return false
-		}
 		if e.CacheStatus == "EXPIRED" || e.CacheStatus == "TTL_EXPIRED" || e.CacheStatus == "WRITE" {
 			return false
 		}

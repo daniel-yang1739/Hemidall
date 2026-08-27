@@ -303,10 +303,10 @@ func TestHistoryFilteringAndStepSearch(t *testing.T) {
 
 	// Seed with distinct types and cache statuses
 	m.history = []core.UnifiedAgentEvent{
-		{StepIndex: 1, Type: core.StepTypeUserInput, CacheStatus: "MISS", Summary: "User question"},
+		{StepIndex: 1, Type: core.StepTypeUserInput, Summary: "User question"},
 		{StepIndex: 2, Type: core.StepTypeModelResponse, CacheStatus: "HIT", Tokens: core.TokenBreakdown{CacheHitRate: 85.0}, Summary: "Model plan"},
 		{StepIndex: 3, Type: core.StepTypeToolCall, CacheStatus: "HIT", Tokens: core.TokenBreakdown{CacheHitRate: 90.0}, Summary: "Run command"},
-		{StepIndex: 4, Type: core.StepTypeToolResult, CacheStatus: "PARTIAL", Tokens: core.TokenBreakdown{CacheHitRate: 40.0}, Summary: "Command result"},
+		{StepIndex: 4, Type: core.StepTypeToolCall, CacheStatus: "PARTIAL", Tokens: core.TokenBreakdown{CacheHitRate: 40.0}, Summary: "Command result"},
 		{StepIndex: 14, Type: core.StepTypeToolCall, CacheStatus: "HIT", Tokens: core.TokenBreakdown{CacheHitRate: 95.0}, Summary: "Write file"},
 	}
 

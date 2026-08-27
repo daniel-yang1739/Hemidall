@@ -20,7 +20,7 @@ func TestPayloadAnalyzerFiveDimensions(t *testing.T) {
 	event0 := UnifiedAgentEvent{
 		SessionID:  "test-session-1",
 		StepIndex:  0,
-		Type:       StepTypeUserInput,
+		Type:       StepTypeModelResponse,
 		RawContent: "Please write a web server for me.",
 	}
 	analyzer.AnalyzeStep(&event0)
@@ -38,17 +38,17 @@ func TestPayloadAnalyzerFiveDimensions(t *testing.T) {
 		t.Errorf("expected initial CacheStatus WRITE, got %s", event0.CacheStatus)
 	}
 
-	// Simulate Step 1: Tool Execution Result
+	// Simulate Step 1: Model Response with Tool Call (Cloud step)
 	event1 := UnifiedAgentEvent{
 		SessionID:  "test-session-1",
 		StepIndex:  1,
-		Type:       StepTypeRunCommand,
+		Type:       StepTypeModelResponse,
 		RawContent: "Compilation succeeded with 0 errors.",
 	}
 	analyzer.AnalyzeStep(&event1)
 
-	if event1.Tokens.ToolResultTokens <= 0 {
-		t.Errorf("expected positive tool result tokens, got %d", event1.Tokens.ToolResultTokens)
+	if event1.Tokens.ActiveTurnTokens <= 0 {
+		t.Errorf("expected positive active turn tokens, got %d", event1.Tokens.ActiveTurnTokens)
 	}
 	if event1.Tokens.CachedTokens <= 0 {
 		t.Errorf("expected positive cached tokens, got %d", event1.Tokens.CachedTokens)

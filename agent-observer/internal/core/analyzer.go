@@ -261,6 +261,10 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 		}
 	}
 
+	if !event.IsCloudStep() {
+		event.CacheStatus = ""
+	}
+
 	if !event.Timestamp.IsZero() {
 		state.LastEventTime = event.Timestamp
 	}
