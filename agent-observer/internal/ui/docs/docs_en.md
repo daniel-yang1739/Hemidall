@@ -23,3 +23,11 @@
 * **Context Compaction** : Asynchronous summarization triggered at 95% High Watermark (~245k tokens) to compact history down to 48% Low Watermark (~120k).
 * **Reverse Sliding Window** : Algorithm allocating tokens backwards from the newest step to match Google official active budget, pruning ancient steps.
 * **Longest Common Prefix** : LCP algorithm comparing sequential steps to determine exact byte-level shared prefix for KV cache reuse.
+
+## Step Types & Agent Lifecycle
+* **👤 USER_INPUT** : Natural language prompt from the human user, initiating a new reasoning turn. Telemetry is settled on the subsequent cloud turn.
+* **🤖 MODEL_RESPONSE** : Cloud LLM natural language response containing chain-of-thought reasoning and synthesis, benefiting from prefix cache acceleration.
+* **🛠️ TOOL_CALL** : Structural tool invocation instructions dispatched from cloud model to local machine (e.g. run_command, view_file, edit_file).
+* **💻 OUTPUT (Local)** : Execution payloads from local operations (stdout/stderr, file buffers, diffs). Offline (0 tokens), staged for next cloud turn.
+* **⚙️ CHECKPOINT** : Context Truncation & Compaction Checkpoint. Injected by Antigravity to compress long conversation transcripts, resetting prefix cache.
+* **⚠️ ERROR_MESSAGE** : System errors, runtime network interruptions, command timeout, or process failure events.

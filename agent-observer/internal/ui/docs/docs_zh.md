@@ -23,3 +23,11 @@
 * **Context Compaction** : 雙水位線非同步壓縮，於觸及 95% High Watermark (~245k) 時觸發遞迴摘要，並重置至 48% Low Watermark (~120k)。
 * **Reverse Sliding Window** : 倒推滑動窗口演算法，由最新步驟往前倒推填滿 Google 官方活躍預算，精確排除已被淘汰的遠古步驟。
 * **Longest Common Prefix** : 最長公共前綴演算法，逐字元比對時序步驟，精確定位 GPU KV Cache 可復用的前綴邊界。
+
+## 步驟類型與生命週期 (Step Types & Agent Lifecycle)
+* **👤 USER_INPUT** : 使用者自然語言指令，標誌新會話輪次（Turn）起點。因尚未進入模型推論，快取與計費真理在後續雲端決策回傳時核算。
+* **🤖 MODEL_RESPONSE** : 雲端 LLM 自然語言思考與回覆，包含 CoT 思考鏈及結構化回應。享有前綴快取加速與 75% 費用折扣。
+* **🛠️ TOOL_CALL** : 雲端模型向本地發出的工具調用指令（如 run_command, view_file, edit_file），可單發或平行多發。
+* **💻 OUTPUT (Local)** : 本地工具實體執行反饋（stdout/stderr、檔案內容、代碼 Diff）。為本機離線運作（0 Token），打包至下一輪雲端計費。
+* **⚙️ CHECKPOINT** : 會話截斷與壓縮檢查點（Truncation Checkpoint）。當上下文達到上限時由 Antigravity 自動觸發摘要壓縮，重置會話前綴。
+* **⚠️ ERROR_MESSAGE** : 系統異常或執行錯誤事件（如網路中斷、指令逾時、程式崩潰）。

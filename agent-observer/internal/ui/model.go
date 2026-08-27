@@ -219,7 +219,10 @@ func matchCacheFilter(e core.UnifiedAgentEvent, filter CacheFilter) bool {
 		if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
 			return false
 		}
-		return e.CacheStatus == "MISS" || (e.Tokens.TotalTokens > 0 && e.Tokens.CachedTokens == 0 && e.Tokens.NewTokens > 0 && e.CacheStatus != "WRITE")
+		if e.CacheStatus == "EXPIRED" || e.CacheStatus == "TTL_EXPIRED" || e.CacheStatus == "WRITE" {
+			return false
+		}
+		return e.CacheStatus == "MISS" || (e.Tokens.TotalTokens > 0 && e.Tokens.CachedTokens == 0 && e.Tokens.NewTokens > 0)
 	}
 	return true
 }
