@@ -256,8 +256,11 @@ func (m Model) renderHistoryView() string {
 			var cardLine2 string
 
 			if isLocal {
+				cardLine1 = fmt.Sprintf("%s└── [%04d] OUTPUT %s", prefix, e.StepIndex, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
 				toolName := m.getLocalToolName(e)
-				cardLine1 = fmt.Sprintf("%s└── [%04d] %s %s", prefix, e.StepIndex, toolName, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
+				if toolName != "" && toolName != "OUTPUT" {
+					cardLine2 = "      " + toolName
+				}
 			} else {
 				typeStr := formatStepType(string(e.Type))
 				cacheTag := formatShortCache(e)
