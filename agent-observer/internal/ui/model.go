@@ -298,15 +298,15 @@ func NewModel(sessionID string, openSwitcherOnStart bool) Model {
 func (m Model) getHistoryVisibleCards() int {
 	var availLines int
 	if m.width < 100 {
-		contentRows := m.height - 6
-		if contentRows < 6 {
-			contentRows = 6
+		bodyHeight := m.height - 2
+		if bodyHeight < 8 {
+			bodyHeight = 8
 		}
-		topRows := contentRows * 4 / 10
-		if topRows < 3 {
-			topRows = 3
+		topContentRows := (bodyHeight - 4) * 4 / 10
+		if topContentRows < 8 {
+			topContentRows = 8
 		}
-		availLines = topRows - 1
+		availLines = topContentRows - 1
 	} else {
 		innerRowsLimit := m.height - 4
 		if innerRowsLimit < 4 {
@@ -435,7 +435,7 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 	timeStr := e.Timestamp.Format("15:04:05")
 
 	if isCompact {
-		// ==================== COMPACT MODE (4 ESSENTIAL BULLET POINTS) ====================
+		// ==================== COMPACT MODE (STRUCTURED SUB-BULLETS, ZERO TRUNCATION) ====================
 		if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
 			toolName := m.getLocalToolName(e)
@@ -443,34 +443,54 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 				toolName = string(e.Type)
 			}
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Action: Tool Output (%s)", toolName), maxWidth))
-			lines = append(lines, truncateVisualWidth("• Status: Offline (0 tok)", maxWidth))
+			lines = append(lines, truncateVisualWidth("• Status: Offline Process (0 tok)", maxWidth))
+			if e.PackagedInStepIdx > 0 {
+				lines = append(lines, truncateVisualWidth(fmt.Sprintf("  └ Billed: Packaged in #%04d", e.PackagedInStepIdx), maxWidth))
+			} else {
+				estTok := t.ActiveTurnTokens + t.ToolResultTokens
+				if estTok == 0 {
+					estTok = core.CountTokens(e.RawContent)
+				}
+				lines = append(lines, truncateVisualWidth(fmt.Sprintf("  └ Staged: ~%s tok (Pending)", formatCompactNumber(estTok)), maxWidth))
+			}
 			if e.ParentStepIdx > 0 {
 				lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Parent: Triggered by #%04d", e.ParentStepIdx), maxWidth))
-			} else {
-				lines = append(lines, truncateVisualWidth("• Origin: Local Execution", maxWidth))
 			}
+			lines = append(lines, truncateVisualWidth("• Origin: Local Machine Subprocess", maxWidth))
 		} else if e.IsCloudStep() || e.Scope == core.ScopeCloudInference {
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
 			modelName := m.getStepModelName(e)
 			if modelName == "" {
-				modelName = "Gemini Flash"
+				modelName = "Gemini 3.7 Flash"
 			}
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Model : %s", modelName), maxWidth))
-			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Cache : %s / %s (%.1f%% HIT)", formatCompactNumber(t.CachedTokens), formatCompactNumber(t.TotalTokens), t.CacheHitRate), maxWidth))
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Tokens: %s Total Context", formatCompactNumber(t.TotalTokens)), maxWidth))
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("  ├ Cached: %s (%.1f%% HIT)", formatCompactNumber(t.CachedTokens), t.CacheHitRate), maxWidth))
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("  └ New   : %s new tokens", formatCompactNumber(t.NewTokens)), maxWidth))
+			fiveDimsStr := fmt.Sprintf("• 5-Dims: Sys %s | Tools %s | Hist %s",
+				formatCompactNumber(t.SystemTokens),
+				formatCompactNumber(t.ToolsDefTokens),
+				formatCompactNumber(t.HistoryTokens),
+			)
+			lines = append(lines, truncateVisualWidth(fiveDimsStr, maxWidth))
 			if e.ParentStepIdx > 0 {
 				lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Parent: Step #%04d (User Prompt)", e.ParentStepIdx), maxWidth))
-			} else {
-				lines = append(lines, truncateVisualWidth("• Scope : Cloud Inference Turn", maxWidth))
+			}
+			if len(e.ToolCalls) > 0 {
+				lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Tool  : %s (%d call)", e.ToolCalls[0].ToolName, len(e.ToolCalls)), maxWidth))
 			}
 		} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
 			lines = append(lines, truncateVisualWidth("• Origin: Human Client Prompt", maxWidth))
 			if t.TotalTokens > 0 {
 				lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Tokens: ~%s Inbound Context", formatCompactNumber(t.TotalTokens)), maxWidth))
+				lines = append(lines, truncateVisualWidth(fmt.Sprintf("  ├ Active: ~%s prompt tokens", formatCompactNumber(t.ActiveTurnTokens)), maxWidth))
+				lines = append(lines, truncateVisualWidth(fmt.Sprintf("  └ Cached: ~%s (%.1f%%)", formatCompactNumber(t.CachedTokens), t.CacheHitRate), maxWidth))
 			} else {
-				lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Tokens: ~%s Prompt Tokens", formatCompactNumber(core.CountTokens(e.RawContent))), maxWidth))
+				promptTok := core.CountTokens(e.RawContent)
+				lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Tokens: ~%s Prompt Tokens", formatCompactNumber(promptTok)), maxWidth))
 			}
-			lines = append(lines, truncateVisualWidth("• Status: Client Inbound Turn", maxWidth))
+			lines = append(lines, truncateVisualWidth("• Status: Inbound to GPU Cluster", maxWidth))
 		} else {
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Type  : %s", e.Type), maxWidth))
@@ -948,8 +968,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.width < 100 {
 				detailInnerWidth = m.width - 4
 				bodyHeight := m.height - 2
-				topHeight := 8
-				bottomInner := bodyHeight - topHeight - 2
+				if bodyHeight < 8 {
+					bodyHeight = 8
+				}
+				topContentRows := (bodyHeight - 4) * 4 / 10
+				if topContentRows < 8 {
+					topContentRows = 8
+				}
+				topBoxHeight := topContentRows + 2
+				bottomInner := bodyHeight - topBoxHeight - 2
+				if bottomInner < 4 {
+					bottomInner = 4
+				}
 				availableLines = bottomInner - 1
 			} else {
 				detailInnerWidth = m.width - 38 - 4

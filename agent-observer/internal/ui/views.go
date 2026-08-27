@@ -164,8 +164,11 @@ func (m Model) renderHistoryViewVertical() string {
 	}
 
 	// Top Section: Horizontal Split (Left: Step List 38 cols, Right: Telemetry width - 38 cols)
-	topContentRows := 6
-	topBoxHeight := topContentRows + 2 // 8 lines
+	topContentRows := (bodyHeight - 4) * 4 / 10
+	if topContentRows < 8 {
+		topContentRows = 8
+	}
+	topBoxHeight := topContentRows + 2
 
 	leftOuterWidth := 38
 	rightOuterWidth := m.width - leftOuterWidth
