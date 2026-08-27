@@ -34,8 +34,6 @@ var allShortcutItems = []ShortcutItem{
 	{Category: "History Explorer", Key: "t / T", Desc: "Cycle Step Type filter (All ➔ Tool ➔ Model ➔ User ➔ Code ➔ Generic)"},
 	{Category: "History Explorer", Key: "c / C", Desc: "Cycle Cache Status filter (All ➔ Hit ➔ Partial ➔ Write ➔ Expired ➔ Miss)"},
 	{Category: "History Explorer", Key: "/", Desc: "Search / filter by Step Number (#)"},
-	{Category: "History Explorer", Key: "p", Desc: "Jump to Parent step (e.g. Local Result ➔ Tool Call ➔ User Input)"},
-	{Category: "History Explorer", Key: "n", Desc: "Jump to Child / Packaged step (e.g. Tool Call ➔ Local Result ➔ Cloud Turn)"},
 	{Category: "History Explorer", Key: "l / Enter / Right", Desc: "Switch focus to Right Pane (Inspector)"},
 	{Category: "History Explorer", Key: "h / Esc / Left", Desc: "Return focus to Left Pane / Clear active filters"},
 	{Category: "History Explorer", Key: "j / k / ↑ / ↓", Desc: "Select step (Left) / Scroll Inspector (Right)"},

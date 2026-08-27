@@ -422,13 +422,13 @@ func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) [
 		lines = append(lines, wrapVisualLines(header2, maxWidth)...)
 
 		if e.ParentStepIdx > 0 {
-			parentText := fmt.Sprintf("• Parent : Triggered by Tool Call in Step #%03d  [p] Jump", e.ParentStepIdx)
+			parentText := fmt.Sprintf("• Parent : Triggered by Tool Call in Step #%03d", e.ParentStepIdx)
 			lines = append(lines, wrapVisualLines(parentText, maxWidth)...)
 		}
 
 		var billingText string
 		if e.PackagedInStepIdx > 0 {
-			billingText = fmt.Sprintf("• Billing: Offline (0 tok) ➔ Packaged in Step #%03d  [n] Jump", e.PackagedInStepIdx)
+			billingText = fmt.Sprintf("• Billing: Offline (0 tok) ➔ Packaged in Step #%03d", e.PackagedInStepIdx)
 		} else {
 			estTok := t.ActiveTurnTokens + t.ToolResultTokens
 			if estTok == 0 {
@@ -452,7 +452,7 @@ func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) [
 		lines = append(lines, wrapVisualLines(header2, maxWidth)...)
 
 		if e.ParentStepIdx > 0 {
-			parentText := fmt.Sprintf("• Parent : User Request in Step #%03d  [p] Jump", e.ParentStepIdx)
+			parentText := fmt.Sprintf("• Parent : User Request in Step #%03d", e.ParentStepIdx)
 			lines = append(lines, wrapVisualLines(parentText, maxWidth)...)
 		}
 
@@ -461,7 +461,7 @@ func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) [
 			for _, c := range e.ConsumedStepIndices {
 				childStrs = append(childStrs, fmt.Sprintf("#%03d", c))
 			}
-			consumedText := fmt.Sprintf("• Input  : Consumed Local Step %s  [n] Jump", strings.Join(childStrs, ", "))
+			consumedText := fmt.Sprintf("• Input  : Consumed Local Step %s", strings.Join(childStrs, ", "))
 			lines = append(lines, wrapVisualLines(consumedText, maxWidth)...)
 		}
 
@@ -491,7 +491,7 @@ func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) [
 
 		var billingText string
 		if nextCloudTurnIdx > 0 {
-			billingText = fmt.Sprintf("• Billing: Inbound Prompt (~%d Context) ➔ Billed on Cloud Turn #%03d  [n] Jump", t.TotalTokens, nextCloudTurnIdx)
+			billingText = fmt.Sprintf("• Billing: Inbound Prompt (~%d Context) ➔ Billed on Cloud Turn #%03d", t.TotalTokens, nextCloudTurnIdx)
 		} else {
 			billingText = fmt.Sprintf("• Billing: Inbound Prompt (~%d Context) ➔ Pending Cloud Response ⏳", t.TotalTokens)
 		}
@@ -1159,16 +1159,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					m.detailScroll = maxScroll
 				}
-			case "p":
-				if curr, ok := m.getSelectedEvent(); ok {
-					m.jumpToParent(curr)
-				}
-				return m, nil
-			case "n":
-				if curr, ok := m.getSelectedEvent(); ok {
-					m.jumpToChildOrNext(curr)
-				}
-				return m, nil
 			}
 		}
 	}
@@ -1293,15 +1283,15 @@ func (m Model) renderFooter() string {
 				KeyStyle.Render("[y]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Esc]"))
 		} else if m.focusPane == FocusList {
 			if m.width < 90 {
-				hints = fmt.Sprintf(" %s Parent  %s Child  %s Focus  %s Type  %s Cache  %s Shortcuts  %s Quit",
-					KeyStyle.Render("[p]"), KeyStyle.Render("[n]"), KeyStyle.Render("[l]"), KeyStyle.Render("[t]"), KeyStyle.Render("[c]"), KeyStyle.Render("[?]"), KeyStyle.Render("[q]"))
+				hints = fmt.Sprintf(" %s Focus  %s Type  %s Cache  %s Shortcuts  %s Quit",
+					KeyStyle.Render("[l]"), KeyStyle.Render("[t]"), KeyStyle.Render("[c]"), KeyStyle.Render("[?]"), KeyStyle.Render("[q]"))
 			} else {
-				hints = fmt.Sprintf(" %s Parent  %s Child  %s Focus  %s Step #  %s Type  %s Cache  %s Shortcuts  %s Quit",
-					KeyStyle.Render("[p]"), KeyStyle.Render("[n]"), KeyStyle.Render("[l]"), KeyStyle.Render("[/]"), KeyStyle.Render("[t]"), KeyStyle.Render("[c]"), KeyStyle.Render("[?]"), KeyStyle.Render("[q]"))
+				hints = fmt.Sprintf(" %s Focus  %s Step #  %s Type  %s Cache  %s Shortcuts  %s Quit",
+					KeyStyle.Render("[l]"), KeyStyle.Render("[/]"), KeyStyle.Render("[t]"), KeyStyle.Render("[c]"), KeyStyle.Render("[?]"), KeyStyle.Render("[q]"))
 			}
 		} else {
-			hints = fmt.Sprintf(" %s Parent  %s Child  %s List  %s Visual  %s Scroll  %s Cycle  %s Shortcuts  %s Quit",
-				KeyStyle.Render("[p]"), KeyStyle.Render("[n]"), KeyStyle.Render("[h/Esc]"), KeyStyle.Render("[v]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"), KeyStyle.Render("[q]"))
+			hints = fmt.Sprintf(" %s List  %s Visual  %s Scroll  %s Cycle  %s Shortcuts  %s Quit",
+				KeyStyle.Render("[h/Esc]"), KeyStyle.Render("[v]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"), KeyStyle.Render("[q]"))
 		}
 	} else {
 		if len(m.history) > 0 {
