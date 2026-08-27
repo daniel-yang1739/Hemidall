@@ -266,7 +266,7 @@ func (m Model) renderHistoryViewVertical() string {
 			var cardLine2 string
 
 			if isLocal {
-				cardLine1 = fmt.Sprintf("%s└── [%04d] OUTPUT %s", prefix, e.StepIndex, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
+				cardLine1 = fmt.Sprintf("%s└── [%04d] 💻 OUTPUT %s", prefix, e.StepIndex, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
 				toolName := m.getLocalToolName(e)
 				if toolName != "" && toolName != "OUTPUT" {
 					cardLine2 = "        Tool: " + toolName
@@ -519,7 +519,7 @@ func (m Model) renderHistoryViewHorizontal() string {
 			var cardLine2 string
 
 			if isLocal {
-				cardLine1 = fmt.Sprintf("%s└── [%04d] OUTPUT %s", prefix, e.StepIndex, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
+				cardLine1 = fmt.Sprintf("%s└── [%04d] 💻 OUTPUT %s", prefix, e.StepIndex, lipgloss.NewStyle().Foreground(ColorSuccess).Render("(Local)"))
 				toolName := m.getLocalToolName(e)
 				if toolName != "" && toolName != "OUTPUT" {
 					cardLine2 = "        Tool: " + toolName
@@ -777,25 +777,25 @@ func formatShortCache(e core.UnifiedAgentEvent) string {
 func formatStepType(t string) string {
 	switch t {
 	case "USER_INPUT":
-		return "USER_INPUT"
+		return "👤 USER"
 	case "MODEL_RESPONSE":
-		return "MODEL_RESP"
+		return "🤖 MODEL"
 	case "TOOL_CALL":
-		return "TOOL_CALL"
+		return "🛠️ TOOL"
 	case "RUN_COMMAND":
-		return "RUN_CMD"
+		return "💻 RUN_CMD"
 	case "VIEW_FILE":
-		return "VIEW_FILE"
+		return "📄 VIEW_FILE"
 	case "CODE_ACTION":
-		return "CODE_DIFF"
+		return "📝 CODE_DIFF"
 	case "LIST_DIRECTORY":
-		return "LIST_DIR"
+		return "📁 LIST_DIR"
 	case "GENERIC":
-		return "OUTPUT"
+		return "💻 OUTPUT"
 	case "ERROR_MESSAGE":
-		return "ERROR"
+		return "⚠️ ERROR"
 	case "SYSTEM_INIT":
-		return "SYSTEM"
+		return "⚙️ SYSTEM"
 	default:
 		return t
 	}
