@@ -10,6 +10,152 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
+func formatCommas(n int) string {
+	if n < 0 {
+		return "-" + formatCommas(-n)
+	}
+	in := fmt.Sprintf("%d", n)
+	if len(in) <= 3 {
+		return in
+	}
+	var out strings.Builder
+	rem := len(in) % 3
+	if rem > 0 {
+		out.WriteString(in[:rem])
+		if len(in) > rem {
+			out.WriteString(",")
+		}
+	}
+	for i := rem; i < len(in); i += 3 {
+		out.WriteString(in[i : i+3])
+		if i+3 < len(in) {
+			out.WriteString(",")
+		}
+	}
+	return out.String()
+}
+
+func formatTokShort(n int) string {
+	if n >= 1000000 {
+		return fmt.Sprintf("%.2fM", float64(n)/1000000.0)
+	}
+	if n >= 1000 {
+		return fmt.Sprintf("%.1fk", float64(n)/1000.0)
+	}
+	return fmt.Sprintf("%d", n)
+}
+
+func renderKpiCard(title string, value string, sub string, valStyle lipgloss.Style, cardWidth int) string {
+	if cardWidth < 12 {
+		cardWidth = 12
+	}
+	innerWidth := cardWidth - 4 // Account for left+right padding (2) and left+right border (2)
+	if innerWidth < 6 {
+		innerWidth = 6
+	}
+	t := lipgloss.NewStyle().Foreground(ColorMuted).Bold(true).Render(truncateVisualWidth(title, innerWidth))
+	v := valStyle.Bold(true).Render(truncateVisualWidth(value, innerWidth))
+	s := lipgloss.NewStyle().Foreground(ColorMuted).Render(truncateVisualWidth(sub, innerWidth))
+
+	content := fmt.Sprintf("%s\n%s\n%s", t, v, s)
+	return lipgloss.NewStyle().
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderForeground(ColorBorder).
+		Padding(0, 1).
+		Width(innerWidth).
+		Align(lipgloss.Center).
+		Render(content)
+}
+
+func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTokenStats, width int) string {
+	var sb strings.Builder
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("  MULTI-MODEL TOKEN & SAVINGS BREAKDOWN:") + "\n")
+
+	header := fmt.Sprintf("  %-22s %5s %12s %16s %11s %18s %16s",
+		"Model Name", "Turns", "Processed", "Cached (Hit %)", "Uncached", "Effective (Factor)", "Tokens Saved (%)")
+	sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(truncateVisualWidth(header, width)) + "\n")
+
+	for _, m := range models {
+		mName := truncateVisualWidth(m.ModelName, 22)
+		hitStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(m.TotalCached), m.CacheHitRate)
+		effStr := fmt.Sprintf("%s (%s)", formatTokShort(m.EffectiveTokens), m.DiscountLabel)
+		savStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(m.TokensSaved), m.SavingsPercentage)
+
+		line := fmt.Sprintf("  %-22s %5d %12s %16s %11s %18s %16s",
+			mName, m.TurnCount, formatTokShort(m.TotalProcessed), hitStr, formatTokShort(m.TotalNew), effStr, savStr)
+		sb.WriteString(truncateVisualWidth(line, width) + "\n")
+	}
+
+	sep := "  " + strings.Repeat("─", width-4)
+	sb.WriteString(lipgloss.NewStyle().Foreground(ColorBorder).Render(truncateVisualWidth(sep, width)) + "\n")
+
+	totHitStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(total.TotalCached), total.CacheHitRate)
+	totEffStr := fmt.Sprintf("%s (%s)", formatTokShort(total.EffectiveTokens), total.DiscountLabel)
+	totSavStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(total.TokensSaved), total.SavingsPercentage)
+	totLine := fmt.Sprintf("  %-22s %5d %12s %16s %11s %18s %16s",
+		"TOTAL SUMMARY", total.TurnCount, formatTokShort(total.TotalProcessed), totHitStr, formatTokShort(total.TotalNew), totEffStr, totSavStr)
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(truncateVisualWidth(totLine, width)))
+
+	return sb.String()
+}
+
+func renderTrendPanel(series core.TurnTrendSeries, width int) string {
+	var sb strings.Builder
+	pTitle := fmt.Sprintf("📈 MULTI-TURN CONTEXT & CACHE HIT TREND (Last %d Cloud Turns)", len(series.Points))
+	sb.WriteString(TitleStyle.Render(pTitle) + "\n")
+
+	if len(series.Points) == 0 {
+		sb.WriteString("  No cloud turns recorded yet...")
+		return sb.String()
+	}
+
+	labelW := 25
+	badgeW := 16
+	sparkW := width - labelW - badgeW - 4
+	if sparkW < 10 {
+		sparkW = 10
+	}
+
+	var ctxVals, cacheVals, newVals, hitVals []float64
+	for _, p := range series.Points {
+		ctxVals = append(ctxVals, float64(p.TotalTokens))
+		cacheVals = append(cacheVals, float64(p.CachedTokens))
+		newVals = append(newVals, float64(p.NewTokens))
+		hitVals = append(hitVals, p.CacheHitRate)
+	}
+
+	maxCtx := float64(series.MaxContext)
+	if maxCtx <= 0 {
+		maxCtx = 1.0
+	}
+	peakNew := float64(series.PeakNew)
+	if peakNew <= 0 {
+		peakNew = 1.0
+	}
+
+	// Line 1: Context Total
+	s1 := RenderSparkline(ctxVals, maxCtx, sparkW, lipgloss.NewStyle().Foreground(ColorSecondary))
+	b1 := lipgloss.NewStyle().Foreground(ColorMuted).Render(fmt.Sprintf("[Peak: %s]", formatTokShort(series.MaxContext)))
+	sb.WriteString(fmt.Sprintf("  Context Total (Cyan) : %s %s\n", s1, b1))
+
+	// Line 2: Cached Volume
+	s2 := RenderSparkline(cacheVals, maxCtx, sparkW, lipgloss.NewStyle().Foreground(ColorSuccess))
+	b2 := lipgloss.NewStyle().Foreground(ColorMuted).Render(fmt.Sprintf("[Curr: %s]", formatTokShort(series.LatestCached)))
+	sb.WriteString(fmt.Sprintf("  Cached Volume (Green): %s %s\n", s2, b2))
+
+	// Line 3: New Input
+	s3 := RenderSparkline(newVals, peakNew, sparkW, lipgloss.NewStyle().Foreground(ColorHighlight))
+	b3 := lipgloss.NewStyle().Foreground(ColorMuted).Render(fmt.Sprintf("[Peak: %s]", formatTokShort(series.PeakNew)))
+	sb.WriteString(fmt.Sprintf("  New Input     (Orange): %s %s\n", s3, b3))
+
+	// Line 4: Hit Rate %
+	s4 := RenderSparkline(hitVals, 100.0, sparkW, lipgloss.NewStyle().Foreground(ColorSuccess))
+	b4 := lipgloss.NewStyle().Foreground(ColorMuted).Render(fmt.Sprintf("[Avg: %4.1f%%]", series.AvgHitRate))
+	sb.WriteString(fmt.Sprintf("  Hit Rate %%    (Lime) : %s %s", s4, b4))
+
+	return sb.String()
+}
+
 func (m Model) renderDashboardView() string {
 	e := m.latestEvent
 	isPlayback := false
@@ -65,9 +211,45 @@ func (m Model) renderDashboardView() string {
 	}
 	contentWidth := panelInnerWidth - 2 // Account for Padding(0, 1)
 
-	// ==================== PANEL 1: OFFICIAL TELEMETRY & CACHE (TRACK 1) ====================
+	// ==================== PANEL 0: SESSION AGGREGATE & MULTI-MODEL EFFICIENCY (OPTION A) ====================
+	agg := core.ComputeSessionAggregateMetrics(m.history)
+	tot := agg.TotalStats
+
+	var p0 strings.Builder
+	p0.WriteString(TitleStyle.Render("📊 SESSION TOKEN AGGREGATES & MULTI-MODEL EFFICIENCY") + "\n\n")
+
+	// Render 5 KPI Cards
+	numCards := 5
+	cardGap := 1
+	cardWidth := (contentWidth - (numCards-1)*cardGap) / numCards
+	if cardWidth < 14 {
+		cardWidth = 14
+	}
+
+	c1 := renderKpiCard("TOTAL PROCESSED", formatTokShort(tot.TotalProcessed)+" Tok", fmt.Sprintf("%d Cloud Turns", tot.TurnCount), lipgloss.NewStyle().Foreground(ColorLightText), cardWidth)
+	c2 := renderKpiCard("CACHE HIT VOLUME", formatTokShort(tot.TotalCached)+" Tok", fmt.Sprintf("%.1f%% Hit Rate", tot.CacheHitRate), lipgloss.NewStyle().Foreground(ColorSuccess), cardWidth)
+	c3 := renderKpiCard("UNCACHED INBOUND", formatTokShort(tot.TotalNew)+" Tok", fmt.Sprintf("%.1f%% Cold In", 100.0-tot.CacheHitRate), lipgloss.NewStyle().Foreground(ColorHighlight), cardWidth)
+	c4 := renderKpiCard("EFFECTIVE TOKENS", formatTokShort(tot.EffectiveTokens)+" Tok", fmt.Sprintf("%.1f%% of Raw", float64(tot.EffectiveTokens)/float64(max(tot.TotalProcessed, 1))*100.0), lipgloss.NewStyle().Foreground(ColorSecondary), cardWidth)
+	c5 := renderKpiCard("TOKENS SAVED (%)", formatTokShort(tot.TokensSaved)+" Tok", fmt.Sprintf("%.1f%% Net Saved", tot.SavingsPercentage), lipgloss.NewStyle().Foreground(ColorSuccess), cardWidth)
+
+	kpiRow := lipgloss.JoinHorizontal(lipgloss.Top, c1, " ", c2, " ", c3, " ", c4, " ", c5)
+	p0.WriteString(kpiRow + "\n\n")
+
+	// Render Multi-Model Breakdown Table (if height permits or models exist)
+	if len(agg.ModelStats) > 0 {
+		p0.WriteString(renderModelBreakdownTable(agg.ModelStats, tot, contentWidth))
+	}
+
+	panel0Box := PanelStyle.Width(panelInnerWidth).Render(p0.String())
+
+	// ==================== PANEL 0.5: MULTI-TURN CONTEXT & CACHE HIT TREND ====================
+	trend := core.ExtractTurnTrendSeries(m.history, 80)
+	trendContent := renderTrendPanel(trend, contentWidth)
+	panelTrendBox := PanelStyle.Width(panelInnerWidth).Render(trendContent)
+
+	// ==================== PANEL 1: LATEST STEP TELEMETRY & 5-DIMENSION CONTEXT ====================
 	var p1 strings.Builder
-	p1Title := "TRACK 1: OFFICIAL GEMINI TELEMETRY (BILLING GROUND TRUTH)"
+	p1Title := "TRACK 1: OFFICIAL TELEMETRY & STEP CONTEXT ANATOMY"
 	if isPlayback {
 		p1Title = fmt.Sprintf("TRACK 1: OFFICIAL TELEMETRY %s",
 			lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("(PLAYBACK: Step #%d | %d of %d)", e.StepIndex, m.dashboardIdx+1, len(m.history))))
@@ -84,70 +266,37 @@ func (m Model) renderDashboardView() string {
 		timeStr = "N/A"
 	}
 
-	// 5 Comprehensive Points for Track 1
-	p1.WriteString(fmt.Sprintf("  • Backend Model         : %s\n", lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName)))
-	p1.WriteString(fmt.Sprintf("  • Total Active Context  : %s Tokens (%5.1f%% of %dk Window)\n",
-		lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1000))
-	p1.WriteString(fmt.Sprintf("  • Prefix Cache Hit      : %s Tokens (%5.1f%%)  %s\n",
-		BadgeSuccess.Render(fmt.Sprintf("%d", t.CachedTokens)), t.CacheHitRate, cacheBadge))
-	p1.WriteString(fmt.Sprintf("  • New Billable Tokens   : %s Tokens (%5.1f%%)\n",
-		lipgloss.NewStyle().Foreground(ColorHighlight).Render(fmt.Sprintf("%d", t.NewTokens)), 100.0-t.CacheHitRate))
-	p1.WriteString(fmt.Sprintf("  • Response / Event Time : %s  (Step #%03d | Status: %s)",
-		lipgloss.NewStyle().Foreground(ColorLightText).Render(timeStr), e.StepIndex, e.Status))
+	p1.WriteString(fmt.Sprintf("  • Backend Model         : %s  (Step #%03d | Status: %s | %s)\n",
+		lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName), e.StepIndex, e.Status, timeStr))
+	p1.WriteString(fmt.Sprintf("  • Step Active Context   : %s Tokens (%5.1f%% of %dk Window)  %s\n",
+		lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
+	p1.WriteString(fmt.Sprintf("  • 5-Dimension Breakdown : Sys: %d (%.1f%%) | Tools: %d (%.1f%%) | Res: %d (%.1f%%) | Hist: %d (%.1f%%) | Active: %d (%.1f%%)",
+		t.SystemTokens, sysPct, t.ToolsDefTokens, toolsPct, t.ToolResultTokens, resPct, t.HistoryTokens, histPct, t.ActiveTurnTokens+t.ThinkingTokens, activePct))
 
 	panel1Box := PanelStyle.Width(panelInnerWidth).Render(p1.String())
 
-	// ==================== PANEL 2: LOCAL 5-DIMENSION CONTEXT ANATOMY (TRACK 2) ====================
-	var p2 strings.Builder
-	p2Title := TitleStyle.Render("TRACK 2: LOCAL 5-DIMENSION CONTEXT ANATOMY (PAYLOAD ANALYSIS)")
-	p2.WriteString(p2Title + "\n")
-
-	p2.WriteString(fmt.Sprintf("  1. System Instruction : %-8d Tokens (%5.1f%%)  [%s]\n",
-		t.SystemTokens, sysPct, renderColorBar(sysPct, 15, ColorSecondary)))
-	p2.WriteString(fmt.Sprintf("  2. MCP Tools Schema   : %-8d Tokens (%5.1f%%)  [%s]\n",
-		t.ToolsDefTokens, toolsPct, renderColorBar(toolsPct, 15, ColorSecondary)))
-	p2.WriteString(fmt.Sprintf("  3. Tool Results / Diff: %-8d Tokens (%5.1f%%)  [%s]\n",
-		t.ToolResultTokens, resPct, renderColorBar(resPct, 15, ColorHighlight)))
-	p2.WriteString(fmt.Sprintf("  4. Conversation Hist  : %-8d Tokens (%5.1f%%)  [%s]\n",
-		t.HistoryTokens, histPct, renderColorBar(histPct, 15, ColorPrimary)))
-	p2.WriteString(fmt.Sprintf("  5. Active Turn / CoT  : %-8d Tokens (%5.1f%%)  [%s]",
-		t.ActiveTurnTokens+t.ThinkingTokens, activePct, renderColorBar(activePct, 15, ColorWarning)))
-
-	if t.RawLocalAccumulated > total && m.height >= 34 {
-		truncated := t.RawLocalAccumulated - total
-		p2.WriteString(fmt.Sprintf("\n  Raw Log Accumulated   : %d Tokens (%d Tokens Truncated by Cloud Window)",
-			t.RawLocalAccumulated, truncated))
-	}
-
-	panel2Box := PanelStyle.Width(panelInnerWidth).Render(p2.String())
-
-	// ==================== PANEL 3: RECENT LIVE EVENTS (CONTENT-HUGGING ROUNDED BOX) ====================
-	if len(m.history) > 0 || m.height >= 26 {
+	// Responsive vertical layout
+	if m.height >= 38 && len(m.history) > 0 {
 		var p3Lines []string
 		p3Lines = append(p3Lines, TitleStyle.Render("RECENT LIVE EVENTS (Press [Enter] or [2] to inspect history)"))
 
-		maxEventLines := 6
-		if len(m.history) == 0 {
-			p3Lines = append(p3Lines, "  No events recorded yet...")
-		} else {
-			startIdx := len(m.history) - maxEventLines
-			if startIdx < 0 {
-				startIdx = 0
-			}
-			for i := startIdx; i < len(m.history); i++ {
-				ev := m.history[i]
-				typeBadge := fmt.Sprintf("[%03d|%-5s]", ev.StepIndex, shortenType(string(ev.Type)))
-				timeStr := ev.Timestamp.Local().Format("15:04:05")
-				eventLine := fmt.Sprintf("  %s %s  %s", typeBadge, timeStr, ev.Summary)
-				p3Lines = append(p3Lines, truncateVisualWidth(eventLine, contentWidth))
-			}
+		maxEventLines := 4
+		startIdx := len(m.history) - maxEventLines
+		if startIdx < 0 {
+			startIdx = 0
 		}
-
+		for i := startIdx; i < len(m.history); i++ {
+			ev := m.history[i]
+			typeBadge := fmt.Sprintf("[%03d|%-5s]", ev.StepIndex, shortenType(string(ev.Type)))
+			evTimeStr := ev.Timestamp.Local().Format("15:04:05")
+			eventLine := fmt.Sprintf("  %s %s  %s", typeBadge, evTimeStr, ev.Summary)
+			p3Lines = append(p3Lines, truncateVisualWidth(eventLine, contentWidth))
+		}
 		panel3Box := PanelStyle.Width(panelInnerWidth).Render(strings.Join(p3Lines, "\n"))
-		return lipgloss.JoinVertical(lipgloss.Left, panel1Box, panel2Box, panel3Box)
+		return lipgloss.JoinVertical(lipgloss.Left, panel0Box, panelTrendBox, panel1Box, panel3Box)
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left, panel1Box, panel2Box)
+	return lipgloss.JoinVertical(lipgloss.Left, panel0Box, panelTrendBox, panel1Box)
 }
 
 func (m Model) renderHistoryView() string {

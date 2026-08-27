@@ -845,3 +845,79 @@ func TestWidthMeasurement(t *testing.T) {
 	}
 }
 
+func TestDashboardSparklinesAndKpiRendering(t *testing.T) {
+	m := NewModel("test-session-multi-model", false)
+	m.width = 120
+	m.height = 35
+
+	// Add multi-model events to history
+	m.history = append(m.history, core.UnifiedAgentEvent{
+		StepIndex: 1,
+		Scope:     core.ScopeCloudInference,
+		Type:      core.StepTypeModelResponse,
+		Tokens: core.TokenBreakdown{
+			OfficialModel: "gemini-3.7-flash",
+			TotalTokens:   120000,
+			CachedTokens:  100000,
+			NewTokens:     20000,
+			CacheHitRate:  83.3,
+		},
+	})
+	m.history = append(m.history, core.UnifiedAgentEvent{
+		StepIndex: 2,
+		Scope:     core.ScopeCloudInference,
+		Type:      core.StepTypeModelResponse,
+		Tokens: core.TokenBreakdown{
+			OfficialModel: "claude-3.7-sonnet",
+			TotalTokens:   80000,
+			CachedTokens:  70000,
+			NewTokens:     10000,
+			CacheHitRate:  87.5,
+		},
+	})
+	m.latestEvent = m.history[1]
+
+	m.activeView = ViewDashboard
+	viewStr := m.View()
+
+	// 1. Verify Option A KPI Cards are present
+	if !strings.Contains(viewStr, "TOTAL PROCESSED") {
+		t.Error("Dashboard missing TOTAL PROCESSED card")
+	}
+	if !strings.Contains(viewStr, "CACHE HIT VOLUME") {
+		t.Error("Dashboard missing CACHE HIT VOLUME card")
+	}
+	if !strings.Contains(viewStr, "EFFECTIVE TOKENS") {
+		t.Error("Dashboard missing EFFECTIVE TOKENS card")
+	}
+	if !strings.Contains(viewStr, "TOKENS SAVED (%)") {
+		t.Error("Dashboard missing TOKENS SAVED card")
+	}
+
+	// 2. Verify Multi-Model breakdown table shows both models
+	if !strings.Contains(viewStr, "gemini-3.7-flash") {
+		t.Error("Dashboard table missing gemini-3.7-flash row")
+	}
+	if !strings.Contains(viewStr, "claude-3.7-sonnet") {
+		t.Error("Dashboard table missing claude-3.7-sonnet row")
+	}
+	if !strings.Contains(viewStr, "TOTAL SUMMARY") {
+		t.Error("Dashboard table missing TOTAL SUMMARY row")
+	}
+
+	// 3. Verify 4 Trend Sparkline tracks are present
+	if !strings.Contains(viewStr, "Context Total (Cyan)") {
+		t.Error("Dashboard missing Context Total sparkline")
+	}
+	if !strings.Contains(viewStr, "Cached Volume (Green)") {
+		t.Error("Dashboard missing Cached Volume sparkline")
+	}
+	if !strings.Contains(viewStr, "New Input     (Orange)") {
+		t.Error("Dashboard missing New Input sparkline")
+	}
+	if !strings.Contains(viewStr, "Hit Rate %    (Lime)") {
+		t.Error("Dashboard missing Hit Rate sparkline")
+	}
+}
+
+

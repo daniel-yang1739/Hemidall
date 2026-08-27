@@ -115,3 +115,44 @@ func (e UnifiedAgentEvent) IsCloudStep() bool {
 		e.Type == StepTypeModelResponse ||
 		e.Type == StepTypeToolCall
 }
+
+// ModelTokenStats holds aggregate token metrics and effective pricing for a specific model
+type ModelTokenStats struct {
+	ModelName         string  `json:"model_name"`
+	TurnCount         int     `json:"turn_count"`
+	TotalProcessed    int     `json:"total_processed"`
+	TotalCached       int     `json:"total_cached"`
+	TotalNew          int     `json:"total_new"`
+	CacheHitRate      float64 `json:"cache_hit_rate"`
+	DiscountRate      float64 `json:"discount_rate"` // e.g. 0.75 for 75% OFF
+	PriceFactor       float64 `json:"price_factor"`  // e.g. 0.25
+	DiscountLabel     string  `json:"discount_label"` // e.g. "0.25x (75% OFF)"
+	EffectiveTokens   int     `json:"effective_tokens"`
+	TokensSaved       int     `json:"tokens_saved"`
+	SavingsPercentage float64 `json:"savings_percentage"`
+}
+
+// SessionAggregateMetrics holds session-wide aggregate stats across all models and per-model
+type SessionAggregateMetrics struct {
+	TotalStats ModelTokenStats   `json:"total_stats"`
+	ModelStats []ModelTokenStats `json:"model_stats"`
+}
+
+// TurnTrendPoint holds telemetry metrics for a single cloud turn to be plotted in trend sparklines
+type TurnTrendPoint struct {
+	StepIndex    int     `json:"step_index"`
+	TotalTokens  int     `json:"total_tokens"`
+	CachedTokens int     `json:"cached_tokens"`
+	NewTokens    int     `json:"new_tokens"`
+	CacheHitRate float64 `json:"cache_hit_rate"`
+}
+
+// TurnTrendSeries holds the chronological sequence of cloud turns for trend visualization
+type TurnTrendSeries struct {
+	Points       []TurnTrendPoint `json:"points"`
+	MaxContext   int              `json:"max_context"`
+	PeakNew      int              `json:"peak_new"`
+	AvgHitRate   float64          `json:"avg_hit_rate"`
+	LatestCached int              `json:"latest_cached"`
+}
+
