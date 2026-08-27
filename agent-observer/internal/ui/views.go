@@ -73,7 +73,7 @@ func renderBorderlessKpiStrip(tot core.ModelTokenStats, width int) string {
 		row3 := fmt.Sprintf("  %s %s", h3, h4)
 		row4 := fmt.Sprintf("  %s %s", v3, v4)
 
-		return fmt.Sprintf("%s\n%s\n\n%s\n%s", truncateVisualWidth(row1, width), truncateVisualWidth(row2, width), truncateVisualWidth(row3, width), truncateVisualWidth(row4, width))
+		return fmt.Sprintf("%s\n%s\n%s\n%s", truncateVisualWidth(row1, width), truncateVisualWidth(row2, width), truncateVisualWidth(row3, width), truncateVisualWidth(row4, width))
 	}
 
 	// 5-Column Grid for Wide Terminals (>= 100 cols)
@@ -381,17 +381,25 @@ func (m Model) renderDashboardView() string {
 	ctxUsagePct := float64(total) / float64(ctxLimit) * 100.0
 
 	var cacheBadge string
-	switch e.CacheStatus {
-	case "HIT":
-		cacheBadge = BadgeSuccess.Render(fmt.Sprintf("[CACHE HIT %.1f%%]", t.CacheHitRate))
-	case "PARTIAL":
-		cacheBadge = BadgeWarning.Render(fmt.Sprintf("[PARTIAL HIT %.1f%%]", t.CacheHitRate))
-	case "WRITE":
-		cacheBadge = TitleStyle.Render("[CACHE WRITE / INITIAL]")
-	case "EXPIRED":
-		cacheBadge = BadgeDanger.Render("[TTL EXPIRED / COLD START]")
-	default:
-		cacheBadge = BadgeDanger.Render("[CACHE MISS / BROKEN]")
+	if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
+		cacheBadge = lipgloss.NewStyle().Foreground(ColorMuted).Render("[LOCAL OFFLINE / 0 GPU TOK]")
+	} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
+		cacheBadge = lipgloss.NewStyle().Foreground(ColorHighlight).Render("[USER INBOUND / STAGED]")
+	} else if e.IsCompactionStep() || e.Scope == core.ScopeSystemCompaction {
+		cacheBadge = TitleStyle.Render("[CONTEXT RE-ANCHORED]")
+	} else {
+		switch e.CacheStatus {
+		case "HIT":
+			cacheBadge = BadgeSuccess.Render(fmt.Sprintf("[CACHE HIT %.1f%%]", t.CacheHitRate))
+		case "PARTIAL":
+			cacheBadge = BadgeWarning.Render(fmt.Sprintf("[PARTIAL HIT %.1f%%]", t.CacheHitRate))
+		case "WRITE":
+			cacheBadge = TitleStyle.Render("[CACHE WRITE / INITIAL]")
+		case "EXPIRED":
+			cacheBadge = BadgeDanger.Render("[TTL EXPIRED / COLD START]")
+		default:
+			cacheBadge = BadgeDanger.Render("[CACHE MISS / BROKEN]")
+		}
 	}
 
 	panelInnerWidth := m.width - 2
@@ -400,56 +408,94 @@ func (m Model) renderDashboardView() string {
 	}
 	contentWidth := panelInnerWidth - 2 // Account for Padding(0, 1)
 
-	// ==================== PANEL 0: SESSION AGGREGATE & MULTI-MODEL EFFICIENCY (OPTION A) ====================
+	// ==================== PANEL 0: SESSION AGGREGATE & MULTI-MODEL EFFICIENCY ====================
 	agg := core.ComputeSessionAggregateMetrics(m.history)
 	tot := agg.TotalStats
 
 	var p0 strings.Builder
-	p0.WriteString(TitleStyle.Render("SESSION TOKEN AGGREGATES & MULTI-MODEL EFFICIENCY") + "\n\n")
+	p0.WriteString(TitleStyle.Render("SESSION TOKEN AGGREGATES & MULTI-MODEL EFFICIENCY") + "\n")
+	p0.WriteString(renderBorderlessKpiStrip(tot, contentWidth) + "\n")
 
-	p0.WriteString(renderBorderlessKpiStrip(tot, contentWidth) + "\n\n")
-
-	// Render Multi-Model Breakdown Table (if height permits or models exist)
+	// Render Multi-Model Breakdown Table (if models exist)
 	if len(agg.ModelStats) > 0 {
 		p0.WriteString(renderModelBreakdownTable(agg.ModelStats, tot, contentWidth))
 	}
 
 	panel0Box := PanelStyle.Width(panelInnerWidth).Render(p0.String())
 
-	// ==================== PANEL 1: TRACK 1: OFFICIAL CLOUD TELEMETRY ====================
+	// ==================== PANEL 1: TRACK 1: STEP TELEMETRY & CACHE STATUS ====================
 	var p1 strings.Builder
-	p1Title := "TRACK 1: OFFICIAL CLOUD TELEMETRY"
-	if isPlayback {
-		p1Title = fmt.Sprintf("TRACK 1: OFFICIAL CLOUD TELEMETRY %s",
-			lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("(PLAYBACK: Step #%d | %d of %d)", e.StepIndex, m.dashboardIdx+1, len(m.history))))
-	}
-	p1.WriteString(TitleStyle.Render(p1Title) + "\n")
-
-	modelName := t.OfficialModel
-	if modelName == "" {
-		modelName = "gemini-3.7-flash-high"
-	}
-
 	timeStr := e.Timestamp.Local().Format("2006-01-02 15:04:05")
 	if e.Timestamp.IsZero() {
 		timeStr = "N/A"
 	}
 
-	if contentWidth < 80 {
-		p1.WriteString(fmt.Sprintf("  • Backend Model  : %s (Step #%03d)\n",
-			lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(modelName, contentWidth-24)), e.StepIndex))
-		p1.WriteString(fmt.Sprintf("  • Active Context : %s Tok (%4.1f%% of %dk Window) %s\n",
-			lipgloss.NewStyle().Bold(true).Render(formatTokShort(total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
-		p1.WriteString(fmt.Sprintf("  • Cached vs. New : %s Cached (%.1f%%) | %s New\n",
-			formatTokShort(t.CachedTokens), t.CacheHitRate, formatTokShort(t.NewTokens)))
-		p1.WriteString(fmt.Sprintf("  • Status & Time  : Status: %s | %s", e.Status, timeStr))
+	playbackSuffix := ""
+	if isPlayback {
+		playbackSuffix = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf(" (PLAYBACK: Step #%d | %d of %d)", e.StepIndex, m.dashboardIdx+1, len(m.history)))
+	}
+
+	if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
+		p1Title := "TRACK 1: LOCAL EXECUTION STEP (OFFLINE OPERATION)" + playbackSuffix
+		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
+		if contentWidth < 80 {
+			p1.WriteString(fmt.Sprintf("  • Origin         : Local Machine (%s | Step #%03d)\n", e.Type, e.StepIndex))
+			p1.WriteString(fmt.Sprintf("  • Tool Output    : %d Tokens  %s\n", total, cacheBadge))
+			p1.WriteString(fmt.Sprintf("  • Status & Time  : %s | %s", e.Status, timeStr))
+		} else {
+			p1.WriteString(fmt.Sprintf("  • Origin         : Local Host Process (%s | Step #%03d | Status: %s | %s)\n", e.Type, e.StepIndex, e.Status, timeStr))
+			p1.WriteString(fmt.Sprintf("  • Output Payload : %d Tokens (Tool Result Data)  %s\n", total, cacheBadge))
+			p1.WriteString("  • Billing Status : Offline Machine Subprocess (0 GPU Tokens Billed) ➔ Staged for Next Cloud Turn")
+		}
+	} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
+		p1Title := "TRACK 1: USER INTERACTION (CLIENT PROMPT)" + playbackSuffix
+		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
+		if contentWidth < 80 {
+			p1.WriteString(fmt.Sprintf("  • Origin         : Human Client Prompt (Step #%03d)\n", e.StepIndex))
+			p1.WriteString(fmt.Sprintf("  • Prompt Payload : %d Tokens  %s\n", total, cacheBadge))
+			p1.WriteString(fmt.Sprintf("  • Status & Time  : %s | %s", e.Status, timeStr))
+		} else {
+			p1.WriteString(fmt.Sprintf("  • Origin         : Human Client Inbound Intent (Step #%03d | Status: %s | %s)\n", e.StepIndex, e.Status, timeStr))
+			p1.WriteString(fmt.Sprintf("  • Prompt Payload : %d Tokens (Local Inbound Intent)  %s\n", total, cacheBadge))
+			p1.WriteString("  • Billing Status : Inbound Intent ➔ Settled on Next Cloud Inference Turn ☁️")
+		}
+	} else if e.IsCompactionStep() || e.Scope == core.ScopeSystemCompaction {
+		p1Title := "TRACK 1: SYSTEM COMPACTION (CHECKPOINT)" + playbackSuffix
+		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
+		if contentWidth < 80 {
+			p1.WriteString(fmt.Sprintf("  • Event          : Harness Context Compaction (Step #%03d)\n", e.StepIndex))
+			p1.WriteString(fmt.Sprintf("  • Summary Size   : %d Tokens  %s\n", total, cacheBadge))
+			p1.WriteString(fmt.Sprintf("  • Status & Time  : %s | %s", e.Status, timeStr))
+		} else {
+			p1.WriteString(fmt.Sprintf("  • Origin         : Harness Middleware (Sidecar Context GC | Step #%03d | Status: %s | %s)\n", e.StepIndex, e.Status, timeStr))
+			p1.WriteString(fmt.Sprintf("  • Summary Size   : %d Tokens (Replaces ~200k+ Old Historical Tokens)  %s\n", total, cacheBadge))
+			p1.WriteString("  • Action Status  : Injected into Context ➔ Re-anchors Active Window Base for Next Turn")
+		}
 	} else {
-		p1.WriteString(fmt.Sprintf("  • Backend Model        : %s  (Step #%03d | Status: %s | %s)\n",
-			lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName), e.StepIndex, e.Status, timeStr))
-		p1.WriteString(fmt.Sprintf("  • Step Active Context  : %s Tokens (%5.1f%% of %dk Window)  %s\n",
-			lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
-		p1.WriteString(fmt.Sprintf("  • Cache Optimization   : %s Tokens Cached (%.1f%% Hit) | %s Tokens Uncached New (%.1f%% Cold)",
-			formatTokShort(t.CachedTokens), t.CacheHitRate, formatTokShort(t.NewTokens), 100.0-t.CacheHitRate))
+		p1Title := "TRACK 1: OFFICIAL CLOUD TELEMETRY" + playbackSuffix
+		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
+
+		modelName := t.OfficialModel
+		if modelName == "" {
+			modelName = "gemini-3.7-flash-high"
+		}
+
+		if contentWidth < 80 {
+			p1.WriteString(fmt.Sprintf("  • Backend Model  : %s (Step #%03d)\n",
+				lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(modelName, contentWidth-24)), e.StepIndex))
+			p1.WriteString(fmt.Sprintf("  • Active Context : %s Tok (%4.1f%% of %dk Window) %s\n",
+				lipgloss.NewStyle().Bold(true).Render(formatTokShort(total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
+			p1.WriteString(fmt.Sprintf("  • Cached vs. New : %s Cached (%.1f%%) | %s New\n",
+				formatTokShort(t.CachedTokens), t.CacheHitRate, formatTokShort(t.NewTokens)))
+			p1.WriteString(fmt.Sprintf("  • Status & Time  : Status: %s | %s", e.Status, timeStr))
+		} else {
+			p1.WriteString(fmt.Sprintf("  • Backend Model        : %s  (Step #%03d | Status: %s | %s)\n",
+				lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName), e.StepIndex, e.Status, timeStr))
+			p1.WriteString(fmt.Sprintf("  • Step Active Context  : %s Tokens (%5.1f%% of %dk Window)  %s\n",
+				lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
+			p1.WriteString(fmt.Sprintf("  • Cache Optimization   : %s Tokens Cached (%.1f%% Hit) | %s Tokens Uncached New (%.1f%% Cold)",
+				formatTokShort(t.CachedTokens), t.CacheHitRate, formatTokShort(t.NewTokens), 100.0-t.CacheHitRate))
+		}
 	}
 
 	panel1Box := PanelStyle.Width(panelInnerWidth).Render(p1.String())
@@ -489,27 +535,6 @@ func (m Model) renderDashboardView() string {
 	}
 
 	panel2Box := PanelStyle.Width(panelInnerWidth).Render(p2.String())
-
-	// Responsive vertical layout: include Panel 3 if height allows
-	if m.height >= 38 && len(m.history) > 0 {
-		var p3Lines []string
-		p3Lines = append(p3Lines, TitleStyle.Render("RECENT LIVE EVENTS (Press [Enter] or [2] to inspect history)"))
-
-		maxEventLines := 4
-		startIdx := len(m.history) - maxEventLines
-		if startIdx < 0 {
-			startIdx = 0
-		}
-		for i := startIdx; i < len(m.history); i++ {
-			ev := m.history[i]
-			typeBadge := fmt.Sprintf("[%03d|%-5s]", ev.StepIndex, shortenType(string(ev.Type)))
-			evTimeStr := ev.Timestamp.Local().Format("15:04:05")
-			eventLine := fmt.Sprintf("  %s %s  %s", typeBadge, evTimeStr, ev.Summary)
-			p3Lines = append(p3Lines, truncateVisualWidth(eventLine, contentWidth))
-		}
-		panel3Box := PanelStyle.Width(panelInnerWidth).Render(strings.Join(p3Lines, "\n"))
-		return lipgloss.JoinVertical(lipgloss.Left, panel0Box, panel1Box, panel2Box, panel3Box)
-	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, panel0Box, panel1Box, panel2Box)
 }
