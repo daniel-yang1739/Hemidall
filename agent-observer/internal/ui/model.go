@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -66,6 +67,7 @@ type Model struct {
 	historyCacheFilter    CacheFilter
 	historyStepQuery      string
 	isHistorySearching    bool
+	historySearchErr      string
 }
 
 // TypeFilter defines step category filter in History Explorer
@@ -161,7 +163,7 @@ func (m *Model) cycleCacheFilter() {
 }
 
 func (m Model) getFilteredHistory() []core.UnifiedAgentEvent {
-	if m.historyTypeFilter == TypeFilterAll && m.historyCacheFilter == CacheFilterAll && m.historyStepQuery == "" {
+	if m.historyTypeFilter == TypeFilterAll && m.historyCacheFilter == CacheFilterAll {
 		return m.history
 	}
 
@@ -172,12 +174,6 @@ func (m Model) getFilteredHistory() []core.UnifiedAgentEvent {
 		}
 		if !matchCacheFilter(e, m.historyCacheFilter) {
 			continue
-		}
-		if m.historyStepQuery != "" {
-			stepStr := fmt.Sprintf("%d", e.StepIndex)
-			if !strings.Contains(stepStr, m.historyStepQuery) {
-				continue
-			}
 		}
 		result = append(result, e)
 	}
@@ -1064,33 +1060,68 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			filtered := m.getFilteredHistory()
 
-			// Search mode for step numbers
+			// Search mode for jump-to-step
 			if m.isHistorySearching {
 				switch key {
 				case "esc":
 					m.isHistorySearching = false
 					m.historyStepQuery = ""
-					m.selectedIdx = 0
-					m.historyOffset = 0
+					m.historySearchErr = ""
 					return m, nil
 				case "enter":
 					m.isHistorySearching = false
+					query := strings.TrimSpace(m.historyStepQuery)
+					if query != "" {
+						targetStep, err := strconv.Atoi(query)
+						found := false
+						if err == nil {
+							for i, e := range filtered {
+								if e.StepIndex == targetStep {
+									m.selectedIdx = len(filtered) - 1 - i
+									m.historyOffset = m.selectedIdx - 2
+									if m.historyOffset < 0 {
+										m.historyOffset = 0
+									}
+									m.historySearchErr = ""
+									found = true
+									break
+								}
+							}
+						}
+						if !found {
+							lowerQ := strings.ToLower(query)
+							for i, e := range filtered {
+								if strings.Contains(strings.ToLower(e.Summary), lowerQ) ||
+									strings.Contains(strings.ToLower(string(e.Type)), lowerQ) {
+									m.selectedIdx = len(filtered) - 1 - i
+									m.historyOffset = m.selectedIdx - 2
+									if m.historyOffset < 0 {
+										m.historyOffset = 0
+									}
+									m.historySearchErr = ""
+									found = true
+									break
+								}
+							}
+						}
+						if !found {
+							m.historySearchErr = fmt.Sprintf("Step '%s' not found", query)
+						} else {
+							m.historyStepQuery = ""
+						}
+					}
 					return m, nil
 				case "backspace":
 					if len(m.historyStepQuery) > 0 {
 						m.historyStepQuery = m.historyStepQuery[:len(m.historyStepQuery)-1]
-						m.selectedIdx = 0
-						m.historyOffset = 0
 					}
+					m.historySearchErr = ""
 					return m, nil
 				default:
 					if len(msg.Runes) > 0 {
 						r := msg.Runes[0]
-						if r >= '0' && r <= '9' {
-							m.historyStepQuery += string(r)
-							m.selectedIdx = 0
-							m.historyOffset = 0
-						}
+						m.historyStepQuery += string(r)
+						m.historySearchErr = ""
 					}
 					return m, nil
 				}
@@ -1191,6 +1222,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.focusPane = FocusDetail
 				}
 			case "esc", "left", "h":
+				m.historySearchErr = ""
 				if m.focusPane == FocusDetail {
 					m.focusPane = FocusList
 					m.isVisualMode = false
@@ -1202,6 +1234,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.historyOffset = 0
 				}
 			case "up", "k":
+				m.historySearchErr = ""
 				if m.focusPane == FocusList {
 					if m.selectedIdx > 0 {
 						m.selectedIdx--
@@ -1216,6 +1249,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			case "down", "j":
+				m.historySearchErr = ""
 				if m.focusPane == FocusList {
 					if m.selectedIdx < len(filtered)-1 {
 						m.selectedIdx++

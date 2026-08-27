@@ -360,7 +360,7 @@ func TestHistoryFilteringAndStepSearch(t *testing.T) {
 		t.Fatalf("Expected reset to All filters, got T:%v C:%v", m.historyTypeFilter, m.historyCacheFilter)
 	}
 
-	// 5. Step Search: press '/' then type '14'
+	// 5. Jump-to-Step Search: press '/' then type '14'
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
 	m = updated.(Model)
 	if !m.isHistorySearching {
@@ -377,24 +377,46 @@ func TestHistoryFilteringAndStepSearch(t *testing.T) {
 		t.Fatalf("Expected historyStepQuery='14', got '%s'", m.historyStepQuery)
 	}
 
-	// Filtered history should match step 14 only
+	// Step list remains full during typing (not destructive filter)
 	filtered = m.getFilteredHistory()
-	if len(filtered) != 1 || filtered[0].StepIndex != 14 {
-		t.Fatalf("Expected 1 filtered event for step 14, got %v", filtered)
+	if len(filtered) == 0 {
+		t.Fatal("Expected full history preserved during typing")
 	}
 
-	// Press Enter to confirm search
+	// Press Enter to confirm jump
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(Model)
 	if m.isHistorySearching {
 		t.Fatal("Expected isHistorySearching=false after pressing Enter")
 	}
 
-	// Press Esc to clear search query
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	// Verify cursor jumped to step 14
+	currentStep := filtered[len(filtered)-1-m.selectedIdx]
+	if currentStep.StepIndex != 14 {
+		t.Fatalf("Expected cursor to jump to step 14, got step %d (selectedIdx=%d)", currentStep.StepIndex, m.selectedIdx)
+	}
+
+	// 6. Test Non-existent Step Jump Error
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
 	m = updated.(Model)
-	if m.historyStepQuery != "" {
-		t.Fatalf("Expected empty historyStepQuery after Esc, got '%s'", m.historyStepQuery)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("9")})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("9")})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("9")})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+
+	if m.historySearchErr == "" {
+		t.Fatal("Expected historySearchErr for non-existent step 999")
+	}
+
+	// Moving cursor clears error
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	m = updated.(Model)
+	if m.historySearchErr != "" {
+		t.Fatalf("Expected historySearchErr cleared after navigation, got '%s'", m.historySearchErr)
 	}
 }
 

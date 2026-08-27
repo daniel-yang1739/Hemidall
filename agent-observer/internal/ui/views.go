@@ -611,8 +611,12 @@ func (m Model) renderHistoryViewVertical() string {
 		if m.isHistorySearching {
 			cursorChar = "█"
 		}
-		filterBox := fmt.Sprintf("Filter: [#%s%s]", m.historyStepQuery, lipgloss.NewStyle().Foreground(ColorHighlight).Render(cursorChar))
-		leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(truncateVisualWidth(filterBox, topLeftContentWidth)))
+		jumpBox := fmt.Sprintf("Jump: [#%s%s]", m.historyStepQuery, lipgloss.NewStyle().Foreground(ColorHighlight).Render(cursorChar))
+		leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(truncateVisualWidth(jumpBox, topLeftContentWidth)))
+		leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", topLeftContentWidth)))
+	} else if m.historySearchErr != "" {
+		errBox := lipgloss.NewStyle().Foreground(ColorDanger).Render(fmt.Sprintf("❌ %s", m.historySearchErr))
+		leftLines = append(leftLines, truncateVisualWidth(errBox, topLeftContentWidth))
 		leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", topLeftContentWidth)))
 	}
 
@@ -823,8 +827,12 @@ func (m Model) renderHistoryViewHorizontal() string {
 		if m.isHistorySearching {
 			cursorChar = "█"
 		}
-		filterBox := fmt.Sprintf("Filter: [#%s%s]", m.historyStepQuery, lipgloss.NewStyle().Foreground(ColorHighlight).Render(cursorChar))
-		leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(truncateVisualWidth(filterBox, listContentWidth)))
+		jumpBox := fmt.Sprintf("Jump: [#%s%s]", m.historyStepQuery, lipgloss.NewStyle().Foreground(ColorHighlight).Render(cursorChar))
+		leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(truncateVisualWidth(jumpBox, listContentWidth)))
+		leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", listContentWidth)))
+	} else if m.historySearchErr != "" {
+		errBox := lipgloss.NewStyle().Foreground(ColorDanger).Render(fmt.Sprintf("❌ %s", m.historySearchErr))
+		leftLines = append(leftLines, truncateVisualWidth(errBox, listContentWidth))
 		leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", listContentWidth)))
 	}
 
