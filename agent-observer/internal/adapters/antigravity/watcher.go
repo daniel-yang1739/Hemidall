@@ -210,27 +210,25 @@ func (w *Watcher) parseLine(line string) (core.UnifiedAgentEvent, error) {
 		summary = "📜 System: Loaded Conversation History"
 	case "RUN_COMMAND":
 		stepType = core.StepTypeRunCommand
-		summary = fmt.Sprintf("💻 Terminal Output: %s", truncate(raw.Content, 50))
+		summary = cleanToolOutputSnippet(raw.Content, 60)
 	case "VIEW_FILE":
 		stepType = core.StepTypeViewFile
-		summary = fmt.Sprintf("📄 File Content Read: %s", truncate(raw.Content, 50))
+		summary = cleanToolOutputSnippet(raw.Content, 60)
 	case "CODE_ACTION":
 		stepType = core.StepTypeCodeAction
-		summary = fmt.Sprintf("✏️  Code Action Diff: %s", truncate(raw.Content, 50))
+		summary = cleanToolOutputSnippet(raw.Content, 60)
 	case "LIST_DIRECTORY":
 		stepType = core.StepTypeListDirectory
-		summary = fmt.Sprintf("📁 Directory Listing: %s", truncate(raw.Content, 50))
+		summary = cleanToolOutputSnippet(raw.Content, 60)
 	case "ASK_QUESTION":
 		stepType = core.StepTypeAskQuestion
-		summary = fmt.Sprintf("❓ Interactive Question: %s", truncate(raw.Content, 50))
+		summary = cleanToolOutputSnippet(raw.Content, 60)
 	case "GENERIC":
 		stepType = core.StepTypeGeneric
-		clean := strings.TrimSpace(raw.Content)
-		summary = fmt.Sprintf("💻 Output: %s", truncate(clean, 50))
+		summary = cleanToolOutputSnippet(raw.Content, 60)
 	case "ERROR_MESSAGE":
 		stepType = core.StepTypeError
-		clean := strings.TrimSpace(raw.Content)
-		summary = fmt.Sprintf("❌ Error: %s", truncate(clean, 50))
+		summary = cleanToolOutputSnippet(raw.Content, 60)
 	default:
 		stepType = core.StepType(raw.Type)
 		summary = fmt.Sprintf("⚙️  %s (%s)", raw.Type, raw.Source)
@@ -285,4 +283,30 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return string(runes[:maxLen-3]) + "..."
+}
+
+func cleanToolOutputSnippet(content string, maxLen int) string {
+	lines := strings.Split(content, "\n")
+	var meaningful []string
+	for _, line := range lines {
+		l := strings.TrimSpace(line)
+		if l == "" {
+			continue
+		}
+		if strings.HasPrefix(l, "Created At:") || strings.HasPrefix(l, "Completed At:") ||
+			strings.HasPrefix(l, "File Path:") || strings.HasPrefix(l, "Total Lines:") ||
+			strings.HasPrefix(l, "Total Bytes:") || strings.HasPrefix(l, "Showing lines") ||
+			strings.HasPrefix(l, "The command exited with code") || strings.HasPrefix(l, "Output:") {
+			continue
+		}
+		meaningful = append(meaningful, l)
+		if len(meaningful) >= 3 {
+			break
+		}
+	}
+	if len(meaningful) == 0 {
+		return truncate(content, maxLen)
+	}
+	joined := strings.Join(meaningful, " ")
+	return truncate(joined, maxLen)
 }
