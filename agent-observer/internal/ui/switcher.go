@@ -25,8 +25,8 @@ func (m Model) renderSessionSwitcherModal() string {
 	if modalWidth > 116 {
 		modalWidth = 116
 	}
-	if modalWidth < 46 {
-		modalWidth = 46
+	if modalWidth < 44 {
+		modalWidth = 44
 	}
 
 	modalInnerWidth := modalWidth - 4
@@ -41,11 +41,7 @@ func (m Model) renderSessionSwitcherModal() string {
 
 	var contentLines []string
 
-	// 1. Modal Title
-	titleText := "SWITCH AGENT SESSION [Ctrl+P]"
-	contentLines = append(contentLines, TitleStyle.Render(truncateVisualWidth(titleText, contentWidth)))
-
-	// 2. Real Visual Tabs for AI Agent Types
+	// 1. Real Visual Tabs for AI Agent Types (Identical to Main Header Tabs)
 	var agyCount, claudeCount, opencodeCount int
 	for _, s := range m.availableSessions {
 		switch s.AgentType {
@@ -58,49 +54,46 @@ func (m Model) renderSessionSwitcherModal() string {
 		}
 	}
 
-	tabAStyle := lipgloss.NewStyle().Foreground(ColorMuted)
-	tabCStyle := lipgloss.NewStyle().Foreground(ColorMuted)
-	tabOStyle := lipgloss.NewStyle().Foreground(ColorMuted)
-
-	tabAText := fmt.Sprintf(" Antigravity (%d) ", agyCount)
-	tabCText := fmt.Sprintf(" Claude Code (%d) ", claudeCount)
-	tabOText := fmt.Sprintf(" OpenCode (%d) ", opencodeCount)
+	tab1 := lipgloss.NewStyle().Foreground(ColorMuted).Render(fmt.Sprintf(" [1] Antigravity (%d) ", agyCount))
+	tab2 := lipgloss.NewStyle().Foreground(ColorMuted).Render(fmt.Sprintf(" [2] Claude Code (%d) ", claudeCount))
+	tab3 := lipgloss.NewStyle().Foreground(ColorMuted).Render(fmt.Sprintf(" [3] OpenCode (%d) ", opencodeCount))
 
 	switch m.selectedAgentTab {
 	case core.AgentTypeClaudeCode:
-		tabCText = fmt.Sprintf("[%s]", strings.TrimSpace(tabCText))
-		tabCStyle = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg)
+		tab2 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(fmt.Sprintf(" [2] Claude Code (%d) ", claudeCount))
 	case core.AgentTypeOpenCode:
-		tabOText = fmt.Sprintf("[%s]", strings.TrimSpace(tabOText))
-		tabOStyle = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg)
+		tab3 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(fmt.Sprintf(" [3] OpenCode (%d) ", opencodeCount))
 	default:
-		tabAText = fmt.Sprintf("[%s]", strings.TrimSpace(tabAText))
-		tabAStyle = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg)
+		tab1 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(fmt.Sprintf(" [1] Antigravity (%d) ", agyCount))
 	}
 
-	tabA := tabAStyle.Render(tabAText)
-	tabC := tabCStyle.Render(tabCText)
-	tabO := tabOStyle.Render(tabOText)
-	tabsLine := tabA + "   " + tabC + "   " + tabO
+	leftTabs := tab1 + " " + tab2 + " " + tab3
+	tabHint := lipgloss.NewStyle().Foreground(ColorHighlight).Render("[[ / ]] Cycle Tab")
+	gapW := contentWidth - lipgloss.Width(leftTabs) - lipgloss.Width(tabHint)
+	if gapW < 1 {
+		gapW = 1
+	}
+	tabsLine := leftTabs + strings.Repeat(" ", gapW) + tabHint
 	contentLines = append(contentLines, lipgloss.NewStyle().MaxWidth(contentWidth).Render(tabsLine))
 
-	// 3. Search Input Box
+	// 2. Search Filter Input Box
 	queryDisplay := m.sessionSearchQuery
 	cursorChar := "█"
 	inputBox := fmt.Sprintf("Filter: [%s%s] (Type to filter by path, hash, or prompt keywords)", queryDisplay, lipgloss.NewStyle().Foreground(ColorHighlight).Render(cursorChar))
 	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(truncateVisualWidth(inputBox, contentWidth)))
 	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", contentWidth)))
 
-	// 4. Body Content (Dual Pane vs Single Pane)
-	bodyHeight := modalHeight - 7
-	if bodyHeight < 4 {
-		bodyHeight = 4
+	// 3. Body Content (Dual-Column vs Vertical-Stacked Inspector)
+	bodyHeight := modalHeight - 5
+	if bodyHeight < 5 {
+		bodyHeight = 5
 	}
 
 	sessions := m.filteredSessions
-	isDualPane := contentWidth >= 76
+	isWide := contentWidth >= 76
 
-	if isDualPane {
+	if isWide {
+		// ==================== DUAL-COLUMN LAYOUT (Wide Screen) ====================
 		leftWidth := (contentWidth - 3) * 44 / 100
 		if leftWidth < 32 {
 			leftWidth = 32
@@ -119,7 +112,7 @@ func (m Model) renderSessionSwitcherModal() string {
 
 		if len(sessions) == 0 {
 			leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  No matching sessions."))
-			leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  Press [ / ] for tabs."))
+			leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  Press [ / ] for other tabs."))
 		} else {
 			startIdx := m.switcherSelectedIdx - (maxCards / 2)
 			if startIdx < 0 {
@@ -153,13 +146,13 @@ func (m Model) renderSessionSwitcherModal() string {
 					agentBadge = "[OPEN]"
 				}
 
-				cardStyle1 := DimRowStyle
+				cardStyle1 := lipgloss.NewStyle().Foreground(ColorLightText)
 				cardStyle2 := lipgloss.NewStyle().Foreground(ColorMuted)
 
 				if isSelected {
 					prefix = "> "
-					cardStyle1 = SelectedRowStyle
-					cardStyle2 = lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Background(ColorDarkBg)
+					cardStyle1 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary)
+					cardStyle2 = lipgloss.NewStyle().Foreground(ColorLightText)
 				} else if isActive {
 					cardStyle1 = lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess)
 				}
@@ -170,11 +163,9 @@ func (m Model) renderSessionSwitcherModal() string {
 					statusTag = " | [ACTIVE]"
 				}
 
-				// Line 1: Prefix + Badge + ShortPath + (#Hash)
 				line1 := fmt.Sprintf("%s%s %s (#%s)", prefix, agentBadge, s.ShortPath, shortHash)
 				leftLines = append(leftLines, cardStyle1.Render(truncateVisualWidth(line1, leftWidth)))
 
-				// Line 2: Steps + Size + Relative Time + Status
 				line2 := fmt.Sprintf("    %d steps | %.1fMB | %s%s", s.StepCount, s.SizeMB, relTime, statusTag)
 				leftLines = append(leftLines, cardStyle2.Render(truncateVisualWidth(line2, leftWidth)))
 			}
@@ -241,7 +232,6 @@ func (m Model) renderSessionSwitcherModal() string {
 		// Join Left and Right with Vertical Divider
 		for i := 0; i < bodyHeight; i++ {
 			lL := truncateVisualWidth(leftLines[i], leftWidth)
-			// Pad lL to leftWidth
 			padL := leftWidth - lipgloss.Width(lL)
 			if padL > 0 {
 				lL += strings.Repeat(" ", padL)
@@ -251,15 +241,12 @@ func (m Model) renderSessionSwitcherModal() string {
 			contentLines = append(contentLines, combined)
 		}
 	} else {
-		// Single Pane Fallback for narrow windows
-		maxCards := bodyHeight / 2
-		if maxCards < 1 {
-			maxCards = 1
-		}
-
+		// ==================== VERTICAL-STACKED LAYOUT (Narrow / Half Screen) ====================
 		if len(sessions) == 0 {
-			contentLines = append(contentLines, "  No matching sessions found.")
+			contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  No matching sessions."))
+			contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  Press [ / ] for other tabs."))
 		} else {
+			maxCards := 2
 			startIdx := m.switcherSelectedIdx - (maxCards / 2)
 			if startIdx < 0 {
 				startIdx = 0
@@ -277,27 +264,88 @@ func (m Model) renderSessionSwitcherModal() string {
 				s := sessions[i]
 				isActive := (s.SessionID == m.sessionID)
 				isSelected := (i == m.switcherSelectedIdx)
+
 				prefix := "  "
-				statusTag := ""
+				shortHash := s.SessionID
+				if len(shortHash) > 8 {
+					shortHash = shortHash[:8]
+				}
+
+				agentBadge := "[AGY]"
+				switch s.AgentType {
+				case core.AgentTypeClaudeCode:
+					agentBadge = "[CLAUDE]"
+				case core.AgentTypeOpenCode:
+					agentBadge = "[OPEN]"
+				}
+
+				cardStyle1 := lipgloss.NewStyle().Foreground(ColorLightText)
+				cardStyle2 := lipgloss.NewStyle().Foreground(ColorMuted)
+
 				if isSelected {
 					prefix = "> "
+					cardStyle1 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary)
+					cardStyle2 = lipgloss.NewStyle().Foreground(ColorLightText)
+				} else if isActive {
+					cardStyle1 = lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess)
 				}
+
+				relTime := formatRelativeTime(s.LastModified)
+				statusTag := ""
 				if isActive {
-					statusTag = " [ACTIVE]"
+					statusTag = " | [ACTIVE]"
 				}
-				line1 := fmt.Sprintf("%s[%s] %s (%d steps)%s", prefix, s.AgentType, s.ShortPath, s.StepCount, statusTag)
-				line2 := fmt.Sprintf("    %s | %s", formatRelativeTime(s.LastModified), s.InitialGoal)
-				contentLines = append(contentLines, truncateVisualWidth(line1, contentWidth))
-				contentLines = append(contentLines, truncateVisualWidth(line2, contentWidth))
+
+				line1 := fmt.Sprintf("%s%s %s (#%s)", prefix, agentBadge, s.ShortPath, shortHash)
+				line2 := fmt.Sprintf("    %d steps | %.1fMB | %s%s", s.StepCount, s.SizeMB, relTime, statusTag)
+				contentLines = append(contentLines, cardStyle1.Render(truncateVisualWidth(line1, contentWidth)))
+				contentLines = append(contentLines, cardStyle2.Render(truncateVisualWidth(line2, contentWidth)))
+			}
+		}
+
+		// Horizontal Divider
+		contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", contentWidth)))
+
+		// Bottom Live Inspector
+		if len(sessions) > 0 && m.switcherSelectedIdx >= 0 && m.switcherSelectedIdx < len(sessions) {
+			s := sessions[m.switcherSelectedIdx]
+			contentLines = append(contentLines, TitleStyle.Render(truncateVisualWidth("[INITIAL GOAL / FIRST PROMPT]", contentWidth)))
+			goalText := s.InitialGoal
+			if strings.TrimSpace(goalText) == "" {
+				goalText = "(No initial prompt)"
+			}
+			goalWrapped := wrapVisualLines(goalText, contentWidth)
+			if len(goalWrapped) > 2 {
+				goalWrapped = append(goalWrapped[:1], "...")
+			}
+			for _, gl := range goalWrapped {
+				contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(gl))
+			}
+
+			contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", contentWidth)))
+			contentLines = append(contentLines, TitleStyle.Render(truncateVisualWidth("[LATEST PROGRESS / LAST ACTION]", contentWidth)))
+			lastText := s.LastPrompt
+			if strings.TrimSpace(lastText) == "" {
+				lastText = "(No recent action)"
+			}
+			lastWrapped := wrapVisualLines(lastText, contentWidth)
+			for _, ll := range lastWrapped {
+				if len(contentLines) >= modalHeight-2 {
+					break
+				}
+				contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(ll))
 			}
 		}
 
 		for len(contentLines) < modalHeight-2 {
 			contentLines = append(contentLines, "")
 		}
+		if len(contentLines) > modalHeight-2 {
+			contentLines = contentLines[:modalHeight-2]
+		}
 	}
 
-	// 5. Modal Footer / Keybindings
+	// 4. Modal Footer / Keybindings
 	contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", contentWidth)))
 	footerHints := fmt.Sprintf(" %s Move  %s Attach  %s Tab  %s Cancel",
 		KeyStyle.Render("[Ctrl+j/k, ↑/↓]"), KeyStyle.Render("[Enter]"), KeyStyle.Render("[[ / ]]"), KeyStyle.Render("[Esc]"))
@@ -305,8 +353,7 @@ func (m Model) renderSessionSwitcherModal() string {
 
 	modalBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorHighlight).
-		Background(ColorDarkBg).
+		BorderForeground(ColorSecondary).
 		Padding(0, 1).
 		Width(modalInnerWidth).
 		Render(strings.Join(contentLines, "\n"))

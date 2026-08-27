@@ -269,8 +269,11 @@ func TestSessionSwitcherModalRenderingAndFilter(t *testing.T) {
 	}
 
 	view := m.View()
-	if !strings.Contains(view, "SWITCH AGENT SESSION") {
-		t.Errorf("Expected modal title 'SWITCH AGENT SESSION' in view, got: %s", view)
+	if !strings.Contains(view, "Antigravity") {
+		t.Errorf("Expected tab 'Antigravity' in view, got: %s", view)
+	}
+	if !strings.Contains(view, "[1] Antigravity") {
+		t.Errorf("Expected active tab '[1] Antigravity' in view, got: %s", view)
 	}
 
 	// Test Ctrl+P toggle
@@ -292,6 +295,42 @@ func TestSessionSwitcherModalRenderingAndFilter(t *testing.T) {
 	m = updatedModel.(Model)
 	if m.sessionSearchQuery != "aa72" {
 		t.Errorf("Expected query 'aa72', got '%s'", m.sessionSearchQuery)
+	}
+}
+
+func TestSessionSwitcherHalfScreenVerticalStacking(t *testing.T) {
+	m := NewModel("test-session-1", true)
+	// Half-screen / narrow terminal width (60 cols)
+	m.width = 60
+	m.height = 24
+
+	m.availableSessions = []core.SessionInfo{
+		{
+			AgentType:    core.AgentTypeAntigravity,
+			SessionID:    "session-narrow-1",
+			WorkspaceDir: "/Users/test/Documents/self/narrow-proj",
+			ShortPath:    "self/narrow-proj",
+			InitialGoal:  "Refactor CLI in narrow terminal",
+			LastPrompt:   "Fix layout bugs",
+			StepCount:    20,
+			LastModified: time.Now(),
+		},
+	}
+	m.selectedAgentTab = core.AgentTypeAntigravity
+	m.filteredSessions = filterSessions(m.availableSessions, "", m.selectedAgentTab)
+	m.switcherSelectedIdx = 0
+
+	view := m.View()
+
+	// In narrow mode, it should render vertical stacked layout with both Goal and Latest Progress
+	if !strings.Contains(view, "self/narrow-proj") {
+		t.Errorf("Expected short path 'self/narrow-proj' in narrow view, got: %s", view)
+	}
+	if !strings.Contains(view, "INITIAL GOAL") {
+		t.Errorf("Expected 'INITIAL GOAL' in narrow stacked view, got: %s", view)
+	}
+	if !strings.Contains(view, "LATEST PROGRESS") {
+		t.Errorf("Expected 'LATEST PROGRESS' in narrow stacked view, got: %s", view)
 	}
 }
 
