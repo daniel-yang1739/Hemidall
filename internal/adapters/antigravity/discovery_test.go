@@ -52,3 +52,18 @@ func TestCleanModelNameAndExtraction(t *testing.T) {
 	}
 }
 
+func TestGetLatestActiveSession(t *testing.T) {
+	latest, err := GetLatestActiveSession()
+	if err != nil {
+		t.Logf("GetLatestActiveSession info (no sessions on disk): %v", err)
+		return
+	}
+	if latest.SessionID == "" {
+		t.Fatalf("Expected non-empty SessionID from GetLatestActiveSession, got empty")
+	}
+	if latest.LogPath == "" {
+		t.Fatalf("Expected non-empty LogPath from GetLatestActiveSession, got empty")
+	}
+	t.Logf("✅ Latest session detected: ID=%s, LogPath=%s, Steps=%d", latest.SessionID, latest.LogPath, latest.StepCount)
+}
+

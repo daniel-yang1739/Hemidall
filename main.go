@@ -29,11 +29,11 @@ func main() {
 	homeDir, _ := os.UserHomeDir()
 	defaultDBPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "conversations", defaultSessionID+".db")
 
-	filePath := flag.String("file", defaultTranscriptPath, "Path to the agent transcript_full.jsonl file")
-	dbPath := flag.String("db", defaultDBPath, "Path to SQLite conversation database (for official Gemini telemetry)")
+	filePath := flag.String("file", "", "Path to the agent transcript_full.jsonl file (leave empty for auto-detection)")
+	dbPath := flag.String("db", "", "Path to SQLite conversation database (leave empty for auto-detection)")
 	port := flag.Int("port", 8080, "HTTP server port for dashboard & health check")
 	adapterName := flag.String("adapter", "antigravity", "Adapter to use (antigravity, generic_jsonl)")
-	sessionID := flag.String("session", defaultSessionID, "Session ID to track")
+	sessionID := flag.String("session", "", "Session ID to track (leave empty for auto-detection of latest active session)")
 	plainMode := flag.Bool("plain", false, "Use plain scrolling log mode instead of full-screen interactive TUI")
 	flag.Parse()
 
@@ -43,7 +43,33 @@ func main() {
 			sessionPassed = true
 		}
 	})
-	openSwitcherOnStart := !sessionPassed
+
+	targetSessionID := *sessionID
+	targetFilePath := *filePath
+	targetDBPath := *dbPath
+
+	// Auto-detect latest active session if session flag not passed
+	if !sessionPassed || targetSessionID == "" {
+		if latest, err := antigravity.GetLatestActiveSession(); err == nil && latest != nil {
+			targetSessionID = latest.SessionID
+			if targetFilePath == "" {
+				targetFilePath = latest.LogPath
+			}
+			if targetDBPath == "" {
+				targetDBPath = latest.DBPath
+			}
+		} else {
+			targetSessionID = defaultSessionID
+			if targetFilePath == "" {
+				targetFilePath = defaultTranscriptPath
+			}
+			if targetDBPath == "" {
+				targetDBPath = defaultDBPath
+			}
+		}
+	}
+
+	openSwitcherOnStart := false
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -54,33 +80,21 @@ func main() {
 	// Initialize event channel with large buffer for seamless history warmup
 	eventChan := make(chan core.UnifiedAgentEvent, 10000)
 
-	// Initialize adapter based on CLI flag
-	var adapter adapters.AgentAdapter
-	switch *adapterName {
-	case "antigravity":
-		adapter = antigravity.NewWatcher(*filePath, *sessionID, analyzer, *dbPath)
-	default:
-		adapter = antigravity.NewWatcher(*filePath, *sessionID, analyzer, *dbPath)
-	}
+	// Initialize Dynamic Watcher Hub
+	hub := adapters.NewWatcherHub(ctx, eventChan, analyzer)
+	_ = hub.StartSession(targetSessionID, core.AgentTypeAntigravity, targetFilePath, targetDBPath)
 
 	// Start background HTTP server
 	go startHTTPServer(*port)
 
-	// Start adapter event ingestion in background goroutine
-	go func() {
-		if err := adapter.Start(ctx, eventChan); err != nil && err != context.Canceled {
-			fmt.Printf("❌ Adapter error: %v\n", err)
-		}
-	}()
-
 	// If plain mode requested, run traditional scrolling CLI
 	if *plainMode {
-		runPlainLogMode(ctx, cancel, *port, *adapterName, *filePath, *dbPath, analyzer, eventChan)
+		runPlainLogMode(ctx, cancel, *port, *adapterName, targetFilePath, targetDBPath, analyzer, eventChan)
 		return
 	}
 
-	// ==================== FULL-SCREEN INTERACTIVE TUI (k9s STYLE WITH QUICK SWITCHER) ====================
-	initialModel := ui.NewModel(*sessionID, openSwitcherOnStart)
+	// ==================== FULL-SCREEN INTERACTIVE TUI (k9s STYLE WITH DYNAMIC WATCHER HUB) ====================
+	initialModel := ui.NewModel(targetSessionID, openSwitcherOnStart, hub)
 	p := tea.NewProgram(initialModel, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	// Goroutine to forward events from adapter channel to Bubble Tea program
@@ -129,7 +143,7 @@ func runPlainLogMode(ctx context.Context, cancel context.CancelFunc, port int, a
 
 func printBanner(port int, adapter, file, db string) {
 	fmt.Println("================================================================================")
-	fmt.Printf("  🐹 AGENT-OBSERVER %s (Go Real-Time LLM Context Telemetry)\n", version)
+	fmt.Printf("  🐹 HEIMDALL %s (Go Real-Time LLM Context Telemetry)\n", version)
 	fmt.Println("================================================================================")
 	fmt.Printf("  • Local Server Port : http://localhost:%d\n", port)
 	fmt.Printf("  • Active Adapter    : %s\n", adapter)
@@ -142,7 +156,7 @@ func printBanner(port int, adapter, file, db string) {
 func startHTTPServer(port int) {
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok","app":"agent-observer"}`))
+		w.Write([]byte(`{"status":"ok","app":"heimdall"}`))
 	})
 
 	server := &http.Server{

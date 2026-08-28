@@ -111,3 +111,25 @@
 * **【駁回理由】**：
   * 終端機是離散等寬字元網格，沒有 Web 瀏覽器的次像素渲染與流式排版；
   * 過度展開 Web CSS 概念會造成讀者對終端機底層物理的理解混淆。
+
+---
+
+### 📌 條目 02-I：跨 Agent 本機存儲鑑識必須提供完整 XDG / 雙層 SQLite 字典與防鎖庫唯讀連線範式
+* **決策狀態**：🟢 **ACCEPTED (已採納為標準規範)**
+* **首次記錄**：2026-08-28 | **累犯次數**：1 次
+* **適用檔案**：`02_architecture/12_Google_Antigravity_Host_Storage_and_Forensics_Schema.md`, `02_architecture/13_OpenCode_Host_Storage_and_Forensics_Schema.md`
+* **【採納理由】**：確保任何第三方或觀測工具在對 Agent 本機數據進行鑑識分析時，不與 Agent 本體產生 SQLite 鎖庫衝突，且欄位定義 100% 完整。
+* **【強制執行標準】**：
+  * 必須包含全量資料表欄位字典、Protobuf / JSON 載荷層級解析、實用 SQL 查詢腳本，並強制指定 `file:...db?mode=ro&_journal=WAL` 唯讀連線。
+
+---
+
+### 📌 條目 02-J：動態會話觀測必須採用單一專注 Watcher 模式與無狀態透鏡視圖投影
+* **決策狀態**：🟢 **ACCEPTED (已採納為標準規範)**
+* **首次記錄**：2026-08-28 | **累犯次數**：1 次
+* **適用檔案**：`02_architecture/12_Dynamic_Watcher_Hub_and_Live_Streaming_Engine.md`, `02_architecture/13_Stateless_Lens_and_Deterministic_Projection.md`
+* **【採納理由】**：消除多會話並發背景輪詢造成的 CPU/FD 浪費，並確保視圖與磁碟母體保持 100% 確定性一致。
+* **【強制執行標準】**：
+  * 後台永遠維持 1 個活動 Watcher Goroutine，切換時透過 Context 立即銷毀並重新開箱新實例；
+  * TUI 必須實作 `event.SessionID` 標籤守衛，防止全域 Channel 殘留事件引發跨會話污染；
+  * 第一幀必須採用同步注水（Sync Hydration）載入全量歷史，後續變更透過 250ms Live Tail 原地覆蓋。

@@ -238,6 +238,18 @@ func DiscoverAllSessions() ([]core.SessionInfo, error) {
 	return sessions, nil
 }
 
+// GetLatestActiveSession returns the most recently modified Antigravity session
+func GetLatestActiveSession() (*core.SessionInfo, error) {
+	sessions, err := DiscoverAllSessions()
+	if err != nil {
+		return nil, err
+	}
+	if len(sessions) == 0 {
+		return nil, fmt.Errorf("no active or historical antigravity sessions found")
+	}
+	return &sessions[0], nil
+}
+
 // LoadSessionHistory loads all historical events for a specific session ID
 func LoadSessionHistory(sessionID string, analyzer *core.PayloadAnalyzer) ([]core.UnifiedAgentEvent, error) {
 	home, err := os.UserHomeDir()

@@ -46,3 +46,13 @@
 * **【駁回理由】**：
   * 違反「Wiki 是長效終點，iThome 是短期專案」的架構憲法；
   * `02_wiki/03_planning/02_30_Days_Breakdown.md` 作為大綱索引足矣，真正的 30 篇文章草稿必須放在獨立的 `docs/ithome_draft/`，保持 Wiki 資產的精煉。
+
+---
+
+### 📌 條目 04-D：具體 Agent 實體細節必須獨立封裝至 00_agents/ 專屬子模組
+* **決策狀態**：🟢 **ACCEPTED (已採納為標準規範)**
+* **首次記錄**：2026-08-28 | **累犯次數**：1 次
+* **適用檔案**：`00_agents/`, `00_agents/antigravity/`, `00_agents/opencode/`
+* **【採納理由】**：實現通用抽象模式（`02_architecture/`）與特定廠商/開源 Agent 實體細節的關注點分離（Separation of Concerns），避免架構庫膨脹。
+* **【強制執行標準】**：
+  * 每個 Agent 獨立目錄（如 `antigravity/`, `opencode/`），標準化拆解為 5 篇核心卡片（01 檔案拓撲 $\to$ 02 資料庫字典 $\to$ 03 遙測狀態機 $\to$ 04 擴充/大腦 $\to$ 05 鑑識 SQL 與 Runbook）。

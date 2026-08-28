@@ -9,9 +9,21 @@ import (
 	"heimdall/internal/core"
 )
 
+// SessionSwitcher defines the interface for dynamic backend watcher hot-reloading
+type SessionSwitcher interface {
+	SwitchSession(sessionID string, agentType core.AgentType) error
+}
+
 // SwitchSessionReqMsg is sent when the user selects a new session in the switcher
 type SwitchSessionReqMsg struct {
 	SessionID string
+	AgentType core.AgentType
+}
+
+// SessionResetMsg is sent to clear history when hot-reloading to a new session
+type SessionResetMsg struct {
+	SessionID string
+	AgentType core.AgentType
 }
 
 // SessionSwitchedMsg is sent to update the UI model with the new session's state

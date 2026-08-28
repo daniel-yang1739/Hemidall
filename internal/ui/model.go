@@ -79,6 +79,7 @@ type Model struct {
 	commandInput          string
 	statusMessage         string
 	statusMessageTime     time.Time
+	switcher              SessionSwitcher
 }
 
 // TypeFilter defines step category filter in History Explorer
@@ -273,17 +274,42 @@ func (m *Model) prevView() {
 }
 
 // NewModel creates an initial TUI model
-func NewModel(sessionID string, openSwitcherOnStart bool) Model {
+func NewModel(sessionID string, openSwitcherOnStart bool, switcher ...SessionSwitcher) Model {
 	sessions, _ := antigravity.DiscoverAllSessions()
 	initialTab := core.AgentTypeAntigravity
+
+	var sw SessionSwitcher
+	if len(switcher) > 0 {
+		sw = switcher[0]
+	}
+
+	var initialHistory []core.UnifiedAgentEvent
+	if sessionID != "" {
+		analyzer := core.NewPayloadAnalyzer()
+		if hist, err := antigravity.LoadSessionHistory(sessionID, analyzer); err == nil {
+			initialHistory = hist
+		}
+	}
+	if initialHistory == nil {
+		initialHistory = make([]core.UnifiedAgentEvent, 0, 1000)
+	}
+
+	var latestEvent core.UnifiedAgentEvent
+	dashboardIdx := 0
+	if len(initialHistory) > 0 {
+		latestEvent = initialHistory[len(initialHistory)-1]
+		dashboardIdx = len(initialHistory) - 1
+	}
 
 	m := Model{
 		sessionID:             sessionID,
 		activeView:            ViewDashboard,
 		focusPane:             FocusList,
-		dashboardIdx:          0,
+		dashboardIdx:          dashboardIdx,
 		detailScroll:          0,
-		history:               make([]core.UnifiedAgentEvent, 0, 1000),
+		history:               initialHistory,
+		latestEvent:           latestEvent,
+		eventCount:            len(initialHistory),
 		selectedIdx:           0,
 		lastActivity:          time.Now(),
 		selectedAgentTab:      initialTab,
@@ -300,6 +326,7 @@ func NewModel(sessionID string, openSwitcherOnStart bool) Model {
 		historyCacheFilter:    CacheFilterAll,
 		historyStepQuery:      "",
 		isHistorySearching:    false,
+		switcher:              sw,
 	}
 
 	// If sessionID matches one of discovered sessions, select it in the switcher
@@ -678,6 +705,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AgentEventMsg:
 		event := core.UnifiedAgentEvent(msg)
+
+		// 🛡️ Drop stale events that do not belong to the currently active session
+		if event.SessionID != m.sessionID && m.sessionID != "" && event.SessionID != "" {
+			return m, nil
+		}
+
 		m.latestEvent = event
 		m.eventCount++
 		m.lastActivity = time.Now()
@@ -724,9 +757,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case SessionResetMsg:
+		m.sessionID = msg.SessionID
+		m.history = make([]core.UnifiedAgentEvent, 0, 1000)
+		m.eventCount = 0
+		m.latestEvent = core.UnifiedAgentEvent{}
+		m.dashboardIdx = 0
+		m.selectedIdx = 0
+		m.detailScroll = 0
+		m.historyOffset = 0
+		m.isSessionSwitcherOpen = false
+		m.isShortcutsModalOpen = false
+		m.activeView = ViewDashboard
+		m.clipboardStatus = fmt.Sprintf("Live attached to %s", truncateStr(msg.SessionID, 8))
+		m.clipboardStatusTime = time.Now()
+		return m, nil
+
 	case SwitchSessionReqMsg:
 		analyzer := core.NewPayloadAnalyzer()
 		events, _ := antigravity.LoadSessionHistory(msg.SessionID, analyzer)
+
+		if m.switcher != nil {
+			_ = m.switcher.SwitchSession(msg.SessionID, msg.AgentType)
+		}
 		m.sessionID = msg.SessionID
 		m.history = events
 		m.eventCount = len(events)
@@ -743,7 +796,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.isSessionSwitcherOpen = false
 		m.isShortcutsModalOpen = false
 		m.activeView = ViewDashboard
-		m.clipboardStatus = fmt.Sprintf("Attached session %s (%d steps)", truncateStr(msg.SessionID, 8), len(events))
+		m.clipboardStatus = fmt.Sprintf("Attached session %s (%d steps, live)", truncateStr(msg.SessionID, 8), len(events))
 		m.clipboardStatusTime = time.Now()
 		return m, nil
 
@@ -877,8 +930,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				if len(m.filteredSessions) > 0 && m.switcherSelectedIdx < len(m.filteredSessions) {
 					targetSession := m.filteredSessions[m.switcherSelectedIdx].SessionID
+					targetAgent := m.filteredSessions[m.switcherSelectedIdx].AgentType
 					m.isSessionSwitcherOpen = false
-					return m.Update(SwitchSessionReqMsg{SessionID: targetSession})
+					return m.Update(SwitchSessionReqMsg{SessionID: targetSession, AgentType: targetAgent})
 				}
 				return m, nil
 			case "backspace":

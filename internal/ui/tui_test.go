@@ -1345,6 +1345,104 @@ func TestInboundPromptAntiOverflowMultiLine(t *testing.T) {
 	}
 }
 
+type mockSessionSwitcher struct {
+	called        bool
+	lastSessionID string
+	lastAgentType core.AgentType
+}
+
+func (m *mockSessionSwitcher) SwitchSession(sessionID string, agentType core.AgentType) error {
+	m.called = true
+	m.lastSessionID = sessionID
+	m.lastAgentType = agentType
+	return nil
+}
+
+func TestSessionSwitch_Neg_DropStaleSessionEvents(t *testing.T) {
+	m := NewModel("session-new", false)
+	staleEvent := core.UnifiedAgentEvent{
+		SessionID: "session-old",
+		StepIndex: 1,
+		Summary:   "Stale event from previous session",
+	}
+
+	updated, _ := m.Update(AgentEventMsg(staleEvent))
+	m = updated.(Model)
+
+	if len(m.history) != 0 {
+		t.Fatalf("Expected stale event to be dropped (history len 0), got %d events in history", len(m.history))
+	}
+}
+
+func TestSessionSwitch_Pos_AcceptMatchingSessionEvent(t *testing.T) {
+	m := NewModel("session-new", false)
+	validEvent := core.UnifiedAgentEvent{
+		SessionID: "session-new",
+		StepIndex: 1,
+		Summary:   "Valid event for active session",
+	}
+
+	updated, _ := m.Update(AgentEventMsg(validEvent))
+	m = updated.(Model)
+
+	if len(m.history) != 1 {
+		t.Fatalf("Expected valid event to be accepted (history len 1), got %d", len(m.history))
+	}
+	if m.latestEvent.Summary != "Valid event for active session" {
+		t.Fatalf("Expected latest event summary 'Valid event for active session', got '%s'", m.latestEvent.Summary)
+	}
+}
+
+func TestSessionSwitch_Pos_SessionResetMsgClearsHistory(t *testing.T) {
+	m := NewModel("session-old", false)
+	m.history = []core.UnifiedAgentEvent{
+		{SessionID: "session-old", StepIndex: 1, Summary: "Step 1"},
+		{SessionID: "session-old", StepIndex: 2, Summary: "Step 2"},
+	}
+	m.eventCount = 2
+	m.dashboardIdx = 1
+
+	updated, _ := m.Update(SessionResetMsg{SessionID: "session-new", AgentType: core.AgentTypeAntigravity})
+	m = updated.(Model)
+
+	if m.sessionID != "session-new" {
+		t.Fatalf("Expected sessionID 'session-new', got '%s'", m.sessionID)
+	}
+	if len(m.history) != 0 {
+		t.Fatalf("Expected history to be cleared (len 0), got %d", len(m.history))
+	}
+	if m.eventCount != 0 {
+		t.Fatalf("Expected eventCount to be reset to 0, got %d", m.eventCount)
+	}
+	if m.dashboardIdx != 0 {
+		t.Fatalf("Expected dashboardIdx to be reset to 0, got %d", m.dashboardIdx)
+	}
+}
+
+func TestSessionSwitch_Pos_SwitchSessionReqMsgDelegatesToSwitcher(t *testing.T) {
+	mock := &mockSessionSwitcher{}
+	m := NewModel("session-A", false, mock)
+	m.history = []core.UnifiedAgentEvent{
+		{SessionID: "session-A", StepIndex: 1, Summary: "Step 1"},
+	}
+
+	updated, _ := m.Update(SwitchSessionReqMsg{SessionID: "session-B", AgentType: core.AgentTypeAntigravity})
+	m = updated.(Model)
+
+	if !mock.called {
+		t.Fatalf("Expected switcher.SwitchSession to be called, but it was not")
+	}
+	if mock.lastSessionID != "session-B" {
+		t.Fatalf("Expected switcher target 'session-B', got '%s'", mock.lastSessionID)
+	}
+	if m.sessionID != "session-B" {
+		t.Fatalf("Expected model sessionID 'session-B', got '%s'", m.sessionID)
+	}
+	if len(m.history) != 0 {
+		t.Fatalf("Expected model history to be cleared on switch request, got %d", len(m.history))
+	}
+}
+
 
 
 

@@ -36,6 +36,9 @@
 ### 8. 【底層過濾的內部與阻擋步驟必須在 View 層全量補齊並明確標記角色】
 * **[規則]**：觀測器必須 100% 忠實還原底層 SQLite 的所有步驟，補齊遺失序號並賦予 `INTERNAL` 與 `BLOCKED` 專屬徽章，絕不替使用者做未告知的過濾。
 
+### 9. 【GUI/TUI 開機與切換必須採用「同步快照注水 (Sync Hydration) + 異步 Live Tail」】
+* **[規則]**：UI 框架在主事件循環啟動之前，嚴禁依賴異步 Event Bus 進行全量歷史注入（會引發 Pre-Boot Message Drop 導致歷史全盲）。第一幀必須直接同步讀取快照注水，後續變更才走異步增量。
+
 ---
 
 ## 🔴 [REJECTED] 駁回警示與邊界 (Rejected Patterns)
