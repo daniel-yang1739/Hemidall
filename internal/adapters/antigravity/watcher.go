@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"agent-observer/internal/core"
+	"heimdall/internal/core"
 )
 
 // RawTranscriptLine matches the JSONL schema from ~/.gemini/.../transcript_full.jsonl

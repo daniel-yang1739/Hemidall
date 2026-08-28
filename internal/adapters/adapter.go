@@ -3,7 +3,7 @@ package adapters
 import (
 	"context"
 
-	"agent-observer/internal/core"
+	"heimdall/internal/core"
 )
 
 // AgentAdapter defines the interface for all external agent data source ingestion

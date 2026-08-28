@@ -14,7 +14,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"agent-observer/internal/core"
+	"heimdall/internal/core"
 )
 
 var (

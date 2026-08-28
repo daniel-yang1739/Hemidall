@@ -8,8 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"agent-observer/internal/adapters/antigravity"
-	"agent-observer/internal/core"
+	"heimdall/internal/adapters/antigravity"
+	"heimdall/internal/core"
 )
 
 func TestCJKAndLongPayloadZeroHeightVariation(t *testing.T) {

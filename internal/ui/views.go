@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"agent-observer/internal/core"
+	"heimdall/internal/core"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"

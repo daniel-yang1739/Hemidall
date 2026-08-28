@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"agent-observer/internal/core"
+	"heimdall/internal/core"
 )
 
 func TestOfficialCalibrationAndMathConsistency(t *testing.T) {

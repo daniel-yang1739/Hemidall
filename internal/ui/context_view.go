@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"agent-observer/internal/core"
+	"heimdall/internal/core"
 )
 
 // Subcategory identifiers in Context Tree (0..11)

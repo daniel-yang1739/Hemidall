@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -124,11 +125,17 @@ func GetNativeToolsDefinitions() []ToolSignature {
 
 // GetActiveSkillsDefinitions returns the repertory of installed agent skills
 func GetActiveSkillsDefinitions() []SkillInfo {
+	cwd, _ := os.Getwd()
+	wikiPath := filepath.Join(cwd, ".agents", "skills", "wiki-distiller", "SKILL.md")
+	if _, err := os.Stat(wikiPath); err != nil {
+		wikiPath = "/Users/daniel_y_yang/Documents/self/heimdall/.agents/skills/wiki-distiller/SKILL.md"
+	}
+
 	skills := []SkillInfo{
 		{
 			Name:        "wiki-distiller",
 			Status:      "ACTIVE",
-			Path:        "/Users/daniel_y_yang/Documents/self/ithome2026/.agents/skills/wiki-distiller/SKILL.md",
+			Path:        wikiPath,
 			Description: "Andrej Karpathy LLM Wiki 知識提煉專家。雙輪深層對抗審查與抗體沉澱。",
 			Guidelines:  "Double-round adversarial review loop, secretary antibody memory in feedbacks/, zero-persona in wiki body text.",
 			RawMarkdown: "---\nname: wiki-distiller\ndescription: Andrej Karpathy LLM Wiki 知識提煉專家。\n---",
@@ -166,6 +173,11 @@ func ExtractAgentContextPayload(history []UnifiedAgentEvent, sessionID, targetMo
 		targetModel = "Gemini 3.7 Flash"
 	}
 
+	cwd, _ := os.Getwd()
+	if cwd == "" {
+		cwd = "/Users/daniel_y_yang/Documents/self/heimdall"
+	}
+
 	payload := AgentContextPayload{
 		AgentType:    AgentTypeAntigravity,
 		TargetModel:  targetModel,
@@ -174,7 +186,7 @@ func ExtractAgentContextPayload(history []UnifiedAgentEvent, sessionID, targetMo
 		RuntimeMetadata: map[string]string{
 			"OS":         "macOS Darwin 24.5.0",
 			"Shell":      "zsh (/bin/zsh)",
-			"Cwd":        "/Users/daniel_y_yang/Documents/self/ithome2026",
+			"Cwd":        cwd,
 			"SessionID":  sessionID,
 			"Model":      targetModel,
 			"Harness":    "Google Antigravity Harness v2.0",
@@ -202,7 +214,7 @@ Memory re-anchored for sliding window prefill.`,
 	}
 
 	// Attempt to load genuine AGENTS.md directly from filesystem
-	for _, agentsPath := range []string{"../AGENTS.md", "AGENTS.md", "/Users/daniel_y_yang/Documents/self/ithome2026/AGENTS.md"} {
+	for _, agentsPath := range []string{"AGENTS.md", "../AGENTS.md", filepath.Join(cwd, "AGENTS.md"), "/Users/daniel_y_yang/Documents/self/heimdall/AGENTS.md"} {
 		if content, err := os.ReadFile(agentsPath); err == nil && len(content) > 0 {
 			payload.ConstitutionDoc = strings.TrimSpace(string(content))
 			break

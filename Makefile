@@ -1,16 +1,18 @@
 .PHONY: all run build test clean
 
-BINARY_NAME := .tmp_agent_observer
+BINARY_NAME := .tmp_heimdall
 
 all: build
 
-## build: Compile agent-observer binary
+## build: Compile heimdall binary
 build:
-	@echo "🔨 Compiling agent-observer..."
-	@go build -o $(BINARY_NAME) .
+	@echo "🔨 Compiling heimdall..."
+	@mkdir -p bin
+	@go build -o bin/heimdall .
 
-## run: Build and run observer, auto-cleanup binary on exit (Ctrl+C)
-run: build
+## run: Build and run heimdall, auto-cleanup temporary binary on exit (Ctrl+C)
+run:
+	@go build -o $(BINARY_NAME) .
 	@trap 'echo "\n🧹 Cleaning up temporary binary..."; rm -f $(BINARY_NAME); exit 0' INT TERM EXIT; \
 	./$(BINARY_NAME) $(ARGS)
 
@@ -22,4 +24,4 @@ test:
 ## clean: Remove build artifacts and binaries
 clean:
 	@echo "🧹 Removing binaries..."
-	@rm -f $(BINARY_NAME) agent-observer
+	@rm -f $(BINARY_NAME) bin/heimdall agent-observer

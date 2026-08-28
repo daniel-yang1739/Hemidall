@@ -1,4 +1,4 @@
-module agent-observer
+module heimdall
 
 go 1.26
 

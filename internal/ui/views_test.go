@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"agent-observer/internal/core"
+	"heimdall/internal/core"
 )
 
 // ==============================================================================

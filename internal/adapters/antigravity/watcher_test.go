@@ -3,7 +3,7 @@ package antigravity
 import (
 	"testing"
 
-	"agent-observer/internal/core"
+	"heimdall/internal/core"
 )
 
 func TestParseLineUserInput(t *testing.T) {

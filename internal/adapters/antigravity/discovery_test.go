@@ -2,7 +2,7 @@ package antigravity
 
 import (
 	"testing"
-	"agent-observer/internal/core"
+	"heimdall/internal/core"
 )
 
 func TestDiscoverAllSessions(t *testing.T) {

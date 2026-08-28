@@ -3,7 +3,7 @@ package core_test
 import (
 	"testing"
 
-	"agent-observer/internal/core"
+	"heimdall/internal/core"
 )
 
 func TestGetModelDiscount(t *testing.T) {

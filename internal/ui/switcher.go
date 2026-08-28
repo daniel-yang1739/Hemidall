@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
-	"agent-observer/internal/core"
+	"heimdall/internal/core"
 )
 
 // SwitchSessionReqMsg is sent when the user selects a new session in the switcher

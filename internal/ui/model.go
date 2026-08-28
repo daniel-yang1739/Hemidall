@@ -11,8 +11,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 
-	"agent-observer/internal/adapters/antigravity"
-	"agent-observer/internal/core"
+	"heimdall/internal/adapters/antigravity"
+	"heimdall/internal/core"
 )
 
 type ActiveView int
@@ -1589,9 +1589,9 @@ func (m Model) View() string {
 }
 
 func (m Model) renderHeader() string {
-	title := HeaderStyle.Render(" AGENT-OBSERVER ")
+	title := HeaderStyle.Render(" HEIMDALL ")
 	if m.width < 90 {
-		title = HeaderStyle.Render(" OBSERVER ")
+		title = HeaderStyle.Render(" HEIMDALL ")
 	}
 
 	tab1 := lipgloss.NewStyle().Foreground(ColorMuted).Render(" [1] Dashboard ")

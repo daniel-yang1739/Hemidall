@@ -13,10 +13,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"agent-observer/internal/adapters"
-	"agent-observer/internal/adapters/antigravity"
-	"agent-observer/internal/core"
-	"agent-observer/internal/ui"
+	"heimdall/internal/adapters"
+	"heimdall/internal/adapters/antigravity"
+	"heimdall/internal/core"
+	"heimdall/internal/ui"
 )
 
 const (
