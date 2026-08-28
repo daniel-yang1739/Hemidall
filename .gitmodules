@@ -1,0 +1,3 @@
+[submodule "docs"]
+	path = docs
+	url = git@github.com:daniel-yang1739/ithome2026-docs.git
