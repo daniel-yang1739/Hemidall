@@ -1,0 +1,1350 @@
+package ui
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"agent-observer/internal/adapters/antigravity"
+	"agent-observer/internal/core"
+)
+
+func TestCJKAndLongPayloadZeroHeightVariation(t *testing.T) {
+	for _, size := range []struct{ w, h int }{{80, 24}, {100, 30}, {120, 35}, {140, 40}} {
+		m := NewModel("test-session", false)
+		m.width = size.w
+		m.height = size.h
+
+		// Create steps with heavy Traditional Chinese text, emojis, and long payloads
+		for i := 0; i < 25; i++ {
+			chineseSummary := "【實測連線】這是一個非常長的繁體中文步驟說明文字，包含特殊符號與長度測試"
+			m.history = append(m.history, core.UnifiedAgentEvent{
+				StepIndex:  i,
+				Type:       core.StepTypeModelResponse,
+				Summary:    chineseSummary,
+				Timestamp:  time.Now(),
+				RawContent: strings.Repeat("繁體中文長文本內容一行接一行，測試 Overflow: hidden 絕對不換行也不長高。\n", 50),
+			})
+		}
+		m.latestEvent = m.history[len(m.history)-1]
+		m.selectedIdx = 0
+
+		m.activeView = ViewHistory
+		fullView := m.View()
+		lines := strings.Split(fullView, "\n")
+
+		t.Logf("[%dx%d] Full View lines count: %d", size.w, size.h, len(lines))
+
+		if len(lines) != size.h {
+			t.Fatalf("[%dx%d] Expected exactly %d lines, got %d", size.w, size.h, size.h, len(lines))
+		}
+
+		// Verify bottom border is strictly on line h-2
+		bottomBorderLine := lines[size.h-2]
+		if !strings.Contains(bottomBorderLine, "╰") || !strings.Contains(bottomBorderLine, "╯") {
+			t.Errorf("[%dx%d] Expected bottom border on line %d, got: %s", size.w, size.h, size.h-2, bottomBorderLine)
+		}
+
+		// Verify footer shortcuts are strictly on line h-1
+		footerLine := lines[size.h-1]
+		if !strings.Contains(footerLine, "Shortcuts") && !strings.Contains(footerLine, "Quit") && !strings.Contains(footerLine, "Docs") {
+			t.Errorf("[%dx%d] Expected footer on line %d, got: %s", size.w, size.h, size.h-1, footerLine)
+		}
+	}
+}
+
+func TestShortcutsFloatModalToggle(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 30
+
+	// 1. Press '?' to open shortcuts modal
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+	m = updated.(Model)
+	if !m.isShortcutsModalOpen {
+		t.Fatal("Expected isShortcutsModalOpen=true after pressing '?'")
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "KEYBOARD SHORTCUTS") {
+		t.Errorf("Expected 'KEYBOARD SHORTCUTS' in view, got: %s", view)
+	}
+
+	// 2. Press 'Esc' or '?' to close modal
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.isShortcutsModalOpen {
+		t.Error("Expected isShortcutsModalOpen=false after pressing Esc")
+	}
+}
+
+func TestView3DocsPageRenderingAndSearch(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 30
+
+	// 1. Press '4' or 'i' to switch to View 4 Docs (Default: English)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("4")})
+	m = updated.(Model)
+	if m.activeView != ViewDocs {
+		t.Fatalf("Expected activeView=ViewDocs, got %v", m.activeView)
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "ARCHITECTURE & CONTEXT DEFINITIONS") {
+		t.Errorf("Expected 'ARCHITECTURE & CONTEXT DEFINITIONS' in view, got: %s", view)
+	}
+
+	// 2. Press 't' to toggle to Traditional Chinese
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+	m = updated.(Model)
+	if m.docsLang != "zh" {
+		t.Errorf("Expected docsLang='zh' after pressing 't', got '%s'", m.docsLang)
+	}
+	zhView := m.View()
+	if !strings.Contains(zhView, "架構名詞釋義與上下文辭典") {
+		t.Errorf("Expected Chinese title in zhView, got: %s", zhView)
+	}
+
+	// 3. Press 't' again to toggle back to English
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+	m = updated.(Model)
+	if m.docsLang != "en" {
+		t.Errorf("Expected docsLang='en' after pressing 't' again, got '%s'", m.docsLang)
+	}
+
+	// 4. Press '/' to activate search mode and search for "cache"
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	m = updated.(Model)
+	if !m.isDocsSearching {
+		t.Error("Expected isDocsSearching=true after pressing '/'")
+	}
+
+	for _, r := range "cache" {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = updated.(Model)
+	}
+	cacheFilteredView := m.View()
+	if !strings.Contains(cacheFilteredView, "[CACHE HIT]") || !strings.Contains(cacheFilteredView, "[PARTIAL HIT]") {
+		t.Errorf("Expected cache status definitions in cacheFilteredView, got: %s", cacheFilteredView)
+	}
+
+	// 5. Press Esc to clear search, then search for "cot"
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	m = updated.(Model)
+	for _, r := range "cot" {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = updated.(Model)
+	}
+	if m.docsSearchQuery != "cot" {
+		t.Errorf("Expected docsSearchQuery='cot', got '%s'", m.docsSearchQuery)
+	}
+
+	filteredView := m.View()
+	if !strings.Contains(filteredView, "Active Turn / CoT") {
+		t.Errorf("Expected filtered view to contain 'Active Turn / CoT', got: %s", filteredView)
+	}
+
+	// 6. Press Esc to clear search
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.docsSearchQuery != "" {
+		t.Errorf("Expected docsSearchQuery to be cleared, got '%s'", m.docsSearchQuery)
+	}
+
+	// 7. Test overscroll prevention on 'j' and 'G'
+	for i := 0; i < 200; i++ {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+		m = updated.(Model)
+	}
+	maxScroll := m.getDocsMaxScroll()
+	if m.docsScroll != maxScroll {
+		t.Errorf("Expected docsScroll to be clamped to maxScroll %d, got %d", maxScroll, m.docsScroll)
+	}
+
+	// Immediate response on pressing 'k' once
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	m = updated.(Model)
+	if m.docsScroll != maxScroll-1 {
+		t.Errorf("Expected docsScroll to immediately decrement to %d on first 'k', got %d", maxScroll-1, m.docsScroll)
+	}
+}
+
+func TestView2ContextPageRenderingAndDualModeToggle(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 30
+
+	// 1. Press '2' or 'c' to switch to [2] Context View
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
+	m = updated.(Model)
+	if m.activeView != ViewContext {
+		t.Fatalf("Expected activeView=ViewContext, got %v", m.activeView)
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "CONTEXT PAYLOAD TREE") {
+		t.Fatalf("Expected 'CONTEXT PAYLOAD TREE' in context view, got: %s", view)
+	}
+	if !strings.Contains(view, "[MODE: REFINED [r]]") {
+		t.Errorf("Expected default mode '[MODE: REFINED [r]]' in view, got: %s", view)
+	}
+
+	// 2. Press 'r' to toggle Raw Wire JSON mode
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	m = updated.(Model)
+	if !m.isContextRawMode {
+		t.Fatal("Expected isContextRawMode=true after pressing 'r'")
+	}
+
+	rawView := m.View()
+	if !strings.Contains(rawView, "[MODE: RAW WIRE [r]]") {
+		t.Errorf("Expected '[MODE: RAW WIRE [r]]' after 'r' toggle, got: %s", rawView)
+	}
+	if !strings.Contains(rawView, "systemInstruction") && !strings.Contains(rawView, "contents") {
+		t.Errorf("Expected Gemini Wire JSON for Full Request in rawView, got: %s", rawView)
+	}
+
+	// 3. Navigate down to Native Tools (SubcatTools = 4) and check specific raw tools schema
+	m.contextSubItemIndex = SubcatTools
+	toolsRawView := m.View()
+	if !strings.Contains(toolsRawView, "functionDeclarations") || !strings.Contains(toolsRawView, "write_to_file") {
+		t.Errorf("Expected specific raw tool declarations in toolsRawView, got: %s", toolsRawView)
+	}
+
+	// 4. Press 'r' again to return to Refined Cards mode
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	m = updated.(Model)
+	if m.isContextRawMode {
+		t.Fatal("Expected isContextRawMode=false after second 'r'")
+	}
+}
+
+func TestContextTreeKeyboardNavigationJK(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 30
+	m.activeView = ViewContext
+	m.contextFocusPane = FocusList
+	m.contextSubItemIndex = 0
+
+	// 1. Press 'j' to navigate down through tree
+	for i := 1; i <= 5; i++ {
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+		m = updated.(Model)
+		if m.contextSubItemIndex != i {
+			t.Errorf("Expected subitem index %d after %d 'j' presses, got %d", i, i, m.contextSubItemIndex)
+		}
+	}
+
+	// 2. Press 'k' to navigate up
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	m = updated.(Model)
+	if m.contextSubItemIndex != 4 {
+		t.Errorf("Expected subitem index 4 after 'k', got %d", m.contextSubItemIndex)
+	}
+}
+
+func TestContextVimPaneSwitchingLH(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 30
+	m.activeView = ViewContext
+	m.contextFocusPane = FocusList
+
+	// 1. Press 'l' or 'Enter' to focus Inspector
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	m = updated.(Model)
+	if m.contextFocusPane != FocusDetail {
+		t.Fatalf("Expected contextFocusPane=FocusDetail after 'l', got %v", m.contextFocusPane)
+	}
+
+	// 2. Press 'h' or 'Esc' to return focus to Context Tree
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
+	m = updated.(Model)
+	if m.contextFocusPane != FocusList {
+		t.Fatalf("Expected contextFocusPane=FocusList after 'h', got %v", m.contextFocusPane)
+	}
+}
+
+func TestCyclicTabAndShiftTabViewSwitching(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 30
+
+	if m.activeView != ViewDashboard {
+		t.Fatalf("Initial view should be ViewDashboard, got %v", m.activeView)
+	}
+
+	// 1. Press Tab -> ViewContext
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.activeView != ViewContext {
+		t.Fatalf("After 1st Tab, expected ViewContext, got %v", m.activeView)
+	}
+
+	// 2. Press Tab -> ViewHistory
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.activeView != ViewHistory {
+		t.Fatalf("After 2nd Tab, expected ViewHistory, got %v", m.activeView)
+	}
+
+	// 3. Press Tab -> ViewDocs
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.activeView != ViewDocs {
+		t.Fatalf("After 3rd Tab, expected ViewDocs, got %v", m.activeView)
+	}
+
+	// 4. Press Tab -> ViewDashboard (Clockwise wrap)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.activeView != ViewDashboard {
+		t.Fatalf("After 4th Tab, expected ViewDashboard, got %v", m.activeView)
+	}
+
+	// 5. Press Shift+Tab -> ViewDocs (Counter-clockwise wrap)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = updated.(Model)
+	if m.activeView != ViewDocs {
+		t.Fatalf("After Shift+Tab, expected ViewDocs, got %v", m.activeView)
+	}
+
+	// 6. Press Shift+Tab -> ViewHistory
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = updated.(Model)
+	if m.activeView != ViewHistory {
+		t.Fatalf("After 2nd Shift+Tab, expected ViewHistory, got %v", m.activeView)
+	}
+
+	// 7. Press Shift+Tab -> ViewContext
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = updated.(Model)
+	if m.activeView != ViewContext {
+		t.Fatalf("After 3rd Shift+Tab, expected ViewContext, got %v", m.activeView)
+	}
+}
+
+func TestHistoryVimPaneSwitchingHL(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 30
+	m.activeView = ViewHistory
+	m.focusPane = FocusList
+
+	// 1. Press 'l' to enter Right Pane (Inspector)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("l")})
+	m = updated.(Model)
+	if m.focusPane != FocusDetail {
+		t.Fatalf("Expected focusPane=FocusDetail after pressing 'l', got %v", m.focusPane)
+	}
+
+	// 2. Press 'h' to return to Left Pane (Steps List)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
+	m = updated.(Model)
+	if m.focusPane != FocusList {
+		t.Fatalf("Expected focusPane=FocusList after pressing 'h', got %v", m.focusPane)
+	}
+}
+
+func TestHistoryStepListScrollIndicators(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 24
+	m.activeView = ViewHistory
+	m.focusPane = FocusList
+
+	// Seed with 20 historical steps
+	for i := 0; i < 20; i++ {
+		m.history = append(m.history, core.UnifiedAgentEvent{
+			StepIndex: i,
+			Summary:   fmt.Sprintf("Step %d execution details", i),
+			Timestamp: time.Now(),
+		})
+	}
+
+	// Case 1: At top (historyOffset = 0) -> NO top '...', YES bottom '...'
+	m.historyOffset = 0
+	m.selectedIdx = 0
+	vTop := m.renderHistoryView()
+	if strings.Contains(vTop, "STEPS (Newest First <)\n│   ...") {
+		t.Error("Did not expect top '...' when at the newest step (historyOffset = 0)")
+	}
+	if !strings.Contains(vTop, "...") {
+		t.Error("Expected bottom '...' when there are older steps below")
+	}
+
+	// Case 2: Scrolled down (historyOffset = 5) -> YES top '...', YES bottom '...'
+	m.historyOffset = 5
+	m.selectedIdx = 5
+	vMid := m.renderHistoryView()
+	if !strings.Contains(vMid, "...") {
+		t.Error("Expected '...' scroll indicators when scrolled into the middle")
+	}
+
+	// Case 3: Step-by-step navigation down (j) through all 20 steps
+	// Verified that selected step is ALWAYS visible on screen (never cut off below)
+	m.historyOffset = 0
+	m.selectedIdx = 0
+	for step := 0; step < 20; step++ {
+		v := m.renderHistoryView()
+		expectedStepIdx := 19 - step
+		expectedBadge := fmt.Sprintf("[%04d]", expectedStepIdx)
+		if !strings.Contains(v, "> ") || !strings.Contains(v, expectedBadge) {
+			t.Fatalf("Step %d (selectedIdx=%d, offset=%d, badge=%s) was not visible on screen! Rendered view:\n%s", expectedStepIdx, m.selectedIdx, m.historyOffset, expectedBadge, v)
+		}
+		// Press 'j'
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+		m = updated.(Model)
+	}
+}
+
+func TestHistoryFilteringAndStepSearch(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 30
+	m.activeView = ViewHistory
+	m.focusPane = FocusList
+
+	// Seed with distinct types and cache statuses
+	m.history = []core.UnifiedAgentEvent{
+		{StepIndex: 1, Type: core.StepTypeUserInput, Summary: "User question"},
+		{StepIndex: 2, Type: core.StepTypeModelResponse, CacheStatus: "HIT", Tokens: core.TokenBreakdown{CacheHitRate: 85.0}, Summary: "Model plan"},
+		{StepIndex: 3, Type: core.StepTypeToolCall, CacheStatus: "HIT", Tokens: core.TokenBreakdown{CacheHitRate: 90.0}, Summary: "Run command"},
+		{StepIndex: 4, Type: core.StepTypeToolCall, CacheStatus: "PARTIAL", Tokens: core.TokenBreakdown{CacheHitRate: 40.0}, Summary: "Command result"},
+		{StepIndex: 14, Type: core.StepTypeToolCall, CacheStatus: "HIT", Tokens: core.TokenBreakdown{CacheHitRate: 95.0}, Summary: "Write file"},
+	}
+
+	// 1. Initial State: All 5 events and [T:All] [C:All] rendered
+	filtered := m.getFilteredHistory()
+	if len(filtered) != 5 {
+		t.Fatalf("Expected 5 events, got %d", len(filtered))
+	}
+	renderedInitial := m.renderHistoryView()
+	if !strings.Contains(renderedInitial, "[T:All]") || !strings.Contains(renderedInitial, "[C:All]") {
+		t.Fatalf("Expected '[T:All]' and '[C:All]' badges on header line, got:\n%s", renderedInitial)
+	}
+
+	// 2. Cycle Type Filter: press 't' -> Tool (should match Step 3, 4, 14)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
+	m = updated.(Model)
+	if m.historyTypeFilter != TypeFilterTool {
+		t.Fatalf("Expected TypeFilterTool, got %v", m.historyTypeFilter)
+	}
+	filtered = m.getFilteredHistory()
+	if len(filtered) != 3 {
+		t.Fatalf("Expected 3 tool events, got %d", len(filtered))
+	}
+
+	// 3. Cycle Cache Filter: press 'c' -> Hit (should match Step 3, 14)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	m = updated.(Model)
+	if m.historyCacheFilter != CacheFilterHit {
+		t.Fatalf("Expected CacheFilterHit, got %v", m.historyCacheFilter)
+	}
+	filtered = m.getFilteredHistory()
+	if len(filtered) != 2 {
+		t.Fatalf("Expected 2 hit events, got %d", len(filtered))
+	}
+
+	// Cycle Cache Filter: press 'c' -> Partial (should match Step 4)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	m = updated.(Model)
+	if m.historyCacheFilter != CacheFilterPartial {
+		t.Fatalf("Expected CacheFilterPartial, got %v", m.historyCacheFilter)
+	}
+	filtered = m.getFilteredHistory()
+	if len(filtered) != 1 || filtered[0].StepIndex != 4 {
+		t.Fatalf("Expected 1 partial event (step 4), got %v", filtered)
+	}
+
+	// 4. Press Esc to reset filters
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEscape})
+	m = updated.(Model)
+	if m.historyTypeFilter != TypeFilterAll || m.historyCacheFilter != CacheFilterAll {
+		t.Fatalf("Expected reset to All filters, got T:%v C:%v", m.historyTypeFilter, m.historyCacheFilter)
+	}
+
+	// 5. Jump-to-Step Search: press '/' then type '14'
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	m = updated.(Model)
+	if !m.isHistorySearching {
+		t.Fatal("Expected isHistorySearching=true after pressing '/'")
+	}
+
+	// Type '1'
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1")})
+	m = updated.(Model)
+	// Type '4'
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("4")})
+	m = updated.(Model)
+	if m.historyStepQuery != "14" {
+		t.Fatalf("Expected historyStepQuery='14', got '%s'", m.historyStepQuery)
+	}
+
+	// Step list remains full during typing (not destructive filter)
+	filtered = m.getFilteredHistory()
+	if len(filtered) == 0 {
+		t.Fatal("Expected full history preserved during typing")
+	}
+
+	// Press Enter to confirm jump
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if m.isHistorySearching {
+		t.Fatal("Expected isHistorySearching=false after pressing Enter")
+	}
+
+	// Verify cursor jumped to step 14
+	currentStep := filtered[len(filtered)-1-m.selectedIdx]
+	if currentStep.StepIndex != 14 {
+		t.Fatalf("Expected cursor to jump to step 14, got step %d (selectedIdx=%d)", currentStep.StepIndex, m.selectedIdx)
+	}
+
+	// 6. Test Non-existent Step Jump Error
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("9")})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("9")})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("9")})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+
+	if m.historySearchErr == "" {
+		t.Fatal("Expected historySearchErr for non-existent step 999")
+	}
+
+	// Moving cursor clears error
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	m = updated.(Model)
+	if m.historySearchErr != "" {
+		t.Fatalf("Expected historySearchErr cleared after navigation, got '%s'", m.historySearchErr)
+	}
+}
+
+func TestHistoryTreeAndDistinctiveLabels(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 30
+	m.activeView = ViewHistory
+	m.focusPane = FocusList
+
+	m.history = []core.UnifiedAgentEvent{
+		{StepIndex: 1, Type: core.StepTypeUserInput, Scope: core.ScopeUserInteraction, Summary: "User question"},
+		{StepIndex: 2, Type: core.StepTypeToolCall, Scope: core.ScopeCloudInference, Summary: "Run command", ToolCalls: []core.ToolCallInfo{{ToolName: "run_command"}}},
+		{StepIndex: 3, Type: core.StepTypeRunCommand, Scope: core.ScopeLocalExecution, Summary: "Command output"},
+		{StepIndex: 4, Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Summary: "Final answer"},
+		{StepIndex: 5, Type: core.StepTypeGeneric, Scope: core.ScopeLocalExecution, Summary: "Generic output"},
+	}
+
+	rendered := m.renderHistoryView()
+	if !strings.Contains(rendered, "┌") {
+		t.Fatalf("Expected '┌' bracket top connector in rendered history view, got:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "└") {
+		t.Fatalf("Expected '└' bracket bottom connector in rendered history view, got:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "Model: ") {
+		t.Fatalf("Expected 'Model: ' prefix in rendered history view, got:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "Tool: run_cmd") {
+		t.Fatalf("Expected 'Tool: run_cmd' in rendered history view, got:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "💻 OUTPUT") {
+		t.Fatalf("Expected '💻 OUTPUT' badge in rendered history view, got:\n%s", rendered)
+	}
+}
+
+func TestHistoryThreePanelSplitAndZeroTruncation(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.height = 30
+	m.activeView = ViewHistory
+	m.focusPane = FocusList
+
+	m.history = []core.UnifiedAgentEvent{
+		{
+			StepIndex:  1,
+			Type:       core.StepTypeUserInput,
+			Scope:      core.ScopeUserInteraction,
+			Summary:    "How do I optimize Gemini cache?",
+			RawContent: "How do I optimize Gemini cache in Antigravity?",
+		},
+		{
+			StepIndex:  2,
+			Type:       core.StepTypeModelResponse,
+			Scope:      core.ScopeCloudInference,
+			Summary:    "Model response with tool call",
+			RawContent: "Let me check the tools.",
+			Tokens: core.TokenBreakdown{
+				OfficialModel: "gemini-3.7-flash",
+				TotalTokens:   151479,
+				CachedTokens:  150866,
+				NewTokens:     613,
+				CacheHitRate:  99.6,
+			},
+		},
+	}
+	m.selectedIdx = 0
+
+	// 1. Full-Width (width >= 100)
+	m.width = 120
+	renderedFull := m.renderHistoryView()
+	if !strings.Contains(renderedFull, "STEP TELEMETRY & METRICS") {
+		t.Fatalf("Expected 'STEP TELEMETRY & METRICS' in full-width history view, got:\n%s", renderedFull)
+	}
+	if !strings.Contains(renderedFull, "CONTENT PAYLOAD") {
+		t.Fatalf("Expected 'CONTENT PAYLOAD' in full-width history view, got:\n%s", renderedFull)
+	}
+	if !strings.Contains(renderedFull, "Filters:") {
+		t.Fatalf("Expected 'Filters:' line in full-width history view, got:\n%s", renderedFull)
+	}
+
+	// 2. Half-Width (width < 100)
+	m.width = 80
+	renderedHalf := m.renderHistoryView()
+	if !strings.Contains(renderedHalf, "STEP TELEMETRY") {
+		t.Fatalf("Expected 'STEP TELEMETRY' in half-width history view, got:\n%s", renderedHalf)
+	}
+	if !strings.Contains(renderedHalf, "CONTENT PAYLOAD") {
+		t.Fatalf("Expected 'CONTENT PAYLOAD' in half-width history view, got:\n%s", renderedHalf)
+	}
+	if !strings.Contains(renderedHalf, "Filters:") {
+		t.Fatalf("Expected 'Filters:' line in half-width history view, got:\n%s", renderedHalf)
+	}
+}
+
+
+func TestAllViewsZeroHeightVariationAcrossSizes(t *testing.T) {
+	for _, size := range []struct{ w, h int }{{80, 24}, {100, 30}, {120, 35}, {140, 40}} {
+		for _, view := range []ActiveView{ViewDashboard, ViewContext, ViewHistory, ViewDocs} {
+			m := NewModel("test-session", false)
+			m.width = size.w
+			m.height = size.h
+			m.activeView = view
+
+			v := m.View()
+			lines := strings.Split(v, "\n")
+
+			if len(lines) != size.h {
+				t.Fatalf("[%dx%d] View %v expected exactly %d lines, got %d", size.w, size.h, view, size.h, len(lines))
+			}
+		}
+	}
+}
+
+func TestSessionSwitcherModalRenderingAndFilter(t *testing.T) {
+	m := NewModel("aa726359-08e2-4687-a15c-073a2f4a705b", true)
+	m.width = 100
+	m.height = 30
+
+	if !m.isSessionSwitcherOpen {
+		t.Fatal("Expected Session Switcher to be open by default")
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "Antigravity") {
+		t.Errorf("Expected tab 'Antigravity' in view, got: %s", view)
+	}
+	if !strings.Contains(view, "[1] Antigravity") {
+		t.Errorf("Expected active tab '[1] Antigravity' in view, got: %s", view)
+	}
+
+	// Test Ctrl+P toggle
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+	m = updatedModel.(Model)
+	if m.isSessionSwitcherOpen {
+		t.Error("Expected Ctrl+P to close session switcher modal")
+	}
+
+	// Re-open with Ctrl+P
+	updatedModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlP})
+	m = updatedModel.(Model)
+	if !m.isSessionSwitcherOpen {
+		t.Error("Expected Ctrl+P to re-open session switcher modal")
+	}
+
+	// Test typing in search box
+	updatedModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("aa72")})
+	m = updatedModel.(Model)
+	if m.sessionSearchQuery != "aa72" {
+		t.Errorf("Expected query 'aa72', got '%s'", m.sessionSearchQuery)
+	}
+}
+
+func TestSessionSwitcherHalfScreenVerticalStacking(t *testing.T) {
+	m := NewModel("test-session-1", true)
+	// Half-screen / narrow terminal width (60 cols)
+	m.width = 60
+	m.height = 30
+
+	var mockSessions []core.SessionInfo
+	for i := 0; i < 6; i++ {
+		mockSessions = append(mockSessions, core.SessionInfo{
+			AgentType:    core.AgentTypeAntigravity,
+			SessionID:    fmt.Sprintf("session-narrow-%d", i),
+			WorkspaceDir: fmt.Sprintf("/Users/test/Documents/self/proj-%d", i),
+			ShortPath:    fmt.Sprintf("self/proj-%d", i),
+			InitialGoal:  fmt.Sprintf("Initial goal for session %d", i),
+			LastPrompt:   fmt.Sprintf("Last prompt for session %d", i),
+			StepCount:    10 * (i + 1),
+			LastModified: time.Now().Add(time.Duration(-i) * time.Hour),
+		})
+	}
+	m.availableSessions = mockSessions
+	m.selectedAgentTab = core.AgentTypeAntigravity
+	m.filteredSessions = filterSessions(m.availableSessions, "", m.selectedAgentTab)
+
+	// Case 1: At top (index 0) -> NO top '...', YES bottom '...'
+	m.switcherSelectedIdx = 0
+	viewTop := m.View()
+	if strings.Contains(viewTop, "Filter: [█]\n│ ──────────────────────────────────────────────────────── │\n│   ...") {
+		t.Error("Did not expect top '...' when at the very first session")
+	}
+	if !strings.Contains(viewTop, "...") {
+		t.Error("Expected bottom '...' when there are more sessions below")
+	}
+
+	// Case 2: In middle (index 3) -> YES top '...', YES bottom '...'
+	m.switcherSelectedIdx = 3
+	viewMid := m.View()
+	if !strings.Contains(viewMid, "...") {
+		t.Error("Expected '...' indicators in middle of list")
+	}
+
+	// Case 3: At bottom (index 5) -> YES top '...', NO bottom '...'
+	m.switcherSelectedIdx = 5
+	viewBot := m.View()
+	if !strings.Contains(viewBot, "self/proj-5") {
+		t.Errorf("Expected last session 'self/proj-5' to be visible, got: %s", viewBot)
+	}
+}
+
+func TestHistoryInspectionAntiJitterLock(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.activeView = ViewHistory
+	m.focusPane = FocusList
+
+	// Seed with 5 historical steps
+	for i := 0; i < 5; i++ {
+		m.history = append(m.history, core.UnifiedAgentEvent{
+			StepIndex: i,
+			Summary:   "Step " + string(rune('0'+i)),
+			Timestamp: time.Now(),
+		})
+	}
+	m.selectedIdx = 2 // Pointing to Step 2 (realIdx = 5 - 1 - 2 = 2)
+
+	selectedEv, _ := m.getSelectedEvent()
+	if selectedEv.StepIndex != 2 {
+		t.Fatalf("Expected selected step to be 2, got %d", selectedEv.StepIndex)
+	}
+
+	// New event arrives while user is inspecting past step
+	newEvent := core.UnifiedAgentEvent{
+		StepIndex: 5,
+		Summary:   "New incoming Step 5",
+		Timestamp: time.Now(),
+	}
+	updated, _ := m.Update(AgentEventMsg(newEvent))
+	m = updated.(Model)
+
+	// Verify that the inspected step REMAINS step 2!
+	selectedEvAfter, _ := m.getSelectedEvent()
+	if selectedEvAfter.StepIndex != 2 {
+		t.Fatalf("Expected inspected step to remain locked at 2, got %d", selectedEvAfter.StepIndex)
+	}
+}
+
+func TestSessionSwitcherKeyboardNavigationAndActions(t *testing.T) {
+	m := NewModel("test-session-1", true)
+	m.width = 100
+	m.height = 30
+
+	// Mock available sessions
+	m.availableSessions = []core.SessionInfo{
+		{
+			AgentType:    core.AgentTypeAntigravity,
+			SessionID:    "session-alpha-12345678",
+			WorkspaceDir: "/Users/test/Documents/self/project-a",
+			ShortPath:    "self/project-a",
+			InitialGoal:  "Create a new microservice",
+			LastPrompt:   "Add unit tests",
+			StepCount:    100,
+			LastModified: time.Now(),
+		},
+		{
+			AgentType:    core.AgentTypeAntigravity,
+			SessionID:    "session-beta-87654321",
+			WorkspaceDir: "/Users/test/Documents/self/project-b",
+			ShortPath:    "self/project-b",
+			InitialGoal:  "Fix database deadlock bug",
+			LastPrompt:   "Verify WAL mode",
+			StepCount:    50,
+			LastModified: time.Now().Add(-1 * time.Hour),
+		},
+		{
+			AgentType:    core.AgentTypeClaudeCode,
+			SessionID:    "session-claude-999999",
+			WorkspaceDir: "/Users/test/Documents/self/claude-app",
+			ShortPath:    "self/claude-app",
+			InitialGoal:  "Refactor React frontend",
+			LastPrompt:   "Update Tailwind styles",
+			StepCount:    10,
+			LastModified: time.Now().Add(-2 * time.Hour),
+		},
+	}
+	m.selectedAgentTab = core.AgentTypeAntigravity
+	m.filteredSessions = filterSessions(m.availableSessions, "", m.selectedAgentTab)
+	m.switcherSelectedIdx = 0
+
+	// Initial AGY tab should only match 2 sessions
+	if len(m.filteredSessions) != 2 {
+		t.Fatalf("Expected 2 AGY sessions, got %d", len(m.filteredSessions))
+	}
+
+	// 1. Test Navigation Down with Ctrl+j (Vim)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlJ})
+	m = updated.(Model)
+	if m.switcherSelectedIdx != 1 {
+		t.Errorf("Expected switcherSelectedIdx=1 after Ctrl+j, got %d", m.switcherSelectedIdx)
+	}
+
+	// 2. Test Navigation Up with Ctrl+k (Vim)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlK})
+	m = updated.(Model)
+	if m.switcherSelectedIdx != 0 {
+		t.Errorf("Expected switcherSelectedIdx=0 after Ctrl+k, got %d", m.switcherSelectedIdx)
+	}
+
+	// 3. Test Agent Tab Cycle with Tab key
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.selectedAgentTab != core.AgentTypeClaudeCode {
+		t.Errorf("Expected selectedAgentTab=core.AgentTypeClaudeCode after Tab, got %s", m.selectedAgentTab)
+	}
+	if len(m.filteredSessions) != 1 || m.filteredSessions[0].SessionID != "session-claude-999999" {
+		t.Fatalf("Expected 1 Claude session, got %d", len(m.filteredSessions))
+	}
+
+	// 4. Test Agent Tab Cycle back with Shift+Tab
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = updated.(Model)
+	if m.selectedAgentTab != core.AgentTypeAntigravity {
+		t.Errorf("Expected selectedAgentTab=core.AgentTypeAntigravity after Shift+Tab, got %s", m.selectedAgentTab)
+	}
+
+	// 5. Test Typing Filter for path or prompt keywords
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("deadlock")})
+	m = updated.(Model)
+	if len(m.filteredSessions) != 1 || m.filteredSessions[0].SessionID != "session-beta-87654321" {
+		t.Fatalf("Expected 1 filtered session matching 'deadlock', got %d", len(m.filteredSessions))
+	}
+
+	// 6. Test Backspace
+	for i := 0; i < 8; i++ {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+		m = updated.(Model)
+	}
+	if len(m.filteredSessions) != 2 {
+		t.Errorf("Expected 2 sessions restored after backspace, got %d", len(m.filteredSessions))
+	}
+
+	// 7. Test Dual-Pane Rendering Output (Zero Emojis & Inspector content)
+	view := m.View()
+	if strings.Contains(view, "📂") || strings.Contains(view, "🏷️") || strings.Contains(view, "🎯") {
+		t.Errorf("Expected Zero Emojis in switcher view, but found emoji")
+	}
+	if !strings.Contains(view, "INITIAL GOAL / FIRST PROMPT") {
+		t.Errorf("Expected 'INITIAL GOAL / FIRST PROMPT' inspector block, got: %s", view)
+	}
+	if !strings.Contains(view, "LATEST PROGRESS / LAST ACTION") {
+		t.Errorf("Expected 'LATEST PROGRESS / LAST ACTION' inspector block, got: %s", view)
+	}
+	if !strings.Contains(view, "self/project-a") {
+		t.Errorf("Expected 'self/project-a' short path in view, got: %s", view)
+	}
+
+	// 8. Test Escape Key (Cancel without switching)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.isSessionSwitcherOpen {
+		t.Error("Expected Esc key to close switcher modal")
+	}
+}
+
+func TestFormatShortPath(t *testing.T) {
+	cases := []struct {
+		input    string
+		expected string
+	}{
+		{"/Users/daniel_y_yang/Documents/self/ithome2026", "self/ithome2026"},
+		{"/Users/daniel_y_yang/Documents/self/bookkeeper", "self/bookkeeper"},
+		{"/Users/daniel_y_yang/.gemini/antigravity-cli", ".gemini/antigravity-cli"},
+		{"/project", "project"},
+		{"", "workspace"},
+	}
+
+	for _, c := range cases {
+		got := antigravity.FormatShortPath(c.input)
+		if got != c.expected {
+			t.Errorf("FormatShortPath(%q) = %q, expected %q", c.input, got, c.expected)
+		}
+	}
+}
+
+func TestDirectSessionSwitchMsgState(t *testing.T) {
+	m := NewModel("initial-session", false)
+
+	// Simulate switching session with mock events
+	mockEvents := []core.UnifiedAgentEvent{
+		{
+			StepIndex: 1,
+			Type:      core.StepTypeUserInput,
+			Summary:   "Hello Agent",
+			Timestamp: time.Now(),
+		},
+		{
+			StepIndex: 2,
+			Type:      core.StepTypeModelResponse,
+			Summary:   "Hello! How can I help you?",
+			Timestamp: time.Now(),
+			Tokens: core.TokenBreakdown{
+				TotalTokens:  1500,
+				CachedTokens: 1200,
+				CacheHitRate: 80.0,
+			},
+		},
+	}
+
+	updated, _ := m.Update(SessionSwitchedMsg{
+		SessionID: "target-session-123",
+		Events:    mockEvents,
+	})
+	m = updated.(Model)
+
+	if m.sessionID != "target-session-123" {
+		t.Errorf("Expected sessionID 'target-session-123', got '%s'", m.sessionID)
+	}
+	if len(m.history) != 2 {
+		t.Errorf("Expected 2 history events, got %d", len(m.history))
+	}
+	if m.dashboardIdx != 1 {
+		t.Errorf("Expected dashboardIdx=1 (latest event), got %d", m.dashboardIdx)
+	}
+	if m.isSessionSwitcherOpen {
+		t.Error("Expected session switcher to be closed after switch")
+	}
+	if !strings.Contains(m.clipboardStatus, "Switched to session") {
+		t.Errorf("Expected status message in clipboardStatus, got: %s", m.clipboardStatus)
+	}
+}
+
+func TestWidthMeasurement(t *testing.T) {
+	m := NewModel("aa726359-08e2-4687-a15c-073a2f4a705b", false)
+	m.width = 120
+	m.height = 30
+	m.eventCount = 2200
+
+	header := m.renderHeader()
+	t.Logf("Header length: %d, string: %s", lipgloss.Width(header), header)
+
+	m.activeView = ViewDashboard
+	dash := m.renderDashboardView()
+	dashLines := strings.Split(dash, "\n")
+	for i, l := range dashLines {
+		t.Logf("Dash line %d width: %d | %s", i, lipgloss.Width(l), l)
+		if i > 3 {
+			break
+		}
+	}
+
+	m.activeView = ViewHistory
+	hist := m.renderHistoryView()
+	histLines := strings.Split(hist, "\n")
+	for i, l := range histLines {
+		t.Logf("Hist line %d width: %d | %s", i, lipgloss.Width(l), l)
+		if i > 3 {
+			break
+		}
+	}
+}
+
+func TestDashboardSparklinesAndKpiRendering(t *testing.T) {
+	m := NewModel("test-session-multi-model", false)
+	m.width = 120
+	m.height = 35
+
+	// Add multi-model events to history
+	m.history = append(m.history, core.UnifiedAgentEvent{
+		StepIndex: 1,
+		Scope:     core.ScopeCloudInference,
+		Type:      core.StepTypeModelResponse,
+		Tokens: core.TokenBreakdown{
+			OfficialModel: "gemini-3.7-flash",
+			TotalTokens:   120000,
+			CachedTokens:  100000,
+			NewTokens:     20000,
+			CacheHitRate:  83.3,
+		},
+	})
+	m.history = append(m.history, core.UnifiedAgentEvent{
+		StepIndex: 2,
+		Scope:     core.ScopeCloudInference,
+		Type:      core.StepTypeModelResponse,
+		Tokens: core.TokenBreakdown{
+			OfficialModel: "claude-3.7-sonnet",
+			TotalTokens:   80000,
+			CachedTokens:  70000,
+			NewTokens:     10000,
+			CacheHitRate:  87.5,
+		},
+	})
+	m.latestEvent = m.history[1]
+
+	m.activeView = ViewDashboard
+	viewStr := m.View()
+
+	// 1. Verify Option A KPI Cards are present
+	if !strings.Contains(viewStr, "TOTAL PROCESSED") {
+		t.Error("Dashboard missing TOTAL PROCESSED card")
+	}
+	if !strings.Contains(viewStr, "CACHE HIT VOLUME") {
+		t.Error("Dashboard missing CACHE HIT VOLUME card")
+	}
+	if !strings.Contains(viewStr, "EFFECTIVE TOKENS") {
+		t.Error("Dashboard missing EFFECTIVE TOKENS card")
+	}
+	if !strings.Contains(viewStr, "CACHED SAVED (%)") {
+		t.Error("Dashboard missing CACHED SAVED card")
+	}
+
+	// 2. Verify Multi-Model breakdown table shows both models
+	if !strings.Contains(viewStr, "gemini-3.7-flash") {
+		t.Error("Dashboard table missing gemini-3.7-flash row")
+	}
+	if !strings.Contains(viewStr, "claude-3.7-sonnet") {
+		t.Error("Dashboard table missing claude-3.7-sonnet row")
+	}
+	if !strings.Contains(viewStr, "TOTAL SUMMARY") {
+		t.Error("Dashboard table missing TOTAL SUMMARY row")
+	}
+
+	// 3. Verify Trend Sparklines renderer standalone
+	trend := core.ExtractTurnTrendSeries(m.history, 50)
+	trendStr := renderTrendPanel(trend, 100)
+	if !strings.Contains(trendStr, "Context Total (Cyan)") {
+		t.Error("Trend panel missing Context Total sparkline")
+	}
+	if !strings.Contains(trendStr, "Cached Volume (Green)") {
+		t.Error("Trend panel missing Cached Volume sparkline")
+	}
+	if !strings.Contains(trendStr, "New Input     (Orange)") {
+		t.Error("Trend panel missing New Input sparkline")
+	}
+	if !strings.Contains(trendStr, "Hit Rate %    (Lime)") {
+		t.Error("Trend panel missing Hit Rate sparkline")
+	}
+}
+
+func TestDashboardHalfWidthResponsiveRendering(t *testing.T) {
+	m := NewModel("test-session-half-width", false)
+	m.width = 80
+	m.height = 30
+
+	m.history = append(m.history, core.UnifiedAgentEvent{
+		StepIndex: 1,
+		Scope:     core.ScopeCloudInference,
+		Type:      core.StepTypeModelResponse,
+		Tokens: core.TokenBreakdown{
+			OfficialModel: "gemini-3.7-flash",
+			TotalTokens:   120000,
+			CachedTokens:  100000,
+			NewTokens:     20000,
+			CacheHitRate:  83.3,
+		},
+	})
+	m.latestEvent = m.history[0]
+
+	m.activeView = ViewDashboard
+	viewStr := m.View()
+
+	// In half-width (80 cols), ensure 2-column KPI labels are complete without truncation
+	if !strings.Contains(viewStr, "TOTAL PROCESSED") {
+		t.Error("Half-width dashboard missing complete TOTAL PROCESSED label")
+	}
+	if !strings.Contains(viewStr, "CACHE HIT VOLUME") {
+		t.Error("Half-width dashboard missing complete CACHE HIT VOLUME label")
+	}
+	if !strings.Contains(viewStr, "UNCACHED INBOUND") {
+		t.Error("Half-width dashboard missing complete UNCACHED INBOUND label")
+	}
+
+	// Ensure lines do not exceed 80 columns
+	lines := strings.Split(viewStr, "\n")
+	for i, l := range lines {
+		w := lipgloss.Width(l)
+		if w > 80 {
+			t.Errorf("Line %d width %d exceeds 80 columns: %s", i, w, l)
+		}
+	}
+}
+
+func TestSpaceBetweenRowDistribution(t *testing.T) {
+	cols := []string{"Model Name", "Turns", "Processed", "Cached (Hit %)", "Cached Saved (%)"}
+	minWidths := []int{18, 5, 10, 16, 16}
+	leftAligns := []bool{true, false, false, false, false}
+
+	for _, targetW := range []int{76, 90, 116, 150, 180} {
+		res := formatSpaceBetweenRow(cols, minWidths, leftAligns, targetW)
+		actualW := lipgloss.Width(res)
+		if actualW != targetW {
+			t.Errorf("Target width %d, but got %d: '%s'", targetW, actualW, res)
+		}
+	}
+}
+
+func TestCacheFilterStrictCloudIsolation(t *testing.T) {
+	m := NewModel("test-session", true)
+	m.width = 120
+	m.height = 30
+	m.activeView = ViewHistory
+
+	m.history = []core.UnifiedAgentEvent{
+		{StepIndex: 0, Type: core.StepTypeUserInput, Summary: "User prompt"},
+		{StepIndex: 1, Type: core.StepTypeModelResponse, CacheStatus: "HIT", Tokens: core.TokenBreakdown{TotalTokens: 1000, CachedTokens: 900, CacheHitRate: 90.0}, Summary: "Model Response 1"},
+		{StepIndex: 2, Type: core.StepTypeRunCommand, Summary: "cat file.go"},
+		{StepIndex: 3, Type: core.StepTypeCheckpoint, Summary: "Checkpoint 1"},
+		{StepIndex: 4, Type: core.StepTypeModelResponse, CacheStatus: "PARTIAL", Tokens: core.TokenBreakdown{TotalTokens: 1000, CachedTokens: 740, CacheHitRate: 74.0}, Summary: "Model Response 2"},
+	}
+
+	// 1. Partial Filter: should only match Step 4 (Cloud Model Response with 74% hit rate)
+	m.historyCacheFilter = CacheFilterPartial
+	filtered := m.getFilteredHistory()
+	if len(filtered) != 1 {
+		t.Fatalf("Expected exactly 1 partial event (Step 4), got %d: %v", len(filtered), filtered)
+	}
+	if filtered[0].StepIndex != 4 {
+		t.Errorf("Expected Step 4, got Step %d", filtered[0].StepIndex)
+	}
+
+	// 2. Hit Filter: should only match Step 1 (Cloud Model Response with 90% hit rate)
+	m.historyCacheFilter = CacheFilterHit
+	filtered = m.getFilteredHistory()
+	if len(filtered) != 1 {
+		t.Fatalf("Expected exactly 1 hit event (Step 1), got %d: %v", len(filtered), filtered)
+	}
+	if filtered[0].StepIndex != 1 {
+		t.Errorf("Expected Step 1, got Step %d", filtered[0].StepIndex)
+	}
+}
+
+func TestCompactionInspectorPanel(t *testing.T) {
+	m := NewModel("test-session", true)
+	cpEvent := core.UnifiedAgentEvent{
+		StepIndex:  779,
+		Type:       core.StepTypeCheckpoint,
+		Scope:      core.ScopeSystemCompaction,
+		Status:     "DONE",
+		RawContent: "{{ CHECKPOINT 4 }} Summary of truncated context...",
+	}
+
+	linesCompact := m.buildTelemetryPanelLines(cpEvent, 40, true)
+	compactStr := strings.Join(linesCompact, "\n")
+	if !strings.Contains(compactStr, "Context Compaction") {
+		t.Errorf("Compact panel missing 'Context Compaction':\n%s", compactStr)
+	}
+
+	linesFull := m.buildTelemetryPanelLines(cpEvent, 80, false)
+	fullStr := strings.Join(linesFull, "\n")
+	if !strings.Contains(fullStr, "CONTEXT COMPACTION (CHECKPOINT)") {
+		t.Errorf("Full panel missing 'CONTEXT COMPACTION (CHECKPOINT)':\n%s", fullStr)
+	}
+}
+
+func TestFooterStrictlyPinnedAtBottom(t *testing.T) {
+	for _, size := range []struct{ w, h int }{{80, 24}, {100, 30}, {120, 35}, {140, 40}} {
+		for _, view := range []ActiveView{ViewDashboard, ViewContext, ViewHistory, ViewDocs} {
+			m := NewModel("test-session", false)
+			m.width = size.w
+			m.height = size.h
+			m.activeView = view
+
+			v := m.View()
+			lines := strings.Split(v, "\n")
+
+			if len(lines) != size.h {
+				t.Fatalf("[%dx%d] View %v expected %d lines, got %d", size.w, size.h, view, size.h, len(lines))
+			}
+
+			lastLine := lines[len(lines)-1]
+			if !strings.Contains(lastLine, "Shortcuts") && !strings.Contains(lastLine, "Command") && !strings.Contains(lastLine, "Quit") {
+				t.Fatalf("[%dx%d] View %v footer is not on bottom line! Last line: %q", size.w, size.h, view, lastLine)
+			}
+		}
+	}
+}
+
+func TestRawWireModeAntiOverflowGuards(t *testing.T) {
+	for _, size := range []struct{ w, h int }{{80, 24}, {100, 30}, {120, 35}} {
+		m := NewModel("test-session", false)
+		m.width = size.w
+		m.height = size.h
+		m.activeView = ViewContext
+		m.isContextRawMode = true
+
+		v := m.View()
+		lines := strings.Split(v, "\n")
+
+		if len(lines) != size.h {
+			t.Fatalf("[%dx%d] Raw mode expected %d lines, got %d", size.w, size.h, size.h, len(lines))
+		}
+
+		for i, line := range lines {
+			lineWidth := lipgloss.Width(line)
+			if lineWidth > size.w {
+				t.Fatalf("[%dx%d] Line %d width %d exceeds terminal width %d:\n%s", size.w, size.h, i, lineWidth, size.w, line)
+			}
+		}
+	}
+}
+
+func TestCommandModeColonQuitAndSave(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 30
+	m.activeView = ViewContext
+
+	// 1. Bare 'q' key does not quit immediately
+	updatedModel, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	m = updatedModel.(Model)
+	if cmd != nil {
+		t.Errorf("Expected bare 'q' not to issue tea.Quit, but got cmd")
+	}
+	if !strings.Contains(m.statusMessage, ":q") {
+		t.Errorf("Expected status message prompting :q, got %q", m.statusMessage)
+	}
+
+	// 2. Pressing ':' enters command mode
+	updatedModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(":")})
+	m = updatedModel.(Model)
+	if !m.isCommandMode {
+		t.Fatalf("Expected isCommandMode to be true")
+	}
+
+	// 3. Typing 'q' into command buffer
+	updatedModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	m = updatedModel.(Model)
+	if m.commandInput != "q" {
+		t.Fatalf("Expected commandInput 'q', got %q", m.commandInput)
+	}
+
+	// 4. Pressing Enter with ':q' issues tea.Quit
+	_, quitCmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if quitCmd == nil {
+		t.Fatalf("Expected :q + Enter to issue tea.Quit")
+	}
+
+	// 5. Esc cancels command mode
+	m.isCommandMode = true
+	m.commandInput = "something"
+	updatedModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updatedModel.(Model)
+	if m.isCommandMode || m.commandInput != "" {
+		t.Fatalf("Expected Esc to cancel command mode")
+	}
+}
+
+func TestContextSubcatAllAndNavigation12Items(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 120
+	m.height = 35
+	m.activeView = ViewContext
+
+	// Starts at SubcatAll (0)
+	if m.contextSubItemIndex != 0 {
+		t.Errorf("Expected default subcat index 0 (SubcatAll), got %d", m.contextSubItemIndex)
+	}
+
+	viewStr := m.View()
+	if !strings.Contains(viewStr, "FULL OUTBOUND PAYLOAD (ALL)") {
+		t.Errorf("Expected view to render 'FULL OUTBOUND PAYLOAD (ALL)'")
+	}
+
+	// Navigate down to item 11 (SubcatBuffers)
+	for i := 0; i < 11; i++ {
+		updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+		m = updatedModel.(Model)
+	}
+
+	if m.contextSubItemIndex != 11 {
+		t.Errorf("Expected contextSubItemIndex 11 after 11 down steps, got %d", m.contextSubItemIndex)
+	}
+
+	// Navigate back up with 'g'
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	m = updatedModel.(Model)
+	if m.contextSubItemIndex != 0 {
+		t.Errorf("Expected contextSubItemIndex 0 after 'g', got %d", m.contextSubItemIndex)
+	}
+}
+
+func TestContextClipboardCopyAction(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 120
+	m.height = 35
+	m.activeView = ViewContext
+
+	// Pressing 'y' copies and triggers toast
+	updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	m = updatedModel.(Model)
+
+	if !strings.Contains(m.statusMessage, "Copied") {
+		t.Errorf("Expected status message to contain 'Copied', got %q", m.statusMessage)
+	}
+}
+
+func TestInboundPromptAntiOverflowMultiLine(t *testing.T) {
+	for _, size := range []struct{ w, h int }{{80, 24}, {100, 30}, {120, 35}} {
+		m := NewModel("test-session", false)
+		m.width = size.w
+		m.height = size.h
+		m.activeView = ViewContext
+		m.contextSubItemIndex = SubcatPrompt
+
+		// Add an extremely long, unwrapped multi-line user input
+		m.history = []core.UnifiedAgentEvent{
+			{
+				StepIndex:  1,
+				Type:       core.StepTypeUserInput,
+				RawContent: "This is an extremely long user prompt that exceeds the terminal width by a huge margin and should be properly wrapped without causing any overflow or breaking of the surrounding borders in the terminal UI! " + strings.Repeat("VeryLongTokenSequenceWithoutSpaces", 5),
+			},
+		}
+
+		v := m.View()
+		lines := strings.Split(v, "\n")
+
+		if len(lines) != size.h {
+			t.Fatalf("[%dx%d] Inbound prompt view expected %d lines, got %d", size.w, size.h, size.h, len(lines))
+		}
+
+		for i, line := range lines {
+			lineWidth := lipgloss.Width(line)
+			if lineWidth > size.w {
+				t.Fatalf("[%dx%d] Line %d width %d exceeds terminal width %d:\n%s", size.w, size.h, i, lineWidth, size.w, line)
+			}
+		}
+	}
+}
+
+
+
+
