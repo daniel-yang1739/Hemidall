@@ -25,6 +25,17 @@ const (
 	version               = "v0.5.0-session-switcher"
 )
 
+type PlainLogConfig struct {
+	Ctx       context.Context
+	Cancel    context.CancelFunc
+	Port      int
+	Adapter   string
+	File      string
+	DB        string
+	Analyzer  *core.PayloadAnalyzer
+	EventChan chan core.UnifiedAgentEvent
+}
+
 func main() {
 	homeDir, _ := os.UserHomeDir()
 	defaultDBPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "conversations", defaultSessionID+".db")
@@ -89,7 +100,16 @@ func main() {
 
 	// If plain mode requested, run traditional scrolling CLI
 	if *plainMode {
-		runPlainLogMode(ctx, cancel, *port, *adapterName, targetFilePath, targetDBPath, analyzer, eventChan)
+		runPlainLogMode(PlainLogConfig{
+			Ctx:       ctx,
+			Cancel:    cancel,
+			Port:      *port,
+			Adapter:   *adapterName,
+			File:      targetFilePath,
+			DB:        targetDBPath,
+			Analyzer:  analyzer,
+			EventChan: eventChan,
+		})
 		return
 	}
 
@@ -115,15 +135,15 @@ func main() {
 	}
 }
 
-func runPlainLogMode(ctx context.Context, cancel context.CancelFunc, port int, adapter string, file string, db string, analyzer *core.PayloadAnalyzer, eventChan chan core.UnifiedAgentEvent) {
-	printBanner(port, adapter, file, db)
+func runPlainLogMode(config PlainLogConfig) {
+	printBanner(config.Port, config.Adapter, config.File, config.DB)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sigChan
 		fmt.Println("\n\n🛑 Received shutdown signal. Gracefully exiting...")
-		cancel()
+		config.Cancel()
 	}()
 
 	fmt.Println("👀 Watching agent events & analyzing Context in real-time... (Press Ctrl+C to stop)")
@@ -131,10 +151,10 @@ func runPlainLogMode(ctx context.Context, cancel context.CancelFunc, port int, a
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-config.Ctx.Done():
 			return
-		case event := <-eventChan:
-			analyzer.AnalyzeStep(&event)
+		case event := <-config.EventChan:
+			config.Analyzer.AnalyzeStep(&event)
 			table := core.FormatTokenBreakdownTable(event)
 			fmt.Println(table)
 		}
