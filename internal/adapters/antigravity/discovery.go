@@ -17,6 +17,14 @@ import (
 	"heimdall/internal/core"
 )
 
+const (
+	// maxScanBufferSize defines the maximum memory buffer (1MB) allocated for scanning long JSONL lines
+	maxScanBufferSize = 1024 * 1024
+
+	// bytesPerMegabyte is the conversion factor from raw bytes to megabytes
+	bytesPerMegabyte = 1024.0 * 1024.0
+)
+
 var (
 	userRequestRegex = regexp.MustCompile(`(?s)<USER_REQUEST>(.*?)</USER_REQUEST>`)
 	userObjRegex     = regexp.MustCompile(`(?m)^#\s*USER Objective:\s*(.+)$`)
@@ -108,8 +116,8 @@ func ExtractSessionMetadata(transcriptPath string) (initialGoal string, lastProm
 
 	scanner := bufio.NewScanner(file)
 	// Buffer size up to 1MB per line for transcripts
-	buf := make([]byte, 1024*1024)
-	scanner.Buffer(buf, 1024*1024)
+	buf := make([]byte, maxScanBufferSize)
+	scanner.Buffer(buf, maxScanBufferSize)
 
 	lineCount := 0
 	for scanner.Scan() {
@@ -224,7 +232,7 @@ func DiscoverAllSessions() ([]core.SessionInfo, error) {
 			LastPrompt:   lastPrompt,
 			StepCount:    count,
 			LastModified: info.ModTime(),
-			SizeMB:       float64(info.Size()) / (1024 * 1024),
+			SizeMB:       float64(info.Size()) / bytesPerMegabyte,
 			ModelName:    modelName,
 			DBPath:       fullDBPath,
 			LogPath:      fullLogPath,

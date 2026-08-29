@@ -1,26 +1,18 @@
 package core
 
 import (
+	"fmt"
 	"math"
 	"sort"
-	"strings"
 )
 
 // GetModelDiscount returns the official prompt cache discount rate, price factor, and label
 func GetModelDiscount(modelName string) (discountRate float64, priceFactor float64, label string) {
-	name := strings.ToLower(modelName)
-	switch {
-	case strings.Contains(name, "claude"):
-		return 0.90, 0.10, "0.10x"
-	case strings.Contains(name, "gemini"):
-		return 0.75, 0.25, "0.25x"
-	case strings.Contains(name, "gpt-4") || strings.Contains(name, "o1") || strings.Contains(name, "o3"):
-		return 0.50, 0.50, "0.50x"
-	case strings.Contains(name, "deepseek"):
-		return 0.90, 0.10, "0.10x"
-	default:
-		return 0.75, 0.25, "0.25x" // Default Gemini standard
-	}
+	spec := ResolveModelSpec(modelName, nil)
+	discountRate = spec.CacheDiscountRate
+	priceFactor = math.Round((1.0-discountRate)*100.0) / 100.0
+	label = fmt.Sprintf("%.2fx", priceFactor)
+	return discountRate, priceFactor, label
 }
 
 // ComputeSessionAggregateMetrics calculates aggregate token statistics grouped by model and in total

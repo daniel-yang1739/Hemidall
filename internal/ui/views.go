@@ -379,9 +379,12 @@ func (m Model) renderDashboardView() string {
 		activePct = float64(t.ActiveTurnTokens+t.ThinkingTokens) / float64(dTotal) * 100.0
 	}
 
-	ctxLimit := t.OfficialContextLimit
+	ctxLimit := t.ContextLimit
 	if ctxLimit == 0 {
-		ctxLimit = 256000
+		ctxLimit = t.OfficialContextLimit
+	}
+	if ctxLimit == 0 {
+		ctxLimit = core.DefaultFallbackAgentWindow
 	}
 	var ctxUsagePct float64
 	if total > 0 {
@@ -522,12 +525,29 @@ func (m Model) renderDashboardView() string {
 		}
 		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 
+		// Dynamic financial & capacity calculations
 		modelName := t.OfficialModel
 		if modelName == "" {
-			modelName = "gemini-3.7-flash-high"
+			modelName = "gemini-3.7-flash"
 		}
-		costUSD := float64(t.CachedTokens)*0.0375/1e6 + float64(t.NewTokens)*0.15/1e6
-		savedTok := int(float64(t.CachedTokens) * 0.75)
+		cachedRate := t.PricingCachedUSD
+		uncachedRate := t.PricingUncachedUSD
+		if uncachedRate == 0 {
+			spec := core.ResolveModelSpec(modelName, nil)
+			cachedRate = spec.Pricing.CachedPerMillionUSD
+			uncachedRate = spec.Pricing.UncachedPerMillionUSD
+		}
+		costUSD := float64(t.CachedTokens)*cachedRate/core.TokensPerMillion + float64(t.NewTokens)*uncachedRate/core.TokensPerMillion
+		discountRate := t.CacheDiscount
+		if discountRate == 0 {
+			discountRate = 0.90
+		}
+		savedTok := int(float64(t.CachedTokens) * discountRate)
+		exchangeRate := t.ExchangeRate
+		if exchangeRate == 0 {
+			exchangeRate = core.DefaultUSDtoTWDExchangeRate
+		}
+		costTWD := costUSD * exchangeRate
 
 		if contentWidth < 80 {
 			p1.WriteString(fmt.Sprintf("  • Agent / Model  : [%s] %s (Step #%03d)\n",
@@ -549,9 +569,9 @@ func (m Model) renderDashboardView() string {
 				p1.WriteString(fmt.Sprintf("  • Total Context Window : %s Tokens (%5.1f%% of %dk Window)  %s\n",
 					lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
 				p1.WriteString(fmt.Sprintf("  • Step Delta (New In)  : +%s Tokens (Uncached Prefill) | Turn Cost: ~$%.4f USD (NT$ %.2f)\n",
-					formatTokShort(t.StepDelta), costUSD, costUSD*32.0))
-				p1.WriteString(fmt.Sprintf("  • Prefix Cache Savings : %s Tokens Cached (%.1f%% Hit) ➔ Net Saved ~%s Tok (75.0%% Discount)",
-					formatTokShort(t.CachedTokens), t.CacheHitRate, formatTokShort(savedTok)))
+					formatTokShort(t.StepDelta), costUSD, costTWD))
+				p1.WriteString(fmt.Sprintf("  • Prefix Cache Savings : %s Tokens Cached (%.1f%% Hit) ➔ Net Saved ~%s Tok (%.1f%% Discount)",
+					formatTokShort(t.CachedTokens), t.CacheHitRate, formatTokShort(savedTok), discountRate*100.0))
 			} else {
 				p1.WriteString(fmt.Sprintf("  • Total Context Window : Nil (Awaiting SQLite Telemetry Record ⏳)\n"))
 				p1.WriteString(fmt.Sprintf("  • Step Delta (Local)   : +%d Tokens (Estimated Local BPE)", t.StepDelta))

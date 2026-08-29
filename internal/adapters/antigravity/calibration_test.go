@@ -50,10 +50,4 @@ func TestOfficialCalibrationAndMathConsistency(t *testing.T) {
 	if d.CacheHitRate != expectedHitRate {
 		t.Fatalf("HitRate mismatch! got=%.4f, expected=%.4f", d.CacheHitRate, expectedHitRate)
 	}
-
-	t.Logf("✅ 5-Dimension Sum: %d + %d + %d + %d + %d = %d",
-		d.SystemTokens, d.ToolsDefTokens, d.ToolResultTokens, d.HistoryTokens, d.ActiveTurnTokens, sumDimensions)
-	t.Logf("✅ Cache Sum: %d (Cached) + %d (New) = %d (Total)",
-		d.CachedTokens, d.NewTokens, sumCache)
-	t.Logf("✅ Cache Hit Rate: %.2f%%", d.CacheHitRate)
 }

@@ -60,3 +60,17 @@
 4. **Zero Control Flow in Unit Tests (No Logic Statements in Test Bodies)**:
    - Unit tests **MUST NOT contain control flow logic (`for-loop`, `if-else`, `switch-case`)** inside test execution bodies.
    - Control flow inside tests creates code that itself requires testing. When testing multiple scenarios, decompose into distinct, flat, independent test functions or subtests with explicit, direct assertions.
+
+---
+
+## 🧱 ARTICLE V: CONSTANT & CONFIGURATION HYGIENE (MAGIC NUMBER & SCOPING DISCIPLINE)
+
+1. **Strict Prohibition of Raw Magic Literals**:
+   - Numerical values, pricing rates, token limits, thresholds, and buffer sizes must never appear as anonymous bare literals in execution bodies. Every number must have an explicit, semantic name.
+2. **Scoping & Single Source of Truth Hierarchy**:
+   - **File-Local Constants**: If a constant is strictly and exclusively used within a single file (e.g., file-specific UI timer or buffer size), define it as a file-scoped constant in that specific file. Do not pollute the global namespace.
+   - **Cross-File / Shared Constants**: If a constant is shared across multiple files/packages, or is foreseeable to be shared across adapters/core/ui (e.g., token units, exchange rates, quota thresholds, baseline tokens), it **MUST** be defined in `internal/core/constants.go` or `internal/core/model_specs.go`.
+   - **Zero Duplicate Definitions**: A shared constant must have exactly one authoritative definition. Never duplicate constant literals across multiple files.
+3. **Dynamic Model Specifications & User Settings Decoupling**:
+   - Official vendor limits (1M/2M limits, pricing per million, caching discount rates) belong to `internal/core/model_specs.go` and are resolved dynamically by model name.
+   - User preferences and host limits (custom window, RPD tier, exchange rate) belong to `internal/core/config.go` and are loaded from host settings files (`settings.json`, `opencode.json`).

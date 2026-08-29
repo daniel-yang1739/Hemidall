@@ -31,6 +31,14 @@ const (
 	FocusDetail
 )
 
+const (
+	// statusMessageDuration defines the on-screen display duration for transient notifications
+	statusMessageDuration = 4 * time.Second
+
+	// defaultHistoryCapacity defines the pre-allocation slice capacity for event history
+	defaultHistoryCapacity = 1000
+)
+
 // AgentEventMsg wraps core.UnifiedAgentEvent as a bubbletea message
 type AgentEventMsg core.UnifiedAgentEvent
 
@@ -285,13 +293,14 @@ func NewModel(sessionID string, openSwitcherOnStart bool, switcher ...SessionSwi
 
 	var initialHistory []core.UnifiedAgentEvent
 	if sessionID != "" {
-		analyzer := core.NewPayloadAnalyzer()
+		hostCfg := antigravity.LoadAntigravityHostConfig()
+		analyzer := core.NewPayloadAnalyzer(hostCfg)
 		if hist, err := antigravity.LoadSessionHistory(sessionID, analyzer); err == nil {
 			initialHistory = hist
 		}
 	}
 	if initialHistory == nil {
-		initialHistory = make([]core.UnifiedAgentEvent, 0, 1000)
+		initialHistory = make([]core.UnifiedAgentEvent, 0, defaultHistoryCapacity)
 	}
 
 	var latestEvent core.UnifiedAgentEvent
@@ -1076,25 +1085,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 
-			if key == "y" || (key == "c" && m.activeView == ViewContext) {
-				if m.activeView == ViewContext {
-					payload := core.ExtractAgentContextPayload(m.history, m.sessionID, "Gemini 3.7 Flash")
-					text := m.GetContextInspectorContent(payload)
-					_ = CopyToClipboard(text)
-					subcatName := m.getSubcategoryName(m.contextSubItemIndex)
-					m.statusMessage = fmt.Sprintf("📋 Copied [%s] to clipboard!", subcatName)
-					m.statusMessageTime = time.Now()
-					return m, nil
-				} else if m.activeView == ViewHistory && len(m.history) > 0 {
-					event := m.latestEvent
-					if m.selectedIdx >= 0 && m.selectedIdx < len(m.history) {
-						event = m.history[m.selectedIdx]
-					}
-					_ = CopyToClipboard(event.RawContent)
-					m.statusMessage = fmt.Sprintf("📋 Copied Step #%d payload to clipboard!", event.StepIndex)
-					m.statusMessageTime = time.Now()
-					return m, nil
-				}
+			if (key == "y" || key == "c") && m.activeView == ViewContext {
+				payload := core.ExtractAgentContextPayload(m.history, m.sessionID, "Gemini 3.7 Flash")
+				text := m.GetContextInspectorContent(payload)
+				_ = CopyToClipboard(text)
+				subcatName := m.getSubcategoryName(m.contextSubItemIndex)
+				msg := fmt.Sprintf("📋 Copied [%s] to clipboard!", subcatName)
+				m.clipboardStatus = msg
+				m.clipboardStatusTime = time.Now()
+				m.statusMessage = msg
+				m.statusMessageTime = time.Now()
+				return m, nil
 			}
 
 			// ==================== GLOBAL VIEW SWITCHING (DIRECT SHORTCUTS) ====================
@@ -1195,6 +1196,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "G", "end":
 				if m.contextFocusPane == FocusList {
 					m.contextSubItemIndex = 11
+				} else {
+					m.contextDetailScroll = 9999
 				}
 				return m, nil
 			}
@@ -1378,10 +1381,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 				if m.isVisualMode {
 					switch key {
-					case "esc":
+					case "esc", "q":
 						m.isVisualMode = false
 						return m, nil
-					case "y":
+					case "y", "c", "enter":
 						start := m.visualStart
 						end := m.visualCursor
 						if start > end {
@@ -1396,8 +1399,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if len(fullLines) > 0 && start <= end {
 							selectedText := strings.Join(fullLines[start:end+1], "\n")
 							_ = CopyToClipboard(selectedText)
-							m.clipboardStatus = fmt.Sprintf("Copied %d lines to clipboard", end-start+1)
+							toast := fmt.Sprintf("📋 Copied %d lines to clipboard!", end-start+1)
+							m.clipboardStatus = toast
 							m.clipboardStatusTime = time.Now()
+							m.statusMessage = toast
+							m.statusMessageTime = time.Now()
 						}
 						m.isVisualMode = false
 						return m, nil
@@ -1417,8 +1423,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							}
 						}
 						return m, nil
-					case "ctrl+u":
-						m.visualCursor -= 10
+					case "ctrl+u", "pgup":
+						m.visualCursor -= availableLines / 2
 						if m.visualCursor < 0 {
 							m.visualCursor = 0
 						}
@@ -1426,20 +1432,63 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.detailScroll = m.visualCursor
 						}
 						return m, nil
-					case "ctrl+d":
-						m.visualCursor += 10
+					case "ctrl+d", "pgdown", " ":
+						m.visualCursor += availableLines / 2
 						if m.visualCursor >= totalInspectorLines {
 							m.visualCursor = totalInspectorLines - 1
+						}
+						if m.visualCursor < 0 {
+							m.visualCursor = 0
 						}
 						if m.visualCursor >= m.detailScroll+availableLines {
 							m.detailScroll = m.visualCursor - availableLines + 1
 						}
 						return m, nil
+					case "G", "end":
+						if totalInspectorLines > 0 {
+							m.visualCursor = totalInspectorLines - 1
+							if m.visualCursor >= m.detailScroll+availableLines {
+								m.detailScroll = m.visualCursor - availableLines + 1
+							}
+							if m.detailScroll < 0 {
+								m.detailScroll = 0
+							}
+						}
+						return m, nil
+					case "g", "home":
+						m.visualCursor = 0
+						m.detailScroll = 0
+						return m, nil
+					default:
+						return m, nil
 					}
+				}
+
+				// Normal mode copy in FocusDetail
+				if key == "y" || key == "c" {
+					if hasEvent {
+						if len(fullLines) > 0 {
+							text := strings.Join(fullLines, "\n")
+							_ = CopyToClipboard(text)
+							toast := fmt.Sprintf("📋 Copied Step #%d detail (%d lines)!", selectedEvent.StepIndex, len(fullLines))
+							m.clipboardStatus = toast
+							m.clipboardStatusTime = time.Now()
+							m.statusMessage = toast
+							m.statusMessageTime = time.Now()
+						} else {
+							_ = CopyToClipboard(selectedEvent.RawContent)
+							toast := fmt.Sprintf("📋 Copied Step #%d payload to clipboard!", selectedEvent.StepIndex)
+							m.clipboardStatus = toast
+							m.clipboardStatusTime = time.Now()
+							m.statusMessage = toast
+							m.statusMessageTime = time.Now()
+						}
+					}
+					return m, nil
 				}
 			}
 
-			// FocusList hotkeys for filter and search
+			// FocusList hotkeys for filter, search, and copy
 			if m.focusPane == FocusList && !m.isVisualMode {
 				if key == "/" {
 					m.isHistorySearching = true
@@ -1451,6 +1500,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if key == "c" || key == "C" {
 					m.cycleCacheFilter()
+					return m, nil
+				}
+				if key == "y" || key == "Y" {
+					if hasEvent {
+						content := selectedEvent.RawContent
+						if strings.TrimSpace(content) == "" {
+							content = selectedEvent.Summary
+						}
+						_ = CopyToClipboard(content)
+						toast := fmt.Sprintf("📋 Copied Step #%d payload to clipboard!", selectedEvent.StepIndex)
+						m.clipboardStatus = toast
+						m.clipboardStatusTime = time.Now()
+						m.statusMessage = toast
+						m.statusMessageTime = time.Now()
+					}
 					return m, nil
 				}
 			}
@@ -1694,12 +1758,12 @@ func (m Model) renderFooter() string {
 		return lipgloss.NewStyle().MaxWidth(m.width).Render(prompt + hint)
 	}
 
-	if m.statusMessage != "" && time.Since(m.statusMessageTime) < 4*time.Second {
+	if m.statusMessage != "" && time.Since(m.statusMessageTime) < statusMessageDuration {
 		alert := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorSuccess).Padding(0, 1).Render(m.statusMessage)
 		return lipgloss.NewStyle().MaxWidth(m.width).Render(alert)
 	}
 
-	if m.clipboardStatus != "" && time.Since(m.clipboardStatusTime) < 4*time.Second {
+	if m.clipboardStatus != "" && time.Since(m.clipboardStatusTime) < statusMessageDuration {
 		alert := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorSuccess).Padding(0, 1).Render(m.clipboardStatus)
 		return lipgloss.NewStyle().MaxWidth(m.width).Render(alert)
 	}
@@ -1730,19 +1794,19 @@ func (m Model) renderFooter() string {
 			hints = fmt.Sprintf(" %s Confirm  %s Clear/Exit  [0-9] Type Step #",
 				KeyStyle.Render("[Enter]"), KeyStyle.Render("[Esc]"))
 		} else if m.isVisualMode {
-			hints = fmt.Sprintf(" %s Yank  %s Move  %s Cancel",
-				KeyStyle.Render("[y]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Esc]"))
+			hints = fmt.Sprintf(" %s Yank/Copy  %s Move  %s Top/Bottom  %s Cancel",
+				KeyStyle.Render("[y/Enter]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[g/G]"), KeyStyle.Render("[Esc]"))
 		} else if m.focusPane == FocusList {
 			if m.width < 90 {
 				hints = fmt.Sprintf(" %s Focus  %s Type  %s Cache  %s Copy  %s Command  %s Shortcuts",
-					KeyStyle.Render("[l]"), KeyStyle.Render("[t]"), KeyStyle.Render("[c]"), KeyStyle.Render("[y/c]"), KeyStyle.Render("[:] (:q)"), KeyStyle.Render("[?]"))
+					KeyStyle.Render("[l]"), KeyStyle.Render("[t]"), KeyStyle.Render("[c]"), KeyStyle.Render("[y]"), KeyStyle.Render("[:] (:q)"), KeyStyle.Render("[?]"))
 			} else {
 				hints = fmt.Sprintf(" %s Focus  %s Step #  %s Type  %s Cache  %s Copy  %s Command  %s Shortcuts",
-					KeyStyle.Render("[l]"), KeyStyle.Render("[/]"), KeyStyle.Render("[t]"), KeyStyle.Render("[c]"), KeyStyle.Render("[y/c]"), KeyStyle.Render("[:] (:q)"), KeyStyle.Render("[?]"))
+					KeyStyle.Render("[l]"), KeyStyle.Render("[/]"), KeyStyle.Render("[t]"), KeyStyle.Render("[c]"), KeyStyle.Render("[y]"), KeyStyle.Render("[:] (:q)"), KeyStyle.Render("[?]"))
 			}
 		} else {
-			hints = fmt.Sprintf(" %s List  %s Copy  %s Scroll  %s Cycle  %s Shortcuts  %s Command",
-				KeyStyle.Render("[h/Esc]"), KeyStyle.Render("[y/c]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"), KeyStyle.Render("[:] (:q)"))
+			hints = fmt.Sprintf(" %s Visual  %s Copy All  %s List  %s Scroll  %s Top/Bottom  %s Cycle  %s Shortcuts",
+				KeyStyle.Render("[v/V]"), KeyStyle.Render("[y]"), KeyStyle.Render("[h/Esc]"), KeyStyle.Render("[j/k]"), KeyStyle.Render("[g/G]"), KeyStyle.Render("[Tab]"), KeyStyle.Render("[?]"))
 		}
 	} else {
 		if len(m.history) > 0 {

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+
+	"heimdall/internal/core"
 )
 
 // GeminiGenerationMetadata contains telemetry extracted from Google Gemini Protobuf
@@ -26,7 +28,7 @@ func ParseGeminiGenMetadata(genIndex int, data []byte) (*GeminiGenerationMetadat
 
 	meta := &GeminiGenerationMetadata{
 		GenIndex:     genIndex,
-		ContextLimit: 256000,
+		ContextLimit: core.DefaultFallbackAgentWindow,
 	}
 
 	// Extract LastStepIndex from raw byte patterns (supporting variable length step index strings)

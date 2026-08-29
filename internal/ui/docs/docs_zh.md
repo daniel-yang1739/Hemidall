@@ -119,10 +119,22 @@
 * **Google AI Pro Quota (5000 RPD)** : Google AI Pro 每日請求配額消耗追蹤。
   - **計算公式** : 以 Turns / 5000 × 100% 計算當前配額消耗百分比。
 
-## 上下文力學與顯存物理機制 (Context Mechanics & Physics)
 * **Context Compaction (雙水位線壓縮)** : 記憶體垃圾回收機制。
   - **運作機制** : 於觸及 95% High Watermark (~245k) 時觸發遞迴摘要，並重置至 48% Low Watermark (~120k)。
 * **Reverse Sliding Window (倒推滑動窗口)** : 活躍窗口精準定位。
   - **運作機制** : 由最新步驟往前倒推填滿 Google 官方活躍預算，精確排除已被淘汰的遠古步驟。
 * **Longest Common Prefix (最長公共前綴)** : GPU KV Cache 邊界鎖定。
   - **運作機制** : 逐字元比對時序步驟，精確定位 GPU 顯存可復用的前綴邊界。
+
+## 配置載入與模型規格庫 (Configuration Hierarchy & Model Specs)
+* **Tier 1: By-Model Overrides (個別模型專屬覆蓋)** :
+  - **規格來源** : `settings.json` 的 `modelConfigs.customOverrides` 或 `opencode.json` 的 `models[model_id]`。
+  - **運作機制** : 針對特定模型優先覆蓋 Context 視窗或快取折扣。
+* **Tier 2: Global Host Settings (全域使用者設定)** :
+  - **規格來源** : `settings.json` 的 `contextManagement.historyWindow.maxTokens` (預設 150k)、`model.compressionThreshold` (預設 0.5)。
+  - **運作機制** : 提供會話全域通用之活躍視窗上限與匯率 (`exchange_rate`)。
+* **Tier 3: Official Model Specs (官方模型規格庫)** :
+  - **規格來源** : `internal/core/model_specs.go` 之原廠官方 API 物理規格與定價表。
+  - **支援模型** : Gemini 3.7 Flash (1M 物理 / 256k 預設 / 90% 快取折扣), Gemini 2.5 Pro (2M / 1M / 90%), Claude 3.7 Sonnet (200k / 90%), DeepSeek R1 (128k / 75%)。
+* **Dynamic BPE Token Measurement (動態 BPE 精算)** :
+  - **運作機制** : $D_1$ (System Instructions) 與 $D_2$ (MCP Tools Schema) 透過本地 BPE Tokenizer 即時計算真實 `AGENTS.md` 與 Tools JSON 內容，確保 Token 佔比 100% 精準。

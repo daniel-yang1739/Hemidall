@@ -12,30 +12,16 @@ func TestDiscoverAllSessions(t *testing.T) {
 	}
 
 	if len(sessions) == 0 {
-		t.Log("No local sessions found on disk")
 		return
-	}
-
-	t.Logf("Discovered %d sessions:", len(sessions))
-	for _, s := range sessions {
-		t.Logf("• [%s] ID: %s | Steps: %d | Size: %.2fMB",
-			s.LastModified.Format("2006-01-02 15:04:05"), s.SessionID, s.StepCount, s.SizeMB)
 	}
 
 	// Try loading history for the most recent session
 	topSession := sessions[0]
-	events, err := LoadSessionHistory(topSession.SessionID, core.NewPayloadAnalyzer())
-	if err != nil {
-		t.Logf("LoadSessionHistory info/warning: %v", err)
-	} else {
-		t.Logf("✅ Successfully loaded %d historical steps for session %s", len(events), topSession.SessionID)
+	events, err := LoadSessionHistory(topSession.SessionID, core.NewPayloadAnalyzer(nil))
+	if err == nil && len(events) > 0 {
 		agg := core.ComputeSessionAggregateMetrics(events)
-		t.Logf("AGGREGATE: Processed=%d, Cached=%d, HitRate=%.2f%%, New=%d, Saved=%d (%.2f%%), Turns=%d",
-			agg.TotalStats.TotalProcessed, agg.TotalStats.TotalCached, agg.TotalStats.CacheHitRate,
-			agg.TotalStats.TotalNew, agg.TotalStats.TokensSaved, agg.TotalStats.SavingsPercentage, agg.TotalStats.TurnCount)
-		for _, m := range agg.ModelStats {
-			t.Logf("  • Model %s: Turns=%d, Processed=%d, Cached=%d (%.2f%%), Saved=%d",
-				m.ModelName, m.TurnCount, m.TotalProcessed, m.TotalCached, m.CacheHitRate, m.TokensSaved)
+		if agg.TotalStats.TotalProcessed < 0 {
+			t.Errorf("TotalProcessed should be non-negative, got %d", agg.TotalStats.TotalProcessed)
 		}
 	}
 }
@@ -55,7 +41,6 @@ func TestCleanModelNameAndExtraction(t *testing.T) {
 func TestGetLatestActiveSession(t *testing.T) {
 	latest, err := GetLatestActiveSession()
 	if err != nil {
-		t.Logf("GetLatestActiveSession info (no sessions on disk): %v", err)
 		return
 	}
 	if latest.SessionID == "" {
@@ -64,6 +49,5 @@ func TestGetLatestActiveSession(t *testing.T) {
 	if latest.LogPath == "" {
 		t.Fatalf("Expected non-empty LogPath from GetLatestActiveSession, got empty")
 	}
-	t.Logf("✅ Latest session detected: ID=%s, LogPath=%s, Steps=%d", latest.SessionID, latest.LogPath, latest.StepCount)
 }
 

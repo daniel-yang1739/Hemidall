@@ -61,6 +61,43 @@ type AgentContextPayload struct {
 	ProjectedCostTWD float64
 }
 
+// MeasureDynamicBaselineTokens calculates the exact BPE tokens for system instructions (D1) and tool schemas (D2).
+func MeasureDynamicBaselineTokens() (systemTokens int, toolsDefTokens int) {
+	cwd, _ := os.Getwd()
+	constitution := ""
+	for _, p := range []string{"AGENTS.md", "../AGENTS.md", filepath.Join(cwd, "AGENTS.md"), "/Users/daniel_y_yang/Documents/self/heimdall/AGENTS.md"} {
+		if content, err := os.ReadFile(p); err == nil && len(content) > 0 {
+			constitution = string(content)
+			break
+		}
+	}
+
+	identity := `You are Antigravity, a powerful agentic AI coding assistant designed by the Google DeepMind team. Pair-programming with USER to solve coding tasks.`
+	runtime := `macOS Darwin zsh /bin/zsh Google Antigravity Harness v2.0`
+
+	d1 := CountTokens(identity) + CountTokens(constitution) + CountTokens(runtime)
+	if d1 <= 0 {
+		d1 = DefaultFallbackSystemTokens
+	}
+
+	// Calculate Tools JSON Schema tokens
+	tools := GetNativeToolsDefinitions()
+	skills := GetActiveSkillsDefinitions()
+	toolsText := ""
+	for _, t := range tools {
+		toolsText += t.RawSchema + "\n"
+	}
+	for _, s := range skills {
+		toolsText += s.RawMarkdown + "\n"
+	}
+	d2 := CountTokens(toolsText)
+	if d2 <= 0 {
+		d2 = DefaultFallbackToolsDefTokens
+	}
+
+	return d1, d2
+}
+
 // GetNativeToolsDefinitions returns the 8 native harness tool definitions and schemas
 func GetNativeToolsDefinitions() []ToolSignature {
 	return []ToolSignature{
@@ -178,10 +215,12 @@ func ExtractAgentContextPayload(history []UnifiedAgentEvent, sessionID, targetMo
 		cwd = "/Users/daniel_y_yang/Documents/self/heimdall"
 	}
 
+	spec := ResolveModelSpec(targetModel, nil)
+
 	payload := AgentContextPayload{
 		AgentType:    AgentTypeAntigravity,
 		TargetModel:  targetModel,
-		ContextLimit: 256000,
+		ContextLimit: spec.DefaultAgentWindow,
 		TotalTokens:  185200,
 		RuntimeMetadata: map[string]string{
 			"OS":         "macOS Darwin 24.5.0",

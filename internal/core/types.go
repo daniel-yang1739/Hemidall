@@ -59,6 +59,13 @@ type TokenBreakdown struct {
 	OfficialContextLimit int     `json:"official_context_limit"` // e.g. 256,000
 	RawLocalAccumulated  int     `json:"raw_local_accumulated"`  // Raw uncompressed log tokens (e.g. ~400k)
 	StepDelta            int     `json:"step_delta"`             // Local token delta generated in this single step
+
+	// Dynamic financial & capacity metrics (resolved via ModelSpec & HostConfig)
+	ContextLimit       int     `json:"context_limit"`        // Effective active agent window limit
+	PricingCachedUSD   float64 `json:"pricing_cached_usd"`   // Per million cached rate
+	PricingUncachedUSD float64 `json:"pricing_uncached_usd"` // Per million uncached rate
+	CacheDiscount      float64 `json:"cache_discount"`       // e.g. 0.90 (90%)
+	ExchangeRate       float64 `json:"exchange_rate"`        // e.g. 32.0
 }
 
 // StepScope defines the universal computing origin and billing nature of an agent event
@@ -84,10 +91,10 @@ func ClassifyCacheStatus(hitRate float64, cachedTokens, totalTokens int, isExpir
 	if cachedTokens == 0 {
 		return "MISS"
 	}
-	if hitRate >= 80.0 {
+	if hitRate >= CacheHitRateThresholdHit {
 		return "HIT"
 	}
-	if hitRate > 0.0 {
+	if hitRate >= CacheHitRateThresholdPartial {
 		return "PARTIAL"
 	}
 	return "MISS"

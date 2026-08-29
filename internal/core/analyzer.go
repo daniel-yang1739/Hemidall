@@ -49,14 +49,31 @@ type SessionContextState struct {
 
 // PayloadAnalyzer evaluates unified events and updates context state machine using reverse sliding window
 type PayloadAnalyzer struct {
-	mu       sync.Mutex
-	sessions map[string]*SessionContextState
+	mu         sync.Mutex
+	sessions   map[string]*SessionContextState
+	hostConfig *HostConfig
 }
 
-// NewPayloadAnalyzer creates a new analyzer instance
-func NewPayloadAnalyzer() *PayloadAnalyzer {
+// NewPayloadAnalyzer creates a new analyzer instance with optional host configuration
+func NewPayloadAnalyzer(hostConfig ...*HostConfig) *PayloadAnalyzer {
+	var cfg *HostConfig
+	if len(hostConfig) > 0 && hostConfig[0] != nil {
+		cfg = hostConfig[0]
+	} else {
+		cfg = NewDefaultHostConfig()
+	}
 	return &PayloadAnalyzer{
-		sessions: make(map[string]*SessionContextState),
+		sessions:   make(map[string]*SessionContextState),
+		hostConfig: cfg,
+	}
+}
+
+// SetHostConfig updates the active host configuration
+func (a *PayloadAnalyzer) SetHostConfig(cfg *HostConfig) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if cfg != nil {
+		a.hostConfig = cfg
 	}
 }
 
@@ -67,10 +84,11 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 
 	state, exists := a.sessions[event.SessionID]
 	if !exists {
+		baseSys, baseTools := MeasureDynamicBaselineTokens()
 		state = &SessionContextState{
 			SessionID:      event.SessionID,
-			BaseSystem:     3806, // Baseline static system instructions (~2.2% of 175k)
-			BaseToolsDef:   1377, // Baseline MCP Tools JSON Schema definitions (~0.8% of 175k)
+			BaseSystem:     baseSys,
+			BaseToolsDef:   baseTools,
 			StepRecords:    make([]StepTokenRecord, 0, 1000),
 			HasInitialized: false,
 		}
@@ -326,9 +344,10 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 				state.PrevModel = event.Tokens.OfficialModel
 			}
 		} else {
+			spec := ResolveModelSpec(event.Tokens.OfficialModel, a.hostConfig)
 			maxContextLimit := event.Tokens.OfficialContextLimit
 			if maxContextLimit == 0 {
-				maxContextLimit = 256000
+				maxContextLimit = spec.DefaultAgentWindow
 			}
 
 			cachedTokens := state.PrevTotalTokens
@@ -364,6 +383,24 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 				state.PrevModel = event.Tokens.OfficialModel
 			}
 		}
+	}
+
+	// Dynamic financial and context limit injection
+	spec := ResolveModelSpec(event.Tokens.OfficialModel, a.hostConfig)
+	if event.Tokens.ContextLimit == 0 {
+		if event.Tokens.OfficialContextLimit > 0 {
+			event.Tokens.ContextLimit = event.Tokens.OfficialContextLimit
+		} else {
+			event.Tokens.ContextLimit = spec.DefaultAgentWindow
+		}
+	}
+	event.Tokens.PricingCachedUSD = spec.Pricing.CachedPerMillionUSD
+	event.Tokens.PricingUncachedUSD = spec.Pricing.UncachedPerMillionUSD
+	event.Tokens.CacheDiscount = spec.CacheDiscountRate
+	if a.hostConfig != nil && a.hostConfig.ExchangeRate > 0 {
+		event.Tokens.ExchangeRate = a.hostConfig.ExchangeRate
+	} else {
+		event.Tokens.ExchangeRate = DefaultUSDtoTWDExchangeRate
 	}
 
 	if !event.Timestamp.IsZero() {

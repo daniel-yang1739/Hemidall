@@ -36,8 +36,6 @@ func TestCJKAndLongPayloadZeroHeightVariation(t *testing.T) {
 		fullView := m.View()
 		lines := strings.Split(fullView, "\n")
 
-		t.Logf("[%dx%d] Full View lines count: %d", size.w, size.h, len(lines))
-
 		if len(lines) != size.h {
 			t.Fatalf("[%dx%d] Expected exactly %d lines, got %d", size.w, size.h, size.h, len(lines))
 		}
@@ -157,11 +155,9 @@ func TestView3DocsPageRenderingAndSearch(t *testing.T) {
 		t.Errorf("Expected docsSearchQuery to be cleared, got '%s'", m.docsSearchQuery)
 	}
 
-	// 7. Test overscroll prevention on 'j' and 'G'
-	for i := 0; i < 200; i++ {
-		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
-		m = updated.(Model)
-	}
+	// 7. Test jump to bottom on 'G' and overscroll prevention
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	m = updated.(Model)
 	maxScroll := m.getDocsMaxScroll()
 	if m.docsScroll != maxScroll {
 		t.Errorf("Expected docsScroll to be clamped to maxScroll %d, got %d", maxScroll, m.docsScroll)
@@ -955,15 +951,16 @@ func TestWidthMeasurement(t *testing.T) {
 	m.eventCount = 2200
 
 	header := m.renderHeader()
-	t.Logf("Header length: %d, string: %s", lipgloss.Width(header), header)
+	if lipgloss.Width(header) > m.width {
+		t.Errorf("Header width %d exceeds max width %d", lipgloss.Width(header), m.width)
+	}
 
 	m.activeView = ViewDashboard
 	dash := m.renderDashboardView()
 	dashLines := strings.Split(dash, "\n")
 	for i, l := range dashLines {
-		t.Logf("Dash line %d width: %d | %s", i, lipgloss.Width(l), l)
-		if i > 3 {
-			break
+		if lipgloss.Width(l) > m.width {
+			t.Errorf("Dashboard line %d width %d exceeds max width %d", i, lipgloss.Width(l), m.width)
 		}
 	}
 
@@ -971,9 +968,8 @@ func TestWidthMeasurement(t *testing.T) {
 	hist := m.renderHistoryView()
 	histLines := strings.Split(hist, "\n")
 	for i, l := range histLines {
-		t.Logf("Hist line %d width: %d | %s", i, lipgloss.Width(l), l)
-		if i > 3 {
-			break
+		if lipgloss.Width(l) > m.width {
+			t.Errorf("History line %d width %d exceeds max width %d", i, lipgloss.Width(l), m.width)
 		}
 	}
 }
@@ -1442,7 +1438,207 @@ func TestSessionSwitch_Pos_SwitchSessionReqMsgDelegatesToSwitcher(t *testing.T) 
 		t.Fatalf("Expected model history to be cleared on switch request, got %d", len(m.history))
 	}
 }
+func TestVisualMode_Pos_ShiftV_Navigation_G_and_g(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 120
+	m.height = 30
+	m.activeView = ViewHistory
+	m.focusPane = FocusDetail
+	m.history = []core.UnifiedAgentEvent{
+		{
+			StepIndex:  1,
+			Summary:    "Step 1 Summary",
+			RawContent: "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7\nLine 8\nLine 9\nLine 10\nLine 11\nLine 12\nLine 13\nLine 14\nLine 15",
+		},
+	}
 
+	// 1. Enter Visual Mode with 'V'
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("V")})
+	m = updated.(Model)
+	if !m.isVisualMode {
+		t.Fatalf("Expected isVisualMode to be true on 'V'")
+	}
+	if m.visualCursor != 0 {
+		t.Errorf("Expected visualCursor 0, got %d", m.visualCursor)
+	}
 
+	// 2. Press 'G' (Shift+G) to jump to last line
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	m = updated.(Model)
+	if m.visualCursor <= 0 {
+		t.Errorf("Expected visualCursor to jump to last line, got %d", m.visualCursor)
+	}
+	lastLine := m.visualCursor
 
+	// 3. Press 'g' to jump back to line 0
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("g")})
+	m = updated.(Model)
+	if m.visualCursor != 0 {
+		t.Errorf("Expected visualCursor 0 on 'g', got %d", m.visualCursor)
+	}
+
+	// 4. Press 'j' to move down 1 line
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	m = updated.(Model)
+	if m.visualCursor != 1 {
+		t.Errorf("Expected visualCursor 1 on 'j', got %d", m.visualCursor)
+	}
+
+	// 5. Press 'k' to move back up
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	m = updated.(Model)
+	if m.visualCursor != 0 {
+		t.Errorf("Expected visualCursor 0 on 'k', got %d", m.visualCursor)
+	}
+
+	// 6. Press 'G' again and yank with 'y'
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	m = updated.(Model)
+	if m.visualCursor != lastLine {
+		t.Errorf("Expected visualCursor %d on 'G', got %d", lastLine, m.visualCursor)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	m = updated.(Model)
+	if m.isVisualMode {
+		t.Errorf("Expected isVisualMode to be false after 'y'")
+	}
+	if !strings.Contains(m.clipboardStatus, "Copied") {
+		t.Errorf("Expected clipboardStatus confirmation, got: %s", m.clipboardStatus)
+	}
+}
+
+func TestNormalMode_Pos_CopyListAndDetail(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 120
+	m.height = 30
+	m.activeView = ViewHistory
+	m.focusPane = FocusList
+	m.history = []core.UnifiedAgentEvent{
+		{
+			StepIndex:  1,
+			Summary:    "Step 1 Old",
+			RawContent: "Raw Content 1",
+		},
+		{
+			StepIndex:  2,
+			Summary:    "Step 2 Recent",
+			RawContent: "Raw Content 2",
+		},
+	}
+
+	// In FocusList (selectedIdx 0 corresponds to latest Step 2)
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	m = updated.(Model)
+	if !strings.Contains(m.clipboardStatus, "Step #2") {
+		t.Errorf("Expected clipboardStatus for Step #2, got: %s", m.clipboardStatus)
+	}
+
+	// Switch to FocusDetail
+	m.focusPane = FocusDetail
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	m = updated.(Model)
+	if !strings.Contains(m.clipboardStatus, "Step #2") {
+		t.Errorf("Expected clipboardStatus for Step #2 detail, got: %s", m.clipboardStatus)
+	}
+}
+
+func TestVisualMode_Pos_YankWithCAndEnter(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 120
+	m.height = 30
+	m.activeView = ViewHistory
+	m.focusPane = FocusDetail
+	m.history = []core.UnifiedAgentEvent{
+		{
+			StepIndex:  1,
+			Summary:    "Step 1",
+			RawContent: "Line A\nLine B\nLine C",
+		},
+	}
+
+	// 1. Test yank with 'c'
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	m = updated.(Model)
+	if !m.isVisualMode {
+		t.Fatalf("Expected isVisualMode on 'v'")
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	m = updated.(Model)
+	if m.isVisualMode {
+		t.Errorf("Expected isVisualMode to exit on 'c'")
+	}
+	if !strings.Contains(m.clipboardStatus, "Copied") {
+		t.Errorf("Expected clipboardStatus on 'c'")
+	}
+
+	// 2. Test yank with 'enter'
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if m.isVisualMode {
+		t.Errorf("Expected isVisualMode to exit on 'enter'")
+	}
+}
+
+func TestVisualMode_Neg_EscCancelsWithoutYank(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 120
+	m.height = 30
+	m.activeView = ViewHistory
+	m.focusPane = FocusDetail
+	m.history = []core.UnifiedAgentEvent{
+		{
+			StepIndex:  1,
+			Summary:    "Step 1",
+			RawContent: "Line A\nLine B",
+		},
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("V")})
+	m = updated.(Model)
+	if !m.isVisualMode {
+		t.Fatalf("Expected isVisualMode")
+	}
+
+	// Press Esc to cancel
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.isVisualMode {
+		t.Errorf("Expected isVisualMode to be false after Esc")
+	}
+}
+
+func TestVisualMode_Pos_PageDownAndPageUp(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 120
+	m.height = 30
+	m.activeView = ViewHistory
+	m.focusPane = FocusDetail
+	m.history = []core.UnifiedAgentEvent{
+		{
+			StepIndex: 1,
+			Summary:   "Step 1",
+			RawContent: "L1\nL2\nL3\nL4\nL5\nL6\nL7\nL8\nL9\nL10\nL11\nL12\nL13\nL14\nL15\nL16\nL17\nL18\nL19\nL20\nL21\nL22\nL23\nL24\nL25",
+		},
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("V")})
+	m = updated.(Model)
+
+	// Press Ctrl+D
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlD})
+	m = updated.(Model)
+	if m.visualCursor <= 0 {
+		t.Errorf("Expected visualCursor to advance on Ctrl+D, got %d", m.visualCursor)
+	}
+
+	// Press Ctrl+U
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	m = updated.(Model)
+	if m.visualCursor != 0 {
+		t.Errorf("Expected visualCursor to return to 0 on Ctrl+U, got %d", m.visualCursor)
+	}
+}
 

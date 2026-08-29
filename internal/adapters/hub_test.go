@@ -15,11 +15,7 @@ func TestWatcherHub_Pos_InitializeAndStartSession(t *testing.T) {
 	analyzer := core.NewPayloadAnalyzer()
 	hub := NewWatcherHub(ctx, eventChan, analyzer)
 
-	err := hub.StartSession("test-session-1", core.AgentTypeAntigravity, "", "")
-	if err != nil && err.Error() != "unsupported agent type for live watching: antigravity" {
-		t.Logf("StartSession non-fatal error: %v", err)
-	}
-
+	_ = hub.StartSession("test-session-1", core.AgentTypeAntigravity, "", "")
 	activeSID := hub.ActiveSessionID()
 	if activeSID != "test-session-1" {
 		t.Fatalf("Expected active session 'test-session-1', got '%s'", activeSID)

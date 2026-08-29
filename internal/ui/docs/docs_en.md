@@ -102,3 +102,16 @@
 * **Context Compaction** : Dual-watermark compaction triggering recursive summarization at 95% High Watermark (~245k) down to 48% Low Watermark (~120k).
 * **Reverse Sliding Window** : Reverse sliding window algorithm filling official Google token budget from newest to oldest.
 * **Longest Common Prefix** : Exact character-level prefix matching algorithm identifying GPU KV Cache reusable boundaries.
+
+## Configuration Hierarchy & Model Specs
+* **Tier 1: By-Model Overrides** :
+  - **Source** : `settings.json` `modelConfigs.customOverrides` or `opencode.json` `models[model_id]`.
+  - **Mechanics** : Highest priority model-specific overrides for custom active context window limits and caching discounts.
+* **Tier 2: Global Host Settings** :
+  - **Source** : `settings.json` `contextManagement.historyWindow.maxTokens` (default 150k), `model.compressionThreshold` (default 0.5).
+  - **Mechanics** : Universal session context capacity limits and currency exchange rate overrides (`exchange_rate`).
+* **Tier 3: Official Model Specs** :
+  - **Source** : `internal/core/model_specs.go` authoritative vendor hardware limit and pricing table.
+  - **Supported Models** : Gemini 3.7 Flash (1M physical / 256k default / 90% cache discount), Gemini 2.5 Pro (2M / 1M / 90%), Claude 3.7 Sonnet (200k / 90%), DeepSeek R1 (128k / 75%).
+* **Dynamic BPE Token Measurement** :
+  - **Mechanics** : D1 (System Instructions) and D2 (MCP Tools Schema) are dynamically measured using live local BPE tokenizer on actual `AGENTS.md` rules and Tools JSON Schemas, ensuring 100% byte-accurate proportions.
