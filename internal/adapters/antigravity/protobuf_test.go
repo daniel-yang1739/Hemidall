@@ -38,6 +38,28 @@ func TestProtobuf_Pos_ValidTelemetryBlobExtraction(t *testing.T) {
 	}
 }
 
+func TestProtobuf_Pos_1DigitStepIndexExtraction(t *testing.T) {
+	raw := []byte("prefix\x00last_step_index\x12\x011\x00gemini-3.7-flash\x00suffix")
+	meta, err := ParseGeminiGenMetadata(1, raw)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if meta.LastStepIdx != 1 {
+		t.Fatalf("Expected LastStepIdx 1, got %d", meta.LastStepIdx)
+	}
+}
+
+func TestProtobuf_Pos_2DigitStepIndexExtraction(t *testing.T) {
+	raw := []byte("prefix\x00last_step_index\x12\x0242\x00gemini-3.7-flash\x00suffix")
+	meta, err := ParseGeminiGenMetadata(1, raw)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if meta.LastStepIdx != 42 {
+		t.Fatalf("Expected LastStepIdx 42, got %d", meta.LastStepIdx)
+	}
+}
+
 func TestProtobuf_Pos_3DigitStepIndexExtraction(t *testing.T) {
 	raw := []byte("prefix\x00last_step_index\x12\x03664\x00gemini-3.7-flash\x00suffix")
 	meta, err := ParseGeminiGenMetadata(1, raw)
@@ -46,6 +68,28 @@ func TestProtobuf_Pos_3DigitStepIndexExtraction(t *testing.T) {
 	}
 	if meta.LastStepIdx != 664 {
 		t.Fatalf("Expected LastStepIdx 664, got %d", meta.LastStepIdx)
+	}
+}
+
+func TestProtobuf_Pos_5DigitStepIndexExtraction(t *testing.T) {
+	raw := []byte("prefix\x00last_step_index\x12\x0512345\x00gemini-3.7-flash\x00suffix")
+	meta, err := ParseGeminiGenMetadata(1, raw)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if meta.LastStepIdx != 12345 {
+		t.Fatalf("Expected LastStepIdx 12345, got %d", meta.LastStepIdx)
+	}
+}
+
+func TestProtobuf_Pos_6DigitStepIndexExtraction(t *testing.T) {
+	raw := []byte("prefix\x00last_step_index\x12\x06100000\x00gemini-3.7-flash\x00suffix")
+	meta, err := ParseGeminiGenMetadata(1, raw)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if meta.LastStepIdx != 100000 {
+		t.Fatalf("Expected LastStepIdx 100000, got %d", meta.LastStepIdx)
 	}
 }
 

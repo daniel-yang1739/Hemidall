@@ -458,14 +458,13 @@ func (m Model) renderDashboardView() string {
 		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 		if contentWidth < 80 {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role  : %s (%s | Step #%03d)\n", e.GetAgentRole(), toolName, e.StepIndex))
-			p1.WriteString(fmt.Sprintf("  • Model & Size   : %s | %d Tok\n", truncateVisualWidth(invokedModel, contentWidth-20), total))
-			if e.ParentStepIdx > 0 {
-				p1.WriteString(fmt.Sprintf("  • Parent Turn    : Step #%04d (%s)\n", e.ParentStepIdx, truncateVisualWidth(invokedModel, contentWidth-25)))
-			}
+			p1.WriteString(fmt.Sprintf("  • Total Context  : Nil (Local Subprocess)\n"))
+			p1.WriteString(fmt.Sprintf("  • Step Delta     : +%s Tok (Local Buffer)\n", formatTokShort(t.StepDelta)))
 			p1.WriteString(fmt.Sprintf("  • Status & Bill  : %s | %s", e.Status, packagedInfo))
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role        : %s (Tool Action: %s | Step #%04d | Status: %s | %s)\n", e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Render(toolName), e.StepIndex, e.Status, timeStr))
-			p1.WriteString(fmt.Sprintf("  • Model & Payload      : %s | %d Tokens (Tool Result Buffer)  %s\n", lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(invokedModel), total, cacheBadge))
+			p1.WriteString(fmt.Sprintf("  • Total Context Window : Nil (Local Machine Subprocess / 0 GPU Inbound)\n"))
+			p1.WriteString(fmt.Sprintf("  • Step Delta (Buffer)  : +%d Tokens (Local Output Buffer ➔ Staged for Next Turn)\n", t.StepDelta))
 			if e.ParentStepIdx > 0 {
 				p1.WriteString(fmt.Sprintf("  • Invoking Parent      : Dispatched by Cloud Step #%04d (%s)\n", e.ParentStepIdx, invokedModel))
 			}
@@ -480,14 +479,13 @@ func (m Model) renderDashboardView() string {
 		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 		if contentWidth < 80 {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role  : HUMAN CLIENT (Step #%03d)\n", e.StepIndex))
-			p1.WriteString(fmt.Sprintf("  • Prompt Payload : %d Tokens  %s\n", total, cacheBadge))
-			if e.PackagedInStepIdx > 0 {
-				p1.WriteString(fmt.Sprintf("  • Settlement     : Settled in Step #%04d ☁️\n", e.PackagedInStepIdx))
-			}
+			p1.WriteString(fmt.Sprintf("  • Total Context  : Nil (Client Intent)\n"))
+			p1.WriteString(fmt.Sprintf("  • Step Delta     : +%s Tok (Prompt Buffer)\n", formatTokShort(t.StepDelta)))
 			p1.WriteString(fmt.Sprintf("  • Status & Time  : %s | %s", e.Status, timeStr))
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role        : HUMAN CLIENT Intent (Step #%03d | Status: %s | %s)\n", e.StepIndex, e.Status, timeStr))
-			p1.WriteString(fmt.Sprintf("  • Prompt Payload       : %d Tokens (Natural Language Intent Buffer)  %s\n", total, cacheBadge))
+			p1.WriteString(fmt.Sprintf("  • Total Context Window : Nil (Client Inbound Intent / Pre-Inference Staged)\n"))
+			p1.WriteString(fmt.Sprintf("  • Step Delta (Prompt)  : +%d Tokens (Natural Language Inbound Buffer)\n", t.StepDelta))
 			if e.PackagedInStepIdx > 0 {
 				p1.WriteString(fmt.Sprintf("  • Inference Settlement : Ingested ➔ Settled & Billed in Cloud Step #%04d ☁️", e.PackagedInStepIdx))
 			} else {
@@ -500,10 +498,12 @@ func (m Model) renderDashboardView() string {
 		if contentWidth < 80 {
 			p1.WriteString(fmt.Sprintf("  • Event / Role   : %s Context Compaction (Step #%03d)\n", e.GetAgentRole(), e.StepIndex))
 			p1.WriteString(fmt.Sprintf("  • Summary Size   : %d Tokens  %s\n", total, cacheBadge))
+			p1.WriteString(fmt.Sprintf("  • Step Delta     : +%s Tok (GC Summary)\n", formatTokShort(t.StepDelta)))
 			p1.WriteString(fmt.Sprintf("  • Status & Time  : %s | %s", e.Status, timeStr))
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role        : %s Middleware (Sidecar Context GC | Step #%03d | Status: %s | %s)\n", e.GetAgentRole(), e.StepIndex, e.Status, timeStr))
 			p1.WriteString(fmt.Sprintf("  • Summary Size         : %d Tokens (Replaces ~200k+ Old Historical Tokens)  %s\n", total, cacheBadge))
+			p1.WriteString(fmt.Sprintf("  • Step Delta (Summary) : +%d Tokens (Compacted Summary Payload)\n", t.StepDelta))
 			p1.WriteString("  • Window Action        : Prepend Checkpoint ➔ Re-anchors Active Window Base for Next Turn 🔄")
 		}
 	} else {
@@ -523,20 +523,30 @@ func (m Model) renderDashboardView() string {
 		if contentWidth < 80 {
 			p1.WriteString(fmt.Sprintf("  • Agent / Model  : [%s] %s (Step #%03d)\n",
 				e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(modelName, contentWidth-28)), e.StepIndex))
-			p1.WriteString(fmt.Sprintf("  • Total Context  : %s Tok (%4.1f%% of %dk Window) %s\n",
-				lipgloss.NewStyle().Bold(true).Render(formatTokShort(total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
-			p1.WriteString(fmt.Sprintf("  • Cached vs. New : %s Cached (%.1f%%) | %s New\n",
-				formatTokShort(t.CachedTokens), t.CacheHitRate, formatTokShort(t.NewTokens)))
+			if total > 0 {
+				p1.WriteString(fmt.Sprintf("  • Total Context  : %s Tok (%4.1f%% of %dk Window) %s\n",
+					lipgloss.NewStyle().Bold(true).Render(formatTokShort(total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
+				p1.WriteString(fmt.Sprintf("  • Step Delta     : +%s Tok | %s Cached (%.1f%%)\n",
+					formatTokShort(t.StepDelta), formatTokShort(t.CachedTokens), t.CacheHitRate))
+			} else {
+				p1.WriteString(fmt.Sprintf("  • Total Context  : Nil (Awaiting Telemetry ⏳)\n"))
+				p1.WriteString(fmt.Sprintf("  • Step Delta     : +%s Tok (Estimated)\n", formatTokShort(t.StepDelta)))
+			}
 			p1.WriteString(fmt.Sprintf("  • Status & Cost  : ~$%.4f USD | Status: %s", costUSD, e.Status))
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Agent / Model        : [%s] %s  (Step #%03d | Status: %s | %s)\n",
 				e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName), e.StepIndex, e.Status, timeStr))
-			p1.WriteString(fmt.Sprintf("  • Total Context Window : %s Tokens (%5.1f%% of %dk Window)  %s\n",
-				lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
-			p1.WriteString(fmt.Sprintf("  • Prefix Cache Savings : %s Tokens Cached (%.1f%% Hit) ➔ Net Saved ~%s Tok (75.0%% Discount)\n",
-				formatTokShort(t.CachedTokens), t.CacheHitRate, formatTokShort(savedTok)))
-			p1.WriteString(fmt.Sprintf("  • Uncached & Financial : %s New Tokens (Prefill) | Turn Cost: ~$%.4f USD (NT$ %.2f)",
-				formatTokShort(t.NewTokens), costUSD, costUSD*32.0))
+			if total > 0 {
+				p1.WriteString(fmt.Sprintf("  • Total Context Window : %s Tokens (%5.1f%% of %dk Window)  %s\n",
+					lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
+				p1.WriteString(fmt.Sprintf("  • Step Delta (New In)  : +%s Tokens (Uncached Prefill) | Turn Cost: ~$%.4f USD (NT$ %.2f)\n",
+					formatTokShort(t.StepDelta), costUSD, costUSD*32.0))
+				p1.WriteString(fmt.Sprintf("  • Prefix Cache Savings : %s Tokens Cached (%.1f%% Hit) ➔ Net Saved ~%s Tok (75.0%% Discount)",
+					formatTokShort(t.CachedTokens), t.CacheHitRate, formatTokShort(savedTok)))
+			} else {
+				p1.WriteString(fmt.Sprintf("  • Total Context Window : Nil (Awaiting SQLite Telemetry Record ⏳)\n"))
+				p1.WriteString(fmt.Sprintf("  • Step Delta (Local)   : +%d Tokens (Estimated Local BPE)", t.StepDelta))
+			}
 			if len(e.ConsumedStepIndices) > 0 {
 				var childStrs []string
 				for _, c := range e.ConsumedStepIndices {

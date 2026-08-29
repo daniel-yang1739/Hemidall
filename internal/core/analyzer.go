@@ -113,6 +113,7 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 	if event.IsCompactionStep() {
 		event.Scope = ScopeSystemCompaction
 		event.Tokens.ActiveTurnTokens = stepTokens
+		event.Tokens.StepDelta = stepTokens
 		event.Tokens.TotalTokens = stepTokens
 		event.CacheStatus = ""
 		state.PrevTotalTokens = state.BaseSystem + state.BaseToolsDef + stepTokens
@@ -125,6 +126,7 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 
 	// 3. Local offline steps (User inputs, tool outputs)
 	if !event.IsCloudStep() {
+		event.Tokens.StepDelta = stepTokens
 		if event.Type == StepTypeUserInput {
 			event.Scope = ScopeUserInteraction
 			event.Tokens.ActiveTurnTokens = stepTokens
@@ -132,7 +134,7 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 			event.Scope = ScopeLocalExecution
 			event.Tokens.ToolResultTokens = stepTokens
 		}
-		event.Tokens.TotalTokens = stepTokens
+		event.Tokens.TotalTokens = 0 // Nil: Local offline step does not invoke Cloud LLM Context Window
 		event.Tokens.CachedTokens = 0
 		event.Tokens.NewTokens = 0
 		event.Tokens.CacheHitRate = 0.0
@@ -250,6 +252,7 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 		if event.Tokens.NewTokens < 0 {
 			event.Tokens.NewTokens = 0
 		}
+		event.Tokens.StepDelta = event.Tokens.NewTokens
 		if officialTotal > 0 {
 			event.Tokens.CacheHitRate = float64(event.Tokens.CachedTokens) / float64(officialTotal) * 100.0
 		}
@@ -269,6 +272,7 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 		event.Tokens.SystemTokens = state.BaseSystem
 		event.Tokens.ToolsDefTokens = state.BaseToolsDef
 		event.Tokens.ActiveTurnTokens = stepTokens
+		event.Tokens.StepDelta = stepTokens
 
 		isTTLExpired := false
 		if !state.LastCloudTurnTime.IsZero() && !event.Timestamp.IsZero() {

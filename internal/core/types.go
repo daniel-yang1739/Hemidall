@@ -58,6 +58,7 @@ type TokenBreakdown struct {
 	OfficialModel        string  `json:"official_model"`         // Actual backend model (e.g. gemini-3.7-flash-high)
 	OfficialContextLimit int     `json:"official_context_limit"` // e.g. 256,000
 	RawLocalAccumulated  int     `json:"raw_local_accumulated"`  // Raw uncompressed log tokens (e.g. ~400k)
+	StepDelta            int     `json:"step_delta"`             // Local token delta generated in this single step
 }
 
 // StepScope defines the universal computing origin and billing nature of an agent event
