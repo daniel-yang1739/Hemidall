@@ -38,6 +38,30 @@ func TestProtobuf_Pos_ValidTelemetryBlobExtraction(t *testing.T) {
 	}
 }
 
+func TestProtobuf_Pos_3DigitStepIndexExtraction(t *testing.T) {
+	raw := []byte("prefix\x00last_step_index\x12\x03664\x00gemini-3.7-flash\x00suffix")
+	meta, err := ParseGeminiGenMetadata(1, raw)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if meta.LastStepIdx != 664 {
+		t.Fatalf("Expected LastStepIdx 664, got %d", meta.LastStepIdx)
+	}
+}
+
+func TestProtobuf_Pos_CachedTokensExtraction(t *testing.T) {
+	// Simulated protobuf with field 1 -> field 4 -> field 5 (220,446)
+	// and field 1 -> field 9 -> field 10 -> field 1 (214,342)
+	raw := []byte("last_step_index\x12\x03815\x00gemini-3.7-flash")
+	meta, err := ParseGeminiGenMetadata(1, raw)
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if meta.LastStepIdx != 815 {
+		t.Fatalf("Expected LastStepIdx 815, got %d", meta.LastStepIdx)
+	}
+}
+
 func TestProtobuf_Neg_TruncatedVarintNoInfiniteLoop(t *testing.T) {
 	// Truncated varint: MSB is 1 (0x80) but buffer ends immediately
 	truncated := []byte{0x80}

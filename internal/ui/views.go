@@ -523,7 +523,7 @@ func (m Model) renderDashboardView() string {
 		if contentWidth < 80 {
 			p1.WriteString(fmt.Sprintf("  • Agent / Model  : [%s] %s (Step #%03d)\n",
 				e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(modelName, contentWidth-28)), e.StepIndex))
-			p1.WriteString(fmt.Sprintf("  • Active Context : %s Tok (%4.1f%% of %dk Window) %s\n",
+			p1.WriteString(fmt.Sprintf("  • Total Context  : %s Tok (%4.1f%% of %dk Window) %s\n",
 				lipgloss.NewStyle().Bold(true).Render(formatTokShort(total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
 			p1.WriteString(fmt.Sprintf("  • Cached vs. New : %s Cached (%.1f%%) | %s New\n",
 				formatTokShort(t.CachedTokens), t.CacheHitRate, formatTokShort(t.NewTokens)))
@@ -531,7 +531,7 @@ func (m Model) renderDashboardView() string {
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Agent / Model        : [%s] %s  (Step #%03d | Status: %s | %s)\n",
 				e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName), e.StepIndex, e.Status, timeStr))
-			p1.WriteString(fmt.Sprintf("  • Active Context Window: %s Tokens (%5.1f%% of %dk Window)  %s\n",
+			p1.WriteString(fmt.Sprintf("  • Total Context Window : %s Tokens (%5.1f%% of %dk Window)  %s\n",
 				lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
 			p1.WriteString(fmt.Sprintf("  • Prefix Cache Savings : %s Tokens Cached (%.1f%% Hit) ➔ Net Saved ~%s Tok (75.0%% Discount)\n",
 				formatTokShort(t.CachedTokens), t.CacheHitRate, formatTokShort(savedTok)))

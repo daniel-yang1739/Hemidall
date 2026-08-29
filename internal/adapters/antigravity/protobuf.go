@@ -29,8 +29,8 @@ func ParseGeminiGenMetadata(genIndex int, data []byte) (*GeminiGenerationMetadat
 		ContextLimit: 256000,
 	}
 
-	// Extract LastStepIndex from raw byte patterns if present
-	reStep := regexp.MustCompile(`last_step_index\x12\x04(\d+)`)
+	// Extract LastStepIndex from raw byte patterns (supporting variable length step index strings)
+	reStep := regexp.MustCompile(`last_step_index\x12[\x01-\x08](\d+)`)
 	if match := reStep.FindSubmatch(data); len(match) > 1 {
 		if s, err := strconv.Atoi(string(match[1])); err == nil {
 			meta.LastStepIdx = s
@@ -43,28 +43,32 @@ func ParseGeminiGenMetadata(genIndex int, data []byte) (*GeminiGenerationMetadat
 		meta.ModelName = string(match[1])
 	}
 
-	// Parse Protobuf hierarchy: Field 1 -> Field 9 -> Field 10
+	// Parse Protobuf hierarchy: Field 1 -> Field 9 / Field 4 / Field 17
 	msg := parseProtoMessage(data)
 	if f1, ok := msg[1].(map[int]interface{}); ok {
+		// 1. Total Prompt Tokens & Context Limit from f1 -> f9 -> f10
 		if f9, ok := f1[9].(map[int]interface{}); ok {
 			if f10, ok := f9[10].(map[int]interface{}); ok {
-				// Field 1: Total prompt tokens
 				if tot, ok := f10[1].(uint64); ok {
 					meta.TotalTokens = int(tot)
 				}
-
-				// Field 4: Context window limit (e.g. 256,000)
 				if lim, ok := f10[4].(uint64); ok && lim > 0 {
 					meta.ContextLimit = int(lim)
 				}
+			}
+		}
 
-				// Field 3: Cache details
-				if f3, ok := f10[3].(map[int]interface{}); ok {
-					if f3_f1, ok := f3[1].(map[int]interface{}); ok {
-						// Field 4: Cached content tokens
-						if cached, ok := f3_f1[4].(uint64); ok {
-							meta.CachedTokens = int(cached)
-						}
+		// 2. Cached Content Tokens from f1 -> f4 -> 5 OR f1 -> f17 -> 2 -> 5
+		if f4, ok := f1[4].(map[int]interface{}); ok {
+			if cached, ok := f4[5].(uint64); ok {
+				meta.CachedTokens = int(cached)
+			}
+		}
+		if meta.CachedTokens == 0 {
+			if f17, ok := f1[17].(map[int]interface{}); ok {
+				if f17_2, ok := f17[2].(map[int]interface{}); ok {
+					if cached, ok := f17_2[5].(uint64); ok {
+						meta.CachedTokens = int(cached)
 					}
 				}
 			}
@@ -72,7 +76,11 @@ func ParseGeminiGenMetadata(genIndex int, data []byte) (*GeminiGenerationMetadat
 	}
 
 	if meta.TotalTokens > 0 {
-		meta.CacheHitRate = float64(meta.CachedTokens) / float64(meta.TotalTokens) * 100.0
+		hitRate := float64(meta.CachedTokens) / float64(meta.TotalTokens) * 100.0
+		if hitRate > 100.0 {
+			hitRate = 100.0
+		}
+		meta.CacheHitRate = hitRate
 	}
 
 	return meta, nil
