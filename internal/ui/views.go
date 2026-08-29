@@ -430,17 +430,13 @@ func (m Model) renderDashboardView() string {
 		timeStr = "N/A"
 	}
 
-	playbackSuffix := ""
-	if isPlayback {
-		playbackSuffix = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf(" (PLAYBACK: Step #%d | %d of %d)", e.StepIndex, m.dashboardIdx+1, len(m.history)))
-	}
 
 	if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
-		p1Title := "TRACK 1: LOCAL EXECUTION STEP (OFFLINE OPERATION)" + playbackSuffix
+		p1Title := "TRACK 1: LOCAL EXECUTION STEP (OFFLINE)"
 		if e.Status == "BLOCKED" {
-			p1Title = "TRACK 1: PERMISSION BOUNDARY INTERCEPTED (BLOCKED)" + playbackSuffix
+			p1Title = "TRACK 1: PERMISSION BOUNDARY (BLOCKED)"
 		} else if e.Source == "SYSTEM" {
-			p1Title = "TRACK 1: INTERNAL HARNESS BACKGROUND TASK" + playbackSuffix
+			p1Title = "TRACK 1: INTERNAL HARNESS BACKGROUND TASK"
 		}
 		invokedModel := m.getStepModelName(e)
 		if invokedModel == "" {
@@ -461,27 +457,35 @@ func (m Model) renderDashboardView() string {
 			p1.WriteString(fmt.Sprintf("  • Total Context  : Nil (Local Subprocess)\n"))
 			p1.WriteString(fmt.Sprintf("  • Step Delta     : +%s Tok (Local Buffer)\n", formatTokShort(t.StepDelta)))
 			p1.WriteString(fmt.Sprintf("  • Status & Bill  : %s | %s", e.Status, packagedInfo))
+			if isPlayback {
+				p1.WriteString(fmt.Sprintf("\n  • View Mode      : [PLAYBACK] #%d (%d of %d) ⏪", e.StepIndex, m.dashboardIdx+1, len(m.history)))
+			}
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role        : %s (Tool Action: %s | Step #%04d | Status: %s | %s)\n", e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Render(toolName), e.StepIndex, e.Status, timeStr))
 			p1.WriteString(fmt.Sprintf("  • Total Context Window : Nil (Local Machine Subprocess / 0 GPU Inbound)\n"))
 			p1.WriteString(fmt.Sprintf("  • Step Delta (Buffer)  : +%d Tokens (Local Output Buffer ➔ Staged for Next Turn)\n", t.StepDelta))
-			if e.ParentStepIdx > 0 {
-				p1.WriteString(fmt.Sprintf("  • Invoking Parent      : Dispatched by Cloud Step #%04d (%s)\n", e.ParentStepIdx, invokedModel))
-			}
 			if e.Status == "BLOCKED" {
-				p1.WriteString("  • Security Guardrail   : Blocked by System Permission Guard (0 GPU Tokens Billed) 🛡️")
+				p1.WriteString("  • Billing Attribution  : Blocked by System Permission Guard (0 GPU Tokens Billed) 🛡️")
 			} else {
 				p1.WriteString(fmt.Sprintf("  • Billing Attribution  : Local Machine Subprocess (0 GPU Tokens) ➔ %s", packagedInfo))
 			}
+			if isPlayback {
+				p1.WriteString(fmt.Sprintf("\n  • Session Timeline     : PLAYBACK Step #%04d (%d of %d in History) ⏪", e.StepIndex, m.dashboardIdx+1, len(m.history)))
+			} else if e.ParentStepIdx > 0 {
+				p1.WriteString(fmt.Sprintf("\n  • Invoking Parent      : Dispatched by Cloud Step #%04d (%s)", e.ParentStepIdx, invokedModel))
+			}
 		}
 	} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
-		p1Title := "TRACK 1: USER INTERACTION (CLIENT PROMPT)" + playbackSuffix
+		p1Title := "TRACK 1: USER INTERACTION (CLIENT PROMPT)"
 		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 		if contentWidth < 80 {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role  : HUMAN CLIENT (Step #%03d)\n", e.StepIndex))
 			p1.WriteString(fmt.Sprintf("  • Total Context  : Nil (Client Intent)\n"))
 			p1.WriteString(fmt.Sprintf("  • Step Delta     : +%s Tok (Prompt Buffer)\n", formatTokShort(t.StepDelta)))
 			p1.WriteString(fmt.Sprintf("  • Status & Time  : %s | %s", e.Status, timeStr))
+			if isPlayback {
+				p1.WriteString(fmt.Sprintf("\n  • View Mode      : [PLAYBACK] #%d (%d of %d) ⏪", e.StepIndex, m.dashboardIdx+1, len(m.history)))
+			}
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role        : HUMAN CLIENT Intent (Step #%03d | Status: %s | %s)\n", e.StepIndex, e.Status, timeStr))
 			p1.WriteString(fmt.Sprintf("  • Total Context Window : Nil (Client Inbound Intent / Pre-Inference Staged)\n"))
@@ -491,25 +495,34 @@ func (m Model) renderDashboardView() string {
 			} else {
 				p1.WriteString("  • Billing Status       : Inbound Intent ➔ Staged locally (Awaiting Next Cloud Inference Turn ⏳)")
 			}
+			if isPlayback {
+				p1.WriteString(fmt.Sprintf("\n  • Session Timeline     : PLAYBACK Step #%04d (%d of %d in History) ⏪", e.StepIndex, m.dashboardIdx+1, len(m.history)))
+			}
 		}
 	} else if e.IsCompactionStep() || e.Scope == core.ScopeSystemCompaction {
-		p1Title := "TRACK 1: SYSTEM COMPACTION (CHECKPOINT)" + playbackSuffix
+		p1Title := "TRACK 1: SYSTEM COMPACTION (CHECKPOINT)"
 		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 		if contentWidth < 80 {
 			p1.WriteString(fmt.Sprintf("  • Event / Role   : %s Context Compaction (Step #%03d)\n", e.GetAgentRole(), e.StepIndex))
 			p1.WriteString(fmt.Sprintf("  • Summary Size   : %d Tokens  %s\n", total, cacheBadge))
 			p1.WriteString(fmt.Sprintf("  • Step Delta     : +%s Tok (GC Summary)\n", formatTokShort(t.StepDelta)))
 			p1.WriteString(fmt.Sprintf("  • Status & Time  : %s | %s", e.Status, timeStr))
+			if isPlayback {
+				p1.WriteString(fmt.Sprintf("\n  • View Mode      : [PLAYBACK] #%d (%d of %d) ⏪", e.StepIndex, m.dashboardIdx+1, len(m.history)))
+			}
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role        : %s Middleware (Sidecar Context GC | Step #%03d | Status: %s | %s)\n", e.GetAgentRole(), e.StepIndex, e.Status, timeStr))
 			p1.WriteString(fmt.Sprintf("  • Summary Size         : %d Tokens (Replaces ~200k+ Old Historical Tokens)  %s\n", total, cacheBadge))
 			p1.WriteString(fmt.Sprintf("  • Step Delta (Summary) : +%d Tokens (Compacted Summary Payload)\n", t.StepDelta))
 			p1.WriteString("  • Window Action        : Prepend Checkpoint ➔ Re-anchors Active Window Base for Next Turn 🔄")
+			if isPlayback {
+				p1.WriteString(fmt.Sprintf("\n  • Session Timeline     : PLAYBACK Step #%04d (%d of %d in History) ⏪", e.StepIndex, m.dashboardIdx+1, len(m.history)))
+			}
 		}
 	} else {
-		p1Title := "TRACK 1: OFFICIAL CLOUD TELEMETRY" + playbackSuffix
+		p1Title := "TRACK 1: OFFICIAL CLOUD TELEMETRY"
 		if e.IsSubagent || e.GetAgentRole() == "SUBAGENT" {
-			p1Title = "TRACK 1: SUBAGENT CLOUD TELEMETRY" + playbackSuffix
+			p1Title = "TRACK 1: SUBAGENT CLOUD TELEMETRY"
 		}
 		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 
@@ -533,6 +546,9 @@ func (m Model) renderDashboardView() string {
 				p1.WriteString(fmt.Sprintf("  • Step Delta     : +%s Tok (Estimated)\n", formatTokShort(t.StepDelta)))
 			}
 			p1.WriteString(fmt.Sprintf("  • Status & Cost  : ~$%.4f USD | Status: %s", costUSD, e.Status))
+			if isPlayback {
+				p1.WriteString(fmt.Sprintf("\n  • View Mode      : [PLAYBACK] #%d (%d of %d) ⏪", e.StepIndex, m.dashboardIdx+1, len(m.history)))
+			}
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Agent / Model        : [%s] %s  (Step #%03d | Status: %s | %s)\n",
 				e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName), e.StepIndex, e.Status, timeStr))
@@ -547,7 +563,9 @@ func (m Model) renderDashboardView() string {
 				p1.WriteString(fmt.Sprintf("  • Total Context Window : Nil (Awaiting SQLite Telemetry Record ⏳)\n"))
 				p1.WriteString(fmt.Sprintf("  • Step Delta (Local)   : +%d Tokens (Estimated Local BPE)", t.StepDelta))
 			}
-			if len(e.ConsumedStepIndices) > 0 {
+			if isPlayback {
+				p1.WriteString(fmt.Sprintf("\n  • Session Timeline     : PLAYBACK Step #%04d (%d of %d in History) ⏪", e.StepIndex, m.dashboardIdx+1, len(m.history)))
+			} else if len(e.ConsumedStepIndices) > 0 {
 				var childStrs []string
 				for _, c := range e.ConsumedStepIndices {
 					childStrs = append(childStrs, fmt.Sprintf("#%04d", c))
