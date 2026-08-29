@@ -431,6 +431,11 @@ func (m Model) renderDashboardView() string {
 	}
 
 
+	playbackTag := ""
+	if isPlayback {
+		playbackTag = lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(fmt.Sprintf("(PLAYBACK: Step #%d | %d of %d)", e.StepIndex, m.dashboardIdx+1, len(m.history)))
+	}
+
 	if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
 		p1Title := "TRACK 1: LOCAL EXECUTION STEP (OFFLINE)"
 		if e.Status == "BLOCKED" {
@@ -457,9 +462,6 @@ func (m Model) renderDashboardView() string {
 			p1.WriteString(fmt.Sprintf("  • Total Context  : Nil (Local Subprocess)\n"))
 			p1.WriteString(fmt.Sprintf("  • Step Delta     : +%s Tok (Local Buffer)\n", formatTokShort(t.StepDelta)))
 			p1.WriteString(fmt.Sprintf("  • Status & Bill  : %s | %s", e.Status, packagedInfo))
-			if isPlayback {
-				p1.WriteString(fmt.Sprintf("\n  • View Mode      : [PLAYBACK] #%d (%d of %d) ⏪", e.StepIndex, m.dashboardIdx+1, len(m.history)))
-			}
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role        : %s (Tool Action: %s | Step #%04d | Status: %s | %s)\n", e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Render(toolName), e.StepIndex, e.Status, timeStr))
 			p1.WriteString(fmt.Sprintf("  • Total Context Window : Nil (Local Machine Subprocess / 0 GPU Inbound)\n"))
@@ -469,9 +471,7 @@ func (m Model) renderDashboardView() string {
 			} else {
 				p1.WriteString(fmt.Sprintf("  • Billing Attribution  : Local Machine Subprocess (0 GPU Tokens) ➔ %s", packagedInfo))
 			}
-			if isPlayback {
-				p1.WriteString(fmt.Sprintf("\n  • Session Timeline     : PLAYBACK Step #%04d (%d of %d in History) ⏪", e.StepIndex, m.dashboardIdx+1, len(m.history)))
-			} else if e.ParentStepIdx > 0 {
+			if !isPlayback && e.ParentStepIdx > 0 {
 				p1.WriteString(fmt.Sprintf("\n  • Invoking Parent      : Dispatched by Cloud Step #%04d (%s)", e.ParentStepIdx, invokedModel))
 			}
 		}
@@ -483,9 +483,6 @@ func (m Model) renderDashboardView() string {
 			p1.WriteString(fmt.Sprintf("  • Total Context  : Nil (Client Intent)\n"))
 			p1.WriteString(fmt.Sprintf("  • Step Delta     : +%s Tok (Prompt Buffer)\n", formatTokShort(t.StepDelta)))
 			p1.WriteString(fmt.Sprintf("  • Status & Time  : %s | %s", e.Status, timeStr))
-			if isPlayback {
-				p1.WriteString(fmt.Sprintf("\n  • View Mode      : [PLAYBACK] #%d (%d of %d) ⏪", e.StepIndex, m.dashboardIdx+1, len(m.history)))
-			}
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role        : HUMAN CLIENT Intent (Step #%03d | Status: %s | %s)\n", e.StepIndex, e.Status, timeStr))
 			p1.WriteString(fmt.Sprintf("  • Total Context Window : Nil (Client Inbound Intent / Pre-Inference Staged)\n"))
@@ -494,9 +491,6 @@ func (m Model) renderDashboardView() string {
 				p1.WriteString(fmt.Sprintf("  • Inference Settlement : Ingested ➔ Settled & Billed in Cloud Step #%04d ☁️", e.PackagedInStepIdx))
 			} else {
 				p1.WriteString("  • Billing Status       : Inbound Intent ➔ Staged locally (Awaiting Next Cloud Inference Turn ⏳)")
-			}
-			if isPlayback {
-				p1.WriteString(fmt.Sprintf("\n  • Session Timeline     : PLAYBACK Step #%04d (%d of %d in History) ⏪", e.StepIndex, m.dashboardIdx+1, len(m.history)))
 			}
 		}
 	} else if e.IsCompactionStep() || e.Scope == core.ScopeSystemCompaction {
@@ -507,17 +501,11 @@ func (m Model) renderDashboardView() string {
 			p1.WriteString(fmt.Sprintf("  • Summary Size   : %d Tokens  %s\n", total, cacheBadge))
 			p1.WriteString(fmt.Sprintf("  • Step Delta     : +%s Tok (GC Summary)\n", formatTokShort(t.StepDelta)))
 			p1.WriteString(fmt.Sprintf("  • Status & Time  : %s | %s", e.Status, timeStr))
-			if isPlayback {
-				p1.WriteString(fmt.Sprintf("\n  • View Mode      : [PLAYBACK] #%d (%d of %d) ⏪", e.StepIndex, m.dashboardIdx+1, len(m.history)))
-			}
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role        : %s Middleware (Sidecar Context GC | Step #%03d | Status: %s | %s)\n", e.GetAgentRole(), e.StepIndex, e.Status, timeStr))
 			p1.WriteString(fmt.Sprintf("  • Summary Size         : %d Tokens (Replaces ~200k+ Old Historical Tokens)  %s\n", total, cacheBadge))
 			p1.WriteString(fmt.Sprintf("  • Step Delta (Summary) : +%d Tokens (Compacted Summary Payload)\n", t.StepDelta))
 			p1.WriteString("  • Window Action        : Prepend Checkpoint ➔ Re-anchors Active Window Base for Next Turn 🔄")
-			if isPlayback {
-				p1.WriteString(fmt.Sprintf("\n  • Session Timeline     : PLAYBACK Step #%04d (%d of %d in History) ⏪", e.StepIndex, m.dashboardIdx+1, len(m.history)))
-			}
 		}
 	} else {
 		p1Title := "TRACK 1: OFFICIAL CLOUD TELEMETRY"
@@ -546,9 +534,6 @@ func (m Model) renderDashboardView() string {
 				p1.WriteString(fmt.Sprintf("  • Step Delta     : +%s Tok (Estimated)\n", formatTokShort(t.StepDelta)))
 			}
 			p1.WriteString(fmt.Sprintf("  • Status & Cost  : ~$%.4f USD | Status: %s", costUSD, e.Status))
-			if isPlayback {
-				p1.WriteString(fmt.Sprintf("\n  • View Mode      : [PLAYBACK] #%d (%d of %d) ⏪", e.StepIndex, m.dashboardIdx+1, len(m.history)))
-			}
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Agent / Model        : [%s] %s  (Step #%03d | Status: %s | %s)\n",
 				e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName), e.StepIndex, e.Status, timeStr))
@@ -563,9 +548,7 @@ func (m Model) renderDashboardView() string {
 				p1.WriteString(fmt.Sprintf("  • Total Context Window : Nil (Awaiting SQLite Telemetry Record ⏳)\n"))
 				p1.WriteString(fmt.Sprintf("  • Step Delta (Local)   : +%d Tokens (Estimated Local BPE)", t.StepDelta))
 			}
-			if isPlayback {
-				p1.WriteString(fmt.Sprintf("\n  • Session Timeline     : PLAYBACK Step #%04d (%d of %d in History) ⏪", e.StepIndex, m.dashboardIdx+1, len(m.history)))
-			} else if len(e.ConsumedStepIndices) > 0 {
+			if !isPlayback && len(e.ConsumedStepIndices) > 0 {
 				var childStrs []string
 				for _, c := range e.ConsumedStepIndices {
 					childStrs = append(childStrs, fmt.Sprintf("#%04d", c))
@@ -573,6 +556,10 @@ func (m Model) renderDashboardView() string {
 				p1.WriteString(fmt.Sprintf("\n  • Packaged Tool Inputs : Consumed Local Step %s", strings.Join(childStrs, ", ")))
 			}
 		}
+	}
+
+	if isPlayback {
+		p1.WriteString("\n" + playbackTag)
 	}
 
 	panel1Box := PanelStyle.Width(panelInnerWidth).Render(p1.String())
