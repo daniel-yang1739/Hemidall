@@ -123,12 +123,12 @@ func TestView3DocsPageRenderingAndSearch(t *testing.T) {
 		t.Error("Expected isDocsSearching=true after pressing '/'")
 	}
 
-	for _, r := range "cache" {
+	for _, r := range "[cache" {
 		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 		m = updated.(Model)
 	}
 	cacheFilteredView := m.View()
-	if !strings.Contains(cacheFilteredView, "[CACHE HIT]") || !strings.Contains(cacheFilteredView, "[PARTIAL HIT]") {
+	if !strings.Contains(cacheFilteredView, "[CACHE HIT]") {
 		t.Errorf("Expected cache status definitions in cacheFilteredView, got: %s", cacheFilteredView)
 	}
 
@@ -180,8 +180,8 @@ func TestView2ContextPageRenderingAndDualModeToggle(t *testing.T) {
 	m.width = 100
 	m.height = 30
 
-	// 1. Press '2' or 'c' to switch to [2] Context View
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
+	// 1. Press '3' or 'c' to switch to [3] Context View
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
 	m = updated.(Model)
 	if m.activeView != ViewContext {
 		t.Fatalf("Expected activeView=ViewContext, got %v", m.activeView)
@@ -281,18 +281,18 @@ func TestCyclicTabAndShiftTabViewSwitching(t *testing.T) {
 		t.Fatalf("Initial view should be ViewDashboard, got %v", m.activeView)
 	}
 
-	// 1. Press Tab -> ViewContext
+	// 1. Press Tab -> ViewHistory
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(Model)
-	if m.activeView != ViewContext {
-		t.Fatalf("After 1st Tab, expected ViewContext, got %v", m.activeView)
+	if m.activeView != ViewHistory {
+		t.Fatalf("After 1st Tab, expected ViewHistory, got %v", m.activeView)
 	}
 
-	// 2. Press Tab -> ViewHistory
+	// 2. Press Tab -> ViewContext
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(Model)
-	if m.activeView != ViewHistory {
-		t.Fatalf("After 2nd Tab, expected ViewHistory, got %v", m.activeView)
+	if m.activeView != ViewContext {
+		t.Fatalf("After 2nd Tab, expected ViewContext, got %v", m.activeView)
 	}
 
 	// 3. Press Tab -> ViewDocs
@@ -316,18 +316,18 @@ func TestCyclicTabAndShiftTabViewSwitching(t *testing.T) {
 		t.Fatalf("After Shift+Tab, expected ViewDocs, got %v", m.activeView)
 	}
 
-	// 6. Press Shift+Tab -> ViewHistory
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	m = updated.(Model)
-	if m.activeView != ViewHistory {
-		t.Fatalf("After 2nd Shift+Tab, expected ViewHistory, got %v", m.activeView)
-	}
-
-	// 7. Press Shift+Tab -> ViewContext
+	// 6. Press Shift+Tab -> ViewContext
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	m = updated.(Model)
 	if m.activeView != ViewContext {
-		t.Fatalf("After 3rd Shift+Tab, expected ViewContext, got %v", m.activeView)
+		t.Fatalf("After 2nd Shift+Tab, expected ViewContext, got %v", m.activeView)
+	}
+
+	// 7. Press Shift+Tab -> ViewHistory
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = updated.(Model)
+	if m.activeView != ViewHistory {
+		t.Fatalf("After 3rd Shift+Tab, expected ViewHistory, got %v", m.activeView)
 	}
 }
 

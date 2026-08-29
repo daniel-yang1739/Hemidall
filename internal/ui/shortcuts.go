@@ -16,10 +16,10 @@ type ShortcutItem struct {
 
 var allShortcutItems = []ShortcutItem{
 	// 1. Global Navigation
-	{Category: "Global Navigation", Key: "Tab / Shift+Tab", Desc: "Cyclic cycle views (Dashboard ➔ Context ➔ History ➔ Docs)"},
+	{Category: "Global Navigation", Key: "Tab / Shift+Tab", Desc: "Cyclic cycle views (Dashboard ➔ History ➔ Context ➔ Docs)"},
 	{Category: "Global Navigation", Key: "1 / d", Desc: "Switch to [1] Dashboard View"},
-	{Category: "Global Navigation", Key: "2 / c", Desc: "Switch to [2] Context View"},
-	{Category: "Global Navigation", Key: "3 / h", Desc: "Switch to [3] History Explorer View"},
+	{Category: "Global Navigation", Key: "2 / h", Desc: "Switch to [2] History Explorer View"},
+	{Category: "Global Navigation", Key: "3 / c", Desc: "Switch to [3] Context View"},
 	{Category: "Global Navigation", Key: "4 / i", Desc: "Switch to [4] Architecture Docs View"},
 	{Category: "Global Navigation", Key: "Ctrl+p", Desc: "Open Session Quick Switcher Modal"},
 	{Category: "Global Navigation", Key: "? / F1", Desc: "Toggle this Keyboard Shortcuts Float Panel"},

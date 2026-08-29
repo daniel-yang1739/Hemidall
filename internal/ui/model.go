@@ -19,8 +19,8 @@ type ActiveView int
 
 const (
 	ViewDashboard ActiveView = iota
-	ViewContext
 	ViewHistory
+	ViewContext
 	ViewDocs
 )
 
@@ -237,39 +237,39 @@ func matchCacheFilter(e core.UnifiedAgentEvent, filter CacheFilter) bool {
 	return true
 }
 
-// nextView cycles active view clockwise: Dashboard (1) -> Context (2) -> History (3) -> Docs (4) -> Dashboard (1)
+// nextView cycles active view clockwise: Dashboard (1) -> History (2) -> Context (3) -> Docs (4) -> Dashboard (1)
 func (m *Model) nextView() {
 	m.isDocsSearching = false
 	m.isHistorySearching = false
 	switch m.activeView {
 	case ViewDashboard:
-		m.activeView = ViewContext
-		m.contextFocusPane = FocusList
-	case ViewContext:
 		m.activeView = ViewHistory
 		m.focusPane = FocusList
 	case ViewHistory:
+		m.activeView = ViewContext
+		m.contextFocusPane = FocusList
+	case ViewContext:
 		m.activeView = ViewDocs
 	case ViewDocs:
 		m.activeView = ViewDashboard
 	}
 }
 
-// prevView cycles active view counter-clockwise: Dashboard -> Docs -> History -> Context -> Dashboard
+// prevView cycles active view counter-clockwise: Dashboard -> Docs -> Context -> History -> Dashboard
 func (m *Model) prevView() {
 	m.isDocsSearching = false
 	m.isHistorySearching = false
 	switch m.activeView {
 	case ViewDashboard:
 		m.activeView = ViewDocs
-	case ViewContext:
-		m.activeView = ViewDashboard
 	case ViewHistory:
-		m.activeView = ViewContext
-		m.contextFocusPane = FocusList
-	case ViewDocs:
+		m.activeView = ViewDashboard
+	case ViewContext:
 		m.activeView = ViewHistory
 		m.focusPane = FocusList
+	case ViewDocs:
+		m.activeView = ViewContext
+		m.contextFocusPane = FocusList
 	}
 }
 
@@ -1111,14 +1111,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.isHistorySearching = false
 				return m, nil
 			case "2":
-				m.activeView = ViewContext
-				m.contextFocusPane = FocusList
+				m.activeView = ViewHistory
+				m.focusPane = FocusList
 				m.isDocsSearching = false
 				m.isHistorySearching = false
 				return m, nil
 			case "3":
-				m.activeView = ViewHistory
-				m.focusPane = FocusList
+				m.activeView = ViewContext
+				m.contextFocusPane = FocusList
 				m.isDocsSearching = false
 				m.isHistorySearching = false
 				return m, nil
@@ -1649,17 +1649,17 @@ func (m Model) renderHeader() string {
 	}
 
 	tab1 := lipgloss.NewStyle().Foreground(ColorMuted).Render(" [1] Dashboard ")
-	tab2 := lipgloss.NewStyle().Foreground(ColorMuted).Render(" [2] Context ")
-	tab3 := lipgloss.NewStyle().Foreground(ColorMuted).Render(" [3] History ")
+	tab2 := lipgloss.NewStyle().Foreground(ColorMuted).Render(" [2] History ")
+	tab3 := lipgloss.NewStyle().Foreground(ColorMuted).Render(" [3] Context ")
 	tab4 := lipgloss.NewStyle().Foreground(ColorMuted).Render(" [4] Docs ")
 
 	switch m.activeView {
 	case ViewDashboard:
 		tab1 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [1] Dashboard ")
-	case ViewContext:
-		tab2 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [2] Context ")
 	case ViewHistory:
-		tab3 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [3] History ")
+		tab2 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [2] History ")
+	case ViewContext:
+		tab3 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [3] Context ")
 	case ViewDocs:
 		tab4 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [4] Docs ")
 	}
