@@ -364,21 +364,29 @@ func (m Model) renderDashboardView() string {
 
 	t := e.Tokens
 	total := t.TotalTokens
-	if total == 0 {
-		total = 1
+
+	dTotal := total
+	if dTotal == 0 {
+		dTotal = t.SystemTokens + t.ToolsDefTokens + t.ToolResultTokens + t.HistoryTokens + t.ActiveTurnTokens + t.ThinkingTokens
 	}
 
-	sysPct := float64(t.SystemTokens) / float64(total) * 100.0
-	toolsPct := float64(t.ToolsDefTokens) / float64(total) * 100.0
-	resPct := float64(t.ToolResultTokens) / float64(total) * 100.0
-	histPct := float64(t.HistoryTokens) / float64(total) * 100.0
-	activePct := float64(t.ActiveTurnTokens+t.ThinkingTokens) / float64(total) * 100.0
+	var sysPct, toolsPct, resPct, histPct, activePct float64
+	if dTotal > 0 {
+		sysPct = float64(t.SystemTokens) / float64(dTotal) * 100.0
+		toolsPct = float64(t.ToolsDefTokens) / float64(dTotal) * 100.0
+		resPct = float64(t.ToolResultTokens) / float64(dTotal) * 100.0
+		histPct = float64(t.HistoryTokens) / float64(dTotal) * 100.0
+		activePct = float64(t.ActiveTurnTokens+t.ThinkingTokens) / float64(dTotal) * 100.0
+	}
 
 	ctxLimit := t.OfficialContextLimit
 	if ctxLimit == 0 {
 		ctxLimit = 256000
 	}
-	ctxUsagePct := float64(total) / float64(ctxLimit) * 100.0
+	var ctxUsagePct float64
+	if total > 0 {
+		ctxUsagePct = float64(total) / float64(ctxLimit) * 100.0
+	}
 
 	var cacheBadge string
 	if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
