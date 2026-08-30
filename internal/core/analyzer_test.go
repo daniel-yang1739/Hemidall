@@ -696,3 +696,32 @@ func TestTokenizer_Neg_ExtremeUnicodeAndAnsiEscapeCodes(t *testing.T) {
 }
 
 
+
+func TestGetModelTTL(t *testing.T) {
+	tests := []struct {
+		name     string
+		model    string
+		expected time.Duration
+	}{
+		{"Claude model lower", "claude-3-5-sonnet", ClaudeCacheTTL},
+		{"Claude model mixed case", "CLAUDE-3-haiku", ClaudeCacheTTL},
+		{"GPT model", "gpt-4o", OpenAICacheTTL},
+		{"GPT model mixed case", "GPT-3.5-turbo", OpenAICacheTTL},
+		{"o1 model", "o1-preview", OpenAICacheTTL},
+		{"o3 model", "o3-mini", OpenAICacheTTL},
+		{"Deepseek model", "deepseek-coder", DeepSeekCacheTTL},
+		{"Deepseek model upper", "DEEPSEEK-R1", DeepSeekCacheTTL},
+		{"Gemini model (default)", "gemini-1.5-pro", DefaultCacheTTL},
+		{"Unknown model (default)", "unknown-model", DefaultCacheTTL},
+		{"Empty string (default)", "", DefaultCacheTTL},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := GetModelTTL(tt.model)
+			if actual != tt.expected {
+				t.Errorf("GetModelTTL(%q) = %v, want %v", tt.model, actual, tt.expected)
+			}
+		})
+	}
+}
