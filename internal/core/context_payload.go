@@ -179,6 +179,16 @@ func GetNativeToolsDefinitions(history []UnifiedAgentEvent) []ToolSignature {
 	return tools
 }
 
+// SortedRuntimeMetadataKeys provides a stable order for runtime metadata rendering.
+func SortedRuntimeMetadataKeys(metadata map[string]string) []string {
+	keys := make([]string, 0, len(metadata))
+	for key := range metadata {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 // BuildContextPayloadFromHistory assembles adapter-observed facts into the universal context model.
 func BuildContextPayloadFromHistory(input ContextBuildInput) AgentContextPayload {
 	history := input.History
@@ -354,8 +364,8 @@ func SerializeSubcategoryRaw(payload AgentContextPayload, subcatIndex int) (stri
 
 	case SubcatRuntime:
 		metaLines := make([]string, 0, len(payload.RuntimeMetadata))
-		for k, v := range payload.RuntimeMetadata {
-			metaLines = append(metaLines, fmt.Sprintf("%s: %s", k, v))
+		for _, key := range SortedRuntimeMetadataKeys(payload.RuntimeMetadata) {
+			metaLines = append(metaLines, fmt.Sprintf("%s: %s", key, payload.RuntimeMetadata[key]))
 		}
 		rawObj = map[string]interface{}{
 			"source":                    payload.Provenance["runtime"],

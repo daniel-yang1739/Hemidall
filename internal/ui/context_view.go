@@ -514,8 +514,8 @@ func (m Model) buildRefinedInspectorLines(payload core.AgentContextPayload, widt
 	case SubcatRuntime:
 		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("⚙️ RUNTIME HOST & ENVIRONMENT METADATA:"))
 		lines = append(lines, "")
-		for k, v := range payload.RuntimeMetadata {
-			for _, wL := range wrapText(fmt.Sprintf("  • %-12s: %s", k, v), width) {
+		for _, key := range core.SortedRuntimeMetadataKeys(payload.RuntimeMetadata) {
+			for _, wL := range wrapText(fmt.Sprintf("  • %-12s: %s", key, payload.RuntimeMetadata[key]), width) {
 				lines = append(lines, wL)
 			}
 		}

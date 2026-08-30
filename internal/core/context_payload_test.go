@@ -204,6 +204,28 @@ func TestSerializePersistedActiveEventRaw_ScopesAllAndSelectedEvents(t *testing.
 	}
 }
 
+func TestSerializeSubcategoryRaw_RuntimeMetadataUsesStableKeyOrder(t *testing.T) {
+	payload := AgentContextPayload{RuntimeMetadata: map[string]string{
+		"Shell": "zsh",
+		"Arch":  "arm64",
+		"OS":    "darwin",
+	}}
+
+	raw, err := SerializeSubcategoryRaw(payload, SubcatRuntime)
+	if err != nil {
+		t.Fatalf("SerializeSubcategoryRaw returned an error: %v", err)
+	}
+	archPosition := strings.Index(raw, "Arch: arm64")
+	osPosition := strings.Index(raw, "OS: darwin")
+	shellPosition := strings.Index(raw, "Shell: zsh")
+	if archPosition < 0 || osPosition < 0 || shellPosition < 0 {
+		t.Fatalf("runtime metadata was missing from raw output: %s", raw)
+	}
+	if archPosition > osPosition || osPosition > shellPosition {
+		t.Errorf("runtime metadata order was unstable: %s", raw)
+	}
+}
+
 func buildContextPayloadForTest(history []UnifiedAgentEvent, sessionID, targetModel string) AgentContextPayload {
 	return BuildContextPayloadFromHistory(ContextBuildInput{
 		History: history, SessionID: sessionID, AgentType: AgentTypeAntigravity, TargetModel: targetModel,
