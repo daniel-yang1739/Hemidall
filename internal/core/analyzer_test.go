@@ -703,17 +703,17 @@ func TestGetModelTTL(t *testing.T) {
 		model    string
 		expected time.Duration
 	}{
-		{"Claude model lower", "claude-3-5-sonnet", 5 * time.Minute},
-		{"Claude model mixed case", "CLAUDE-3-haiku", 5 * time.Minute},
-		{"GPT model", "gpt-4o", 10 * time.Minute},
-		{"GPT model mixed case", "GPT-3.5-turbo", 10 * time.Minute},
-		{"o1 model", "o1-preview", 10 * time.Minute},
-		{"o3 model", "o3-mini", 10 * time.Minute},
-		{"Deepseek model", "deepseek-coder", 24 * time.Hour},
-		{"Deepseek model upper", "DEEPSEEK-R1", 24 * time.Hour},
-		{"Gemini model (default)", "gemini-1.5-pro", 5 * time.Minute},
-		{"Unknown model (default)", "unknown-model", 5 * time.Minute},
-		{"Empty string (default)", "", 5 * time.Minute},
+		{"Claude model lower", "claude-3-5-sonnet", ClaudeCacheTTL},
+		{"Claude model mixed case", "CLAUDE-3-haiku", ClaudeCacheTTL},
+		{"GPT model", "gpt-4o", OpenAICacheTTL},
+		{"GPT model mixed case", "GPT-3.5-turbo", OpenAICacheTTL},
+		{"o1 model", "o1-preview", OpenAICacheTTL},
+		{"o3 model", "o3-mini", OpenAICacheTTL},
+		{"Deepseek model", "deepseek-coder", DeepSeekCacheTTL},
+		{"Deepseek model upper", "DEEPSEEK-R1", DeepSeekCacheTTL},
+		{"Gemini model (default)", "gemini-1.5-pro", DefaultCacheTTL},
+		{"Unknown model (default)", "unknown-model", DefaultCacheTTL},
+		{"Empty string (default)", "", DefaultCacheTTL},
 	}
 
 	for _, tt := range tests {

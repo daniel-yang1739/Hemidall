@@ -10,19 +10,25 @@ import (
 const (
 	// DefaultCacheTTL is the standard LLM KV Cache lifetime in GPU HBM (5 minutes)
 	DefaultCacheTTL = 5 * time.Minute
+	// ClaudeCacheTTL is the Anthropic 5-minute ephemeral cache duration
+	ClaudeCacheTTL = 5 * time.Minute
+	// OpenAICacheTTL is the OpenAI 10-minute cache window
+	OpenAICacheTTL = 10 * time.Minute
+	// DeepSeekCacheTTL is the DeepSeek MLA persistent 24-hour cache duration
+	DeepSeekCacheTTL = 24 * time.Hour
 )
 
 // GetModelTTL returns the model-family specific KV Cache TTL duration
 func GetModelTTL(modelName string) time.Duration {
 	low := strings.ToLower(modelName)
 	if strings.Contains(low, "claude") {
-		return 5 * time.Minute // Anthropic 5-minute ephemeral cache
+		return ClaudeCacheTTL
 	}
 	if strings.Contains(low, "gpt") || strings.Contains(low, "o1") || strings.Contains(low, "o3") {
-		return 10 * time.Minute // OpenAI 5-10 minute cache window
+		return OpenAICacheTTL
 	}
 	if strings.Contains(low, "deepseek") {
-		return 24 * time.Hour // DeepSeek MLA persistent cache
+		return DeepSeekCacheTTL
 	}
 	return DefaultCacheTTL // Default Gemini / standard 5 minutes
 }
