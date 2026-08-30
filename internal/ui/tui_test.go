@@ -1102,7 +1102,7 @@ func TestWidthMeasurement(t *testing.T) {
 	}
 }
 
-func TestDashboardSparklinesAndKpiRendering(t *testing.T) {
+func TestDashboardKpiRendering(t *testing.T) {
 	m := NewModel("test-session-multi-model", false)
 	m.width = 120
 	m.height = 35
@@ -1162,21 +1162,6 @@ func TestDashboardSparklinesAndKpiRendering(t *testing.T) {
 		t.Error("Dashboard table missing TOTAL SUMMARY row")
 	}
 
-	// 3. Verify Trend Sparklines renderer standalone
-	trend := core.ExtractTurnTrendSeries(m.history, 50)
-	trendStr := renderTrendPanel(trend, 100)
-	if !strings.Contains(trendStr, "Context Total (Cyan)") {
-		t.Error("Trend panel missing Context Total sparkline")
-	}
-	if !strings.Contains(trendStr, "Cached Volume (Green)") {
-		t.Error("Trend panel missing Cached Volume sparkline")
-	}
-	if !strings.Contains(trendStr, "New Input     (Orange)") {
-		t.Error("Trend panel missing New Input sparkline")
-	}
-	if !strings.Contains(trendStr, "Hit Rate %    (Lime)") {
-		t.Error("Trend panel missing Hit Rate sparkline")
-	}
 }
 
 func TestDashboardHalfWidthResponsiveRendering(t *testing.T) {

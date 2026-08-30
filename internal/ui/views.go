@@ -288,63 +288,6 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 	return sb.String()
 }
 
-func renderTrendPanel(series core.TurnTrendSeries, width int) string {
-	var sb strings.Builder
-	pTitle := fmt.Sprintf("MULTI-TURN CONTEXT & CACHE HIT TREND (Last %d Cloud Turns)", len(series.Points))
-	sb.WriteString(TitleStyle.Render(pTitle) + "\n")
-
-	if len(series.Points) == 0 {
-		sb.WriteString("  No cloud turns recorded yet...")
-		return sb.String()
-	}
-
-	labelW := 25
-	badgeW := 16
-	sparkW := width - labelW - badgeW - 4
-	if sparkW < 10 {
-		sparkW = 10
-	}
-
-	var ctxVals, cacheVals, newVals, hitVals []float64
-	for _, p := range series.Points {
-		ctxVals = append(ctxVals, float64(p.TotalTokens))
-		cacheVals = append(cacheVals, float64(p.CachedTokens))
-		newVals = append(newVals, float64(p.NewTokens))
-		hitVals = append(hitVals, p.CacheHitRate)
-	}
-
-	maxCtx := float64(series.MaxContext)
-	if maxCtx <= 0 {
-		maxCtx = 1.0
-	}
-	peakNew := float64(series.PeakNew)
-	if peakNew <= 0 {
-		peakNew = 1.0
-	}
-
-	// Line 1: Context Total
-	s1 := RenderSparkline(ctxVals, maxCtx, sparkW, lipgloss.NewStyle().Foreground(ColorSecondary))
-	b1 := lipgloss.NewStyle().Foreground(ColorMuted).Render(fmt.Sprintf("[Peak: %s]", formatTokShort(series.MaxContext)))
-	sb.WriteString(fmt.Sprintf("  Context Total (Cyan) : %s %s\n", s1, b1))
-
-	// Line 2: Cached Volume
-	s2 := RenderSparkline(cacheVals, maxCtx, sparkW, lipgloss.NewStyle().Foreground(ColorSuccess))
-	b2 := lipgloss.NewStyle().Foreground(ColorMuted).Render(fmt.Sprintf("[Curr: %s]", formatTokShort(series.LatestCached)))
-	sb.WriteString(fmt.Sprintf("  Cached Volume (Green): %s %s\n", s2, b2))
-
-	// Line 3: New Input
-	s3 := RenderSparkline(newVals, peakNew, sparkW, lipgloss.NewStyle().Foreground(ColorHighlight))
-	b3 := lipgloss.NewStyle().Foreground(ColorMuted).Render(fmt.Sprintf("[Peak: %s]", formatTokShort(series.PeakNew)))
-	sb.WriteString(fmt.Sprintf("  New Input     (Orange): %s %s\n", s3, b3))
-
-	// Line 4: Hit Rate %
-	s4 := RenderSparkline(hitVals, 100.0, sparkW, lipgloss.NewStyle().Foreground(ColorSuccess))
-	b4 := lipgloss.NewStyle().Foreground(ColorMuted).Render(fmt.Sprintf("[Avg: %4.1f%%]", series.AvgHitRate))
-	sb.WriteString(fmt.Sprintf("  Hit Rate %%    (Lime) : %s %s", s4, b4))
-
-	return sb.String()
-}
-
 func (m Model) renderDashboardView() string {
 	e := m.latestEvent
 	isPlayback := false
@@ -440,7 +383,6 @@ func (m Model) renderDashboardView() string {
 	if e.Timestamp.IsZero() {
 		timeStr = "N/A"
 	}
-
 
 	playbackTag := ""
 	if isPlayback {
@@ -1431,4 +1373,3 @@ func cleanToolDisplay(t string) string {
 		return t
 	}
 }
-
