@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	defaultTranscriptPath = "/Users/daniel_y_yang/.gemini/antigravity-cli/brain/aa726359-08e2-4687-a15c-073a2f4a705b/.system_generated/logs/transcript_full.jsonl"
+	defaultTranscriptPath = "/Users/user/.gemini/antigravity-cli/brain/aa726359-08e2-4687-a15c-073a2f4a705b/.system_generated/logs/transcript_full.jsonl"
 	defaultSessionID      = "aa726359-08e2-4687-a15c-073a2f4a705b"
 	version               = "v0.5.0-session-switcher"
 )

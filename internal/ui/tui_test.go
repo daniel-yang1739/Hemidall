@@ -618,7 +618,6 @@ func TestHistoryThreePanelSplitAndZeroTruncation(t *testing.T) {
 	}
 }
 
-
 func TestAllViewsZeroHeightVariationAcrossSizes(t *testing.T) {
 	for _, size := range []struct{ w, h int }{{80, 24}, {100, 30}, {120, 35}, {140, 40}} {
 		for _, view := range []ActiveView{ViewDashboard, ViewContext, ViewHistory, ViewDocs} {
@@ -882,9 +881,9 @@ func TestFormatShortPath(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"/Users/daniel_y_yang/Documents/self/ithome2026", "self/ithome2026"},
-		{"/Users/daniel_y_yang/Documents/self/bookkeeper", "self/bookkeeper"},
-		{"/Users/daniel_y_yang/.gemini/antigravity-cli", ".gemini/antigravity-cli"},
+		{"/Users/user/Documents/self/ithome2026", "self/ithome2026"},
+		{"/Users/user/Documents/self/bookkeeper", "self/bookkeeper"},
+		{"/Users/user/.gemini/antigravity-cli", ".gemini/antigravity-cli"},
 		{"/project", "project"},
 		{"", "workspace"},
 	}
@@ -1618,8 +1617,8 @@ func TestVisualMode_Pos_PageDownAndPageUp(t *testing.T) {
 	m.focusPane = FocusDetail
 	m.history = []core.UnifiedAgentEvent{
 		{
-			StepIndex: 1,
-			Summary:   "Step 1",
+			StepIndex:  1,
+			Summary:    "Step 1",
 			RawContent: "L1\nL2\nL3\nL4\nL5\nL6\nL7\nL8\nL9\nL10\nL11\nL12\nL13\nL14\nL15\nL16\nL17\nL18\nL19\nL20\nL21\nL22\nL23\nL24\nL25",
 		},
 	}
@@ -1641,4 +1640,3 @@ func TestVisualMode_Pos_PageDownAndPageUp(t *testing.T) {
 		t.Errorf("Expected visualCursor to return to 0 on Ctrl+U, got %d", m.visualCursor)
 	}
 }
-

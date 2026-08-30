@@ -73,7 +73,7 @@ func MeasureDynamicBaselineTokens() (systemTokens int, toolsDefTokens int) {
 	baselineOnce.Do(func() {
 		cwd, _ := os.Getwd()
 		constitution := ""
-		for _, p := range []string{"AGENTS.md", "../AGENTS.md", filepath.Join(cwd, "AGENTS.md"), "/Users/daniel_y_yang/Documents/self/heimdall/AGENTS.md"} {
+		for _, p := range []string{"AGENTS.md", "../AGENTS.md", filepath.Join(cwd, "AGENTS.md"), "/Users/user/Documents/self/heimdall/AGENTS.md"} {
 			if content, err := os.ReadFile(p); err == nil && len(content) > 0 {
 				constitution = string(content)
 				break
@@ -177,7 +177,7 @@ func GetActiveSkillsDefinitions() []SkillInfo {
 	cwd, _ := os.Getwd()
 	wikiPath := filepath.Join(cwd, ".agents", "skills", "wiki-distiller", "SKILL.md")
 	if _, err := os.Stat(wikiPath); err != nil {
-		wikiPath = "/Users/daniel_y_yang/Documents/self/heimdall/.agents/skills/wiki-distiller/SKILL.md"
+		wikiPath = "/Users/user/Documents/self/heimdall/.agents/skills/wiki-distiller/SKILL.md"
 	}
 
 	skills := []SkillInfo{
@@ -192,7 +192,7 @@ func GetActiveSkillsDefinitions() []SkillInfo {
 		{
 			Name:        "agy-customizations",
 			Status:      "READY",
-			Path:        "/Users/daniel_y_yang/.gemini/antigravity-cli/builtin/skills/agy-customizations/SKILL.md",
+			Path:        "/Users/user/.gemini/antigravity-cli/builtin/skills/agy-customizations/SKILL.md",
 			Description: "Comprehensive guide and reference for the Antigravity Customization System.",
 			Guidelines:  "Loading priorities, discovery mechanisms, rules, plugins, hooks, and MCP servers.",
 			RawMarkdown: "---\nname: agy-customizations\ndescription: Antigravity Customization System.\n---",
@@ -200,7 +200,7 @@ func GetActiveSkillsDefinitions() []SkillInfo {
 		{
 			Name:        "antigravity-guide",
 			Status:      "READY",
-			Path:        "/Users/daniel_y_yang/.gemini/antigravity-cli/builtin/skills/antigravity_guide/SKILL.md",
+			Path:        "/Users/user/.gemini/antigravity-cli/builtin/skills/antigravity_guide/SKILL.md",
 			Description: "Comprehensive guide, sitemap & slash commands for Antigravity.",
 			Guidelines:  "AGY CLI, Antigravity IDE, slash commands, keybindings, and SDK reference.",
 			RawMarkdown: "---\nname: antigravity-guide\ndescription: Antigravity Comprehensive Guide.\n---",
@@ -224,7 +224,7 @@ func ExtractAgentContextPayload(history []UnifiedAgentEvent, sessionID, targetMo
 
 	cwd, _ := os.Getwd()
 	if cwd == "" {
-		cwd = "/Users/daniel_y_yang/Documents/self/heimdall"
+		cwd = "/Users/user/Documents/self/heimdall"
 	}
 
 	spec := ResolveModelSpec(targetModel, nil)
@@ -265,7 +265,7 @@ Memory re-anchored for sliding window prefill.`,
 	}
 
 	// Attempt to load genuine AGENTS.md directly from filesystem
-	for _, agentsPath := range []string{"AGENTS.md", "../AGENTS.md", filepath.Join(cwd, "AGENTS.md"), "/Users/daniel_y_yang/Documents/self/heimdall/AGENTS.md"} {
+	for _, agentsPath := range []string{"AGENTS.md", "../AGENTS.md", filepath.Join(cwd, "AGENTS.md"), "/Users/user/Documents/self/heimdall/AGENTS.md"} {
 		if content, err := os.ReadFile(agentsPath); err == nil && len(content) > 0 {
 			payload.ConstitutionDoc = strings.TrimSpace(string(content))
 			break
