@@ -7,6 +7,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+)
+
+var (
+	baselineOnce         sync.Once
+	cachedSystemTokens   int
+	cachedToolsDefTokens int
 )
 
 // ToolSignature represents a parsed, clean non-JSON tool declaration
@@ -42,9 +49,9 @@ type AgentContextPayload struct {
 	RuntimeMetadata map[string]string
 
 	// 2. TOOLS & SCHEMAS
-	NativeTools []ToolSignature
+	NativeTools  []ToolSignature
 	ActiveSkills []SkillInfo
-	MCPServers  []string
+	MCPServers   []string
 
 	// 3. CONTEXT HIST
 	CheckpointSummary   string
@@ -63,39 +70,44 @@ type AgentContextPayload struct {
 
 // MeasureDynamicBaselineTokens calculates the exact BPE tokens for system instructions (D1) and tool schemas (D2).
 func MeasureDynamicBaselineTokens() (systemTokens int, toolsDefTokens int) {
-	cwd, _ := os.Getwd()
-	constitution := ""
-	for _, p := range []string{"AGENTS.md", "../AGENTS.md", filepath.Join(cwd, "AGENTS.md"), "/Users/daniel_y_yang/Documents/self/heimdall/AGENTS.md"} {
-		if content, err := os.ReadFile(p); err == nil && len(content) > 0 {
-			constitution = string(content)
-			break
+	baselineOnce.Do(func() {
+		cwd, _ := os.Getwd()
+		constitution := ""
+		for _, p := range []string{"AGENTS.md", "../AGENTS.md", filepath.Join(cwd, "AGENTS.md"), "/Users/daniel_y_yang/Documents/self/heimdall/AGENTS.md"} {
+			if content, err := os.ReadFile(p); err == nil && len(content) > 0 {
+				constitution = string(content)
+				break
+			}
 		}
-	}
 
-	identity := `You are Antigravity, a powerful agentic AI coding assistant designed by the Google DeepMind team. Pair-programming with USER to solve coding tasks.`
-	runtime := `macOS Darwin zsh /bin/zsh Google Antigravity Harness v2.0`
+		identity := `You are Antigravity, a powerful agentic AI coding assistant designed by the Google DeepMind team. Pair-programming with USER to solve coding tasks.`
+		runtime := `macOS Darwin zsh /bin/zsh Google Antigravity Harness v2.0`
 
-	d1 := CountTokens(identity) + CountTokens(constitution) + CountTokens(runtime)
-	if d1 <= 0 {
-		d1 = DefaultFallbackSystemTokens
-	}
+		d1 := CountTokens(identity) + CountTokens(constitution) + CountTokens(runtime)
+		if d1 <= 0 {
+			d1 = DefaultFallbackSystemTokens
+		}
 
-	// Calculate Tools JSON Schema tokens
-	tools := GetNativeToolsDefinitions()
-	skills := GetActiveSkillsDefinitions()
-	toolsText := ""
-	for _, t := range tools {
-		toolsText += t.RawSchema + "\n"
-	}
-	for _, s := range skills {
-		toolsText += s.RawMarkdown + "\n"
-	}
-	d2 := CountTokens(toolsText)
-	if d2 <= 0 {
-		d2 = DefaultFallbackToolsDefTokens
-	}
+		// Calculate Tools JSON Schema tokens
+		tools := GetNativeToolsDefinitions()
+		skills := GetActiveSkillsDefinitions()
+		toolsText := ""
+		for _, t := range tools {
+			toolsText += t.RawSchema + "\n"
+		}
+		for _, s := range skills {
+			toolsText += s.RawMarkdown + "\n"
+		}
+		d2 := CountTokens(toolsText)
+		if d2 <= 0 {
+			d2 = DefaultFallbackToolsDefTokens
+		}
 
-	return d1, d2
+		cachedSystemTokens = d1
+		cachedToolsDefTokens = d2
+	})
+
+	return cachedSystemTokens, cachedToolsDefTokens
 }
 
 // GetNativeToolsDefinitions returns the 8 native harness tool definitions and schemas
@@ -106,56 +118,56 @@ func GetNativeToolsDefinitions() []ToolSignature {
 			Signature:   "write_to_file(TargetFile, CodeContent, Overwrite)",
 			Description: "Create or overwrite file artifacts. Requires Summary & UserFacing meta.",
 			Required:    []string{"TargetFile", "CodeContent", "Overwrite"},
-			RawSchema: `{\n  "name": "write_to_file",\n  "description": "Use this tool to create new files...",\n  "parameters": {\n    "type": "OBJECT",\n    "required": ["TargetFile", "CodeContent", "Overwrite"],\n    "properties": {\n      "TargetFile": { "type": "STRING", "description": "Absolute path" },\n      "CodeContent": { "type": "STRING", "description": "File body" },\n      "Overwrite": { "type": "BOOLEAN", "description": "Force overwrite" }\n    }\n  }\n}`,
+			RawSchema:   `{\n  "name": "write_to_file",\n  "description": "Use this tool to create new files...",\n  "parameters": {\n    "type": "OBJECT",\n    "required": ["TargetFile", "CodeContent", "Overwrite"],\n    "properties": {\n      "TargetFile": { "type": "STRING", "description": "Absolute path" },\n      "CodeContent": { "type": "STRING", "description": "File body" },\n      "Overwrite": { "type": "BOOLEAN", "description": "Force overwrite" }\n    }\n  }\n}`,
 		},
 		{
 			Name:        "replace_file_content",
 			Signature:   "replace_file_content(TargetFile, Instruction, TargetContent, ReplacementContent, ...)",
 			Description: "Precise contiguous code replacement. Strict whitespace matching.",
 			Required:    []string{"TargetFile", "Instruction", "TargetContent", "ReplacementContent"},
-			RawSchema: `{\n  "name": "replace_file_content",\n  "description": "Use this tool to edit an existing file...",\n  "parameters": {\n    "type": "OBJECT",\n    "required": ["TargetFile", "Instruction", "TargetContent", "ReplacementContent"],\n    "properties": {\n      "TargetFile": { "type": "STRING" },\n      "Instruction": { "type": "STRING" },\n      "TargetContent": { "type": "STRING" },\n      "ReplacementContent": { "type": "STRING" }\n    }\n  }\n}`,
+			RawSchema:   `{\n  "name": "replace_file_content",\n  "description": "Use this tool to edit an existing file...",\n  "parameters": {\n    "type": "OBJECT",\n    "required": ["TargetFile", "Instruction", "TargetContent", "ReplacementContent"],\n    "properties": {\n      "TargetFile": { "type": "STRING" },\n      "Instruction": { "type": "STRING" },\n      "TargetContent": { "type": "STRING" },\n      "ReplacementContent": { "type": "STRING" }\n    }\n  }\n}`,
 		},
 		{
 			Name:        "run_command",
 			Signature:   "run_command(CommandLine: string, Cwd: string, WaitMsBeforeAsync: int)",
 			Description: "Execute zsh/bash shell command. Cwd must stay within workspace.",
 			Required:    []string{"CommandLine", "Cwd", "WaitMsBeforeAsync"},
-			RawSchema: `{\n  "name": "run_command",\n  "description": "PROPOSE a command to run on behalf of user...",\n  "parameters": {\n    "type": "OBJECT",\n    "required": ["CommandLine", "Cwd", "WaitMsBeforeAsync"],\n    "properties": {\n      "CommandLine": { "type": "STRING" },\n      "Cwd": { "type": "STRING" },\n      "WaitMsBeforeAsync": { "type": "INTEGER" }\n    }\n  }\n}`,
+			RawSchema:   `{\n  "name": "run_command",\n  "description": "PROPOSE a command to run on behalf of user...",\n  "parameters": {\n    "type": "OBJECT",\n    "required": ["CommandLine", "Cwd", "WaitMsBeforeAsync"],\n    "properties": {\n      "CommandLine": { "type": "STRING" },\n      "Cwd": { "type": "STRING" },\n      "WaitMsBeforeAsync": { "type": "INTEGER" }\n    }\n  }\n}`,
 		},
 		{
 			Name:        "view_file",
 			Signature:   "view_file(AbsolutePath: string, StartLine: int, EndLine: int)",
 			Description: "Read text file lines (1-indexed) or binary images/media.",
 			Required:    []string{"AbsolutePath"},
-			RawSchema: `{\n  "name": "view_file",\n  "description": "View contents of file from local filesystem...",\n  "parameters": {\n    "type": "OBJECT",\n    "required": ["AbsolutePath"],\n    "properties": {\n      "AbsolutePath": { "type": "STRING" },\n      "StartLine": { "type": "INTEGER" },\n      "EndLine": { "type": "INTEGER" }\n    }\n  }\n}`,
+			RawSchema:   `{\n  "name": "view_file",\n  "description": "View contents of file from local filesystem...",\n  "parameters": {\n    "type": "OBJECT",\n    "required": ["AbsolutePath"],\n    "properties": {\n      "AbsolutePath": { "type": "STRING" },\n      "StartLine": { "type": "INTEGER" },\n      "EndLine": { "type": "INTEGER" }\n    }\n  }\n}`,
 		},
 		{
 			Name:        "grep_search",
 			Signature:   "grep_search(Query: string, SearchPath: string, CaseInsensitive: bool)",
 			Description: "Fast ripgrep pattern & regex search across files and directories.",
 			Required:    []string{"Query", "SearchPath"},
-			RawSchema: `{\n  "name": "grep_search",\n  "description": "Use ripgrep to find exact pattern matches...",\n  "parameters": {\n    "type": "OBJECT",\n    "required": ["Query", "SearchPath"],\n    "properties": {\n      "Query": { "type": "STRING" },\n      "SearchPath": { "type": "STRING" },\n      "CaseInsensitive": { "type": "BOOLEAN" }\n    }\n  }\n}`,
+			RawSchema:   `{\n  "name": "grep_search",\n  "description": "Use ripgrep to find exact pattern matches...",\n  "parameters": {\n    "type": "OBJECT",\n    "required": ["Query", "SearchPath"],\n    "properties": {\n      "Query": { "type": "STRING" },\n      "SearchPath": { "type": "STRING" },\n      "CaseInsensitive": { "type": "BOOLEAN" }\n    }\n  }\n}`,
 		},
 		{
 			Name:        "find_by_name",
 			Signature:   "find_by_name(Pattern: string, SearchDirectory: string, Type: string)",
 			Description: "Fast fd glob matching for file and directory discovery.",
 			Required:    []string{"Pattern", "SearchDirectory"},
-			RawSchema: `{\n  "name": "find_by_name",\n  "description": "Search for files within directory using fd...",\n  "parameters": {\n    "type": "OBJECT",\n    "required": ["Pattern", "SearchDirectory"],\n    "properties": {\n      "Pattern": { "type": "STRING" },\n      "SearchDirectory": { "type": "STRING" },\n      "Type": { "type": "STRING" }\n    }\n  }\n}`,
+			RawSchema:   `{\n  "name": "find_by_name",\n  "description": "Search for files within directory using fd...",\n  "parameters": {\n    "type": "OBJECT",\n    "required": ["Pattern", "SearchDirectory"],\n    "properties": {\n      "Pattern": { "type": "STRING" },\n      "SearchDirectory": { "type": "STRING" },\n      "Type": { "type": "STRING" }\n    }\n  }\n}`,
 		},
 		{
 			Name:        "list_dir",
 			Signature:   "list_dir(DirectoryPath: string)",
 			Description: "List immediate children and subdirectories.",
 			Required:    []string{"DirectoryPath"},
-			RawSchema: `{\n  "name": "list_dir",\n  "description": "List contents of directory...",\n  "parameters": {\n    "type": "OBJECT",\n    "required": ["DirectoryPath"],\n    "properties": {\n      "DirectoryPath": { "type": "STRING" }\n    }\n  }\n}`,
+			RawSchema:   `{\n  "name": "list_dir",\n  "description": "List contents of directory...",\n  "parameters": {\n    "type": "OBJECT",\n    "required": ["DirectoryPath"],\n    "properties": {\n      "DirectoryPath": { "type": "STRING" }\n    }\n  }\n}`,
 		},
 		{
 			Name:        "ask_question",
 			Signature:   "ask_question(questions: []QuestionObject)",
 			Description: "Interactive multi-choice clarifying modal with radio/checkboxes.",
 			Required:    []string{"questions"},
-			RawSchema: `{\n  "name": "ask_question",\n  "description": "Ask user one or more multiple-choice questions...",\n  "parameters": {\n    "type": "OBJECT",\n    "required": ["questions"],\n    "properties": {\n      "questions": { "type": "ARRAY" }\n    }\n  }\n}`,
+			RawSchema:   `{\n  "name": "ask_question",\n  "description": "Ask user one or more multiple-choice questions...",\n  "parameters": {\n    "type": "OBJECT",\n    "required": ["questions"],\n    "properties": {\n      "questions": { "type": "ARRAY" }\n    }\n  }\n}`,
 		},
 	}
 }
@@ -223,12 +235,12 @@ func ExtractAgentContextPayload(history []UnifiedAgentEvent, sessionID, targetMo
 		ContextLimit: spec.DefaultAgentWindow,
 		TotalTokens:  185200,
 		RuntimeMetadata: map[string]string{
-			"OS":         "macOS Darwin 24.5.0",
-			"Shell":      "zsh (/bin/zsh)",
-			"Cwd":        cwd,
-			"SessionID":  sessionID,
-			"Model":      targetModel,
-			"Harness":    "Google Antigravity Harness v2.0",
+			"OS":        "macOS Darwin 24.5.0",
+			"Shell":     "zsh (/bin/zsh)",
+			"Cwd":       cwd,
+			"SessionID": sessionID,
+			"Model":     targetModel,
+			"Harness":   "Google Antigravity Harness v2.0",
 		},
 		NativeTools:  GetNativeToolsDefinitions(),
 		ActiveSkills: GetActiveSkillsDefinitions(),
