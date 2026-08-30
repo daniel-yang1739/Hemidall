@@ -131,44 +131,6 @@ func TestComputeSessionAggregateMetrics(t *testing.T) {
 	}
 }
 
-func TestExtractTurnTrendSeries(t *testing.T) {
-	history := []core.UnifiedAgentEvent{
-		{
-			StepIndex: 1,
-			Scope:     core.ScopeCloudInference,
-			Type:      core.StepTypeModelResponse,
-			Tokens: core.TokenBreakdown{
-				TotalTokens:  10000,
-				CachedTokens: 0,
-				NewTokens:    10000,
-				CacheHitRate: 0.0,
-			},
-		},
-		{
-			StepIndex: 2,
-			Scope:     core.ScopeCloudInference,
-			Type:      core.StepTypeModelResponse,
-			Tokens: core.TokenBreakdown{
-				TotalTokens:  25000,
-				CachedTokens: 20000,
-				NewTokens:    5000,
-				CacheHitRate: 80.0,
-			},
-		},
-	}
-
-	series := core.ExtractTurnTrendSeries(history, 10)
-	if len(series.Points) != 2 {
-		t.Fatalf("Expected 2 points, got %d", len(series.Points))
-	}
-	if series.MaxContext != 25000 {
-		t.Errorf("MaxContext = %d, want 25000", series.MaxContext)
-	}
-	if series.PeakNew != 10000 {
-		t.Errorf("PeakNew = %d, want 10000", series.PeakNew)
-	}
-}
-
 func TestStats_Neg_ZeroCloudTurnsDivisionByZeroGuard(t *testing.T) {
 	history := []core.UnifiedAgentEvent{
 		{

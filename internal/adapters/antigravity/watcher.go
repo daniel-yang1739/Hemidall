@@ -15,14 +15,14 @@ import (
 
 // RawTranscriptLine matches the JSONL schema from ~/.gemini/.../transcript_full.jsonl
 type RawTranscriptLine struct {
-	StepIndex int                      `json:"step_index"`
-	Source    string                   `json:"source"`
-	Type      string                   `json:"type"`
-	Status    string                   `json:"status"`
-	CreatedAt string                   `json:"created_at"`
-	Content   string                   `json:"content"`
-	Thinking  string                   `json:"thinking,omitempty"`
-	ToolCalls []RawToolCall            `json:"tool_calls,omitempty"`
+	StepIndex int           `json:"step_index"`
+	Source    string        `json:"source"`
+	Type      string        `json:"type"`
+	Status    string        `json:"status"`
+	CreatedAt string        `json:"created_at"`
+	Content   string        `json:"content"`
+	Thinking  string        `json:"thinking,omitempty"`
+	ToolCalls []RawToolCall `json:"tool_calls,omitempty"`
 }
 
 type RawToolCall struct {
@@ -38,6 +38,7 @@ type Watcher struct {
 	sqliteReader *SQLiteTelemetryReader
 	tracker      *core.StepLinkageTracker
 	lastStepIdx  int
+	pendingLine  string
 }
 
 // NewWatcher creates a new Antigravity log and telemetry file watcher
@@ -79,21 +80,22 @@ func (w *Watcher) Start(ctx context.Context, out chan<- core.UnifiedAgentEvent) 
 	}
 
 	// 2. Warmup: fast-forward existing history and push to out channel so TUI receives all historical events
-	warmupCount := 0
 	for {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if err == io.EOF {
 				if len(line) > 0 {
-					w.warmupLine(line, ctx, out)
-					warmupCount++
+					if json.Valid([]byte(strings.TrimSpace(line))) {
+						w.processLine(line, ctx, out)
+					} else {
+						w.pendingLine = line
+					}
 				}
 				break
 			}
 			return fmt.Errorf("error reading initial lines: %w", err)
 		}
-		w.warmupLine(line, ctx, out)
-		warmupCount++
+		w.processLine(line, ctx, out)
 	}
 
 	// 3. Poll file tail and SQLite periodically for new live steps
@@ -112,42 +114,20 @@ func (w *Watcher) Start(ctx context.Context, out chan<- core.UnifiedAgentEvent) 
 			for {
 				line, err := reader.ReadString('\n')
 				if err != nil {
-					if err == io.EOF && len(line) > 0 {
-						w.handleLiveLine(line, ctx, out)
+					if err == io.EOF {
+						w.pendingLine += line
 					}
 					break
 				}
-				w.handleLiveLine(line, ctx, out)
+				completeLine := w.pendingLine + line
+				w.pendingLine = ""
+				w.processLine(completeLine, ctx, out)
 			}
 		}
 	}
 }
 
-func (w *Watcher) warmupLine(line string, ctx context.Context, out chan<- core.UnifiedAgentEvent) {
-	trimmed := strings.TrimSpace(line)
-	if trimmed == "" {
-		return
-	}
-	event, err := w.parseLine(trimmed)
-	if err != nil {
-		return
-	}
-	if event.StepIndex <= w.lastStepIdx && event.StepIndex != 0 {
-		return
-	}
-	w.lastStepIdx = event.StepIndex
-
-	if w.analyzer != nil {
-		w.analyzer.AnalyzeStep(&event)
-	}
-
-	select {
-	case out <- event:
-	case <-ctx.Done():
-	}
-}
-
-func (w *Watcher) handleLiveLine(line string, ctx context.Context, out chan<- core.UnifiedAgentEvent) {
+func (w *Watcher) processLine(line string, ctx context.Context, out chan<- core.UnifiedAgentEvent) {
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" {
 		return

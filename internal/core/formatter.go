@@ -82,7 +82,7 @@ func FormatTokenBreakdownTable(e UnifiedAgentEvent) string {
 		truncatedTokens := t.RawLocalAccumulated - total
 		sb.WriteString(fmt.Sprintf("│  💡 Raw Uncompressed Log: %-7d Tokens (✂️ %d Tokens Truncated)     │\n", t.RawLocalAccumulated, truncatedTokens))
 	} else {
-		sb.WriteString(fmt.Sprintf("│  💡 Proportional Calibration: 100.0%% Exact Mathematical Ground Truth  │\n"))
+		sb.WriteString("│  💡 Estimated dimensions calibrated to the observed total token count │\n")
 	}
 	sb.WriteString("└────────────────────────────────────────────────────────────────────────┘\n")
 

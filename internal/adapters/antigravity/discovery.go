@@ -182,9 +182,8 @@ func DiscoverAllSessions() ([]core.SessionInfo, error) {
 		return nil, err
 	}
 
-	geminiDir := filepath.Join(home, ".gemini", "antigravity-cli")
-	dbDir := filepath.Join(geminiDir, "conversations")
-	brainDir := filepath.Join(geminiDir, "brain")
+	installationPath := InstallationPath(home)
+	dbDir := filepath.Join(installationPath, "conversations")
 
 	entries, err := os.ReadDir(dbDir)
 	if err != nil {
@@ -204,9 +203,8 @@ func DiscoverAllSessions() ([]core.SessionInfo, error) {
 			continue
 		}
 		sid := strings.TrimSuffix(entry.Name(), ".db")
-		fullDBPath := filepath.Join(dbDir, entry.Name())
-		fullLogPath := filepath.Join(brainDir, sid, ".system_generated", "logs", "transcript_full.jsonl")
-		compactLogPath := filepath.Join(brainDir, sid, ".system_generated", "logs", "transcript.jsonl")
+		fullDBPath := ConversationDatabasePath(home, sid)
+		fullLogPath, compactLogPath := TranscriptPaths(home, sid)
 
 		// Prefer compact transcript.jsonl for fast metadata extraction
 		scanPath := compactLogPath
@@ -265,9 +263,8 @@ func LoadSessionHistory(sessionID string, analyzer *core.PayloadAnalyzer) ([]cor
 		return nil, err
 	}
 
-	geminiDir := filepath.Join(home, ".gemini", "antigravity-cli")
-	dbPath := filepath.Join(geminiDir, "conversations", sessionID+".db")
-	logPath := filepath.Join(geminiDir, "brain", sessionID, ".system_generated", "logs", "transcript_full.jsonl")
+	dbPath := ConversationDatabasePath(home, sessionID)
+	logPath, _ := TranscriptPaths(home, sessionID)
 
 	sqliteReader := NewSQLiteTelemetryReader(dbPath)
 	_ = sqliteReader.PollLatest()

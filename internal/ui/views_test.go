@@ -64,7 +64,7 @@ func TestHistory_Pos_ValidKeywordSearch(t *testing.T) {
 }
 
 func TestHistory_Pos_FormatShortPath(t *testing.T) {
-	res := formatShortPath("/Users/daniel_y_yang/Documents/self/ithome2026/main.go", 30)
+	res := formatShortPath("/home/example/projects/heimdall/main.go", 30)
 	if len(res) > 30 {
 		t.Errorf("formatShortPath exceeded max width 30: len=%d, str=%q", len(res), res)
 	}

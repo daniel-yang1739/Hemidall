@@ -40,25 +40,25 @@ type ToolResultInfo struct {
 
 // TokenBreakdown defines the 5-dimension token distribution and cache metrics
 type TokenBreakdown struct {
-	SystemTokens     int     `json:"system_tokens"`      // System prompt, identity, rules, and environment
-	ToolsDefTokens   int     `json:"tools_def_tokens"`   // MCP / Tool JSON Schema definitions
-	ToolResultTokens int     `json:"tool_result_tokens"` // Code reads, terminal outputs, diffs
-	HistoryTokens    int     `json:"history_tokens"`     // Prior conversation turns
-	ActiveTurnTokens int     `json:"active_turn_tokens"` // Latest user prompt or active assistant output
-	ThinkingTokens   int     `json:"thinking_tokens"`    // Chain-of-Thought (CoT) tokens
-	TotalTokens      int     `json:"total_tokens"`       // Total context tokens (Active Window)
-	
+	SystemTokens     int `json:"system_tokens"`      // System prompt, identity, rules, and environment
+	ToolsDefTokens   int `json:"tools_def_tokens"`   // MCP / Tool JSON Schema definitions
+	ToolResultTokens int `json:"tool_result_tokens"` // Code reads, terminal outputs, diffs
+	HistoryTokens    int `json:"history_tokens"`     // Prior conversation turns
+	ActiveTurnTokens int `json:"active_turn_tokens"` // Latest user prompt or active assistant output
+	ThinkingTokens   int `json:"thinking_tokens"`    // Chain-of-Thought (CoT) tokens
+	TotalTokens      int `json:"total_tokens"`       // Total context tokens (Active Window)
+
 	// Prefix Caching analytical metrics
-	CachedTokens     int     `json:"cached_tokens"`      // Prefix cache hit tokens
-	NewTokens        int     `json:"new_tokens"`         // New uncached tokens in this step
-	CacheHitRate     float64 `json:"cache_hit_rate"`     // Cache hit rate percentage (%)
-	
+	CachedTokens int     `json:"cached_tokens"`  // Prefix cache hit tokens
+	NewTokens    int     `json:"new_tokens"`     // New uncached tokens in this step
+	CacheHitRate float64 `json:"cache_hit_rate"` // Cache hit rate percentage (%)
+
 	// Official Google API telemetry fields
-	IsOfficialData       bool    `json:"is_official_data"`       // True if fetched directly from SQLite gen_metadata
-	OfficialModel        string  `json:"official_model"`         // Actual backend model (e.g. gemini-3.7-flash-high)
-	OfficialContextLimit int     `json:"official_context_limit"` // e.g. 256,000
-	RawLocalAccumulated  int     `json:"raw_local_accumulated"`  // Raw uncompressed log tokens (e.g. ~400k)
-	StepDelta            int     `json:"step_delta"`             // Local token delta generated in this single step
+	IsOfficialData       bool   `json:"is_official_data"`       // True if fetched directly from SQLite gen_metadata
+	OfficialModel        string `json:"official_model"`         // Actual backend model (e.g. gemini-3.7-flash-high)
+	OfficialContextLimit int    `json:"official_context_limit"` // e.g. 256,000
+	RawLocalAccumulated  int    `json:"raw_local_accumulated"`  // Raw uncompressed log tokens (e.g. ~400k)
+	StepDelta            int    `json:"step_delta"`             // Local token delta generated in this single step
 
 	// Dynamic financial & capacity metrics (resolved via ModelSpec & HostConfig)
 	ContextLimit       int     `json:"context_limit"`        // Effective active agent window limit
@@ -102,31 +102,31 @@ func ClassifyCacheStatus(hitRate float64, cachedTokens, totalTokens int, isExpir
 
 // UnifiedAgentEvent is the standardized domain event model across agent backends
 type UnifiedAgentEvent struct {
-	SessionID   string           `json:"session_id"`   // Unique session identifier
-	StepIndex   int              `json:"step_index"`   // 0-indexed step sequence
-	Timestamp   time.Time        `json:"timestamp"`    // Event creation timestamp
-	Source      string           `json:"source"`       // USER_EXPLICIT, MODEL, SYSTEM
-	Type        StepType         `json:"type"`         // Step category
-	Status      string           `json:"status"`       // DONE, RUNNING, ERROR
-	Scope       StepScope        `json:"scope"`        // USER, CLOUD, LOCAL, SUBAGENT, COMPACTION, SYSTEM
-	AgentRole   string           `json:"agent_role"`   // MAIN, SUBAGENT, INTERNAL
-	IsSubagent  bool             `json:"is_subagent"`  // True if executed by a subagent worker
+	SessionID  string    `json:"session_id"`  // Unique session identifier
+	StepIndex  int       `json:"step_index"`  // 0-indexed step sequence
+	Timestamp  time.Time `json:"timestamp"`   // Event creation timestamp
+	Source     string    `json:"source"`      // USER_EXPLICIT, MODEL, SYSTEM
+	Type       StepType  `json:"type"`        // Step category
+	Status     string    `json:"status"`      // DONE, RUNNING, ERROR
+	Scope      StepScope `json:"scope"`       // USER, CLOUD, LOCAL, SUBAGENT, COMPACTION, SYSTEM
+	AgentRole  string    `json:"agent_role"`  // MAIN, SUBAGENT, INTERNAL
+	IsSubagent bool      `json:"is_subagent"` // True if executed by a subagent worker
 
 	// Causality & Hierarchy Linkage
-	ParentStepIdx       int      `json:"parent_step_idx,omitempty"`        // The triggering parent step index
-	PackagedInStepIdx   int      `json:"packaged_in_step_idx,omitempty"`    // Cloud step index where this local step was billed
-	ConsumedStepIndices []int    `json:"consumed_step_indices,omitempty"`  // Local step indices consumed by this cloud turn
-	
+	ParentStepIdx       int   `json:"parent_step_idx,omitempty"`       // The triggering parent step index
+	PackagedInStepIdx   int   `json:"packaged_in_step_idx,omitempty"`  // Cloud step index where this local step was billed
+	ConsumedStepIndices []int `json:"consumed_step_indices,omitempty"` // Local step indices consumed by this cloud turn
+
 	// Content and summaries
-	Summary     string           `json:"summary"`      // Single-line summary for CLI display
-	RawContent  string           `json:"raw_content"`  // Full text payload
+	Summary     string           `json:"summary"`            // Single-line summary for CLI display
+	RawContent  string           `json:"raw_content"`        // Full text payload
 	Thinking    string           `json:"thinking,omitempty"` // Reasoning chain
 	ToolCalls   []ToolCallInfo   `json:"tool_calls,omitempty"`
 	ToolResults []ToolResultInfo `json:"tool_results,omitempty"`
-	
+
 	// 5-dimension breakdown (injected by Analyzer)
-	Tokens      TokenBreakdown   `json:"tokens"`
-	CacheStatus string           `json:"cache_status"` // HIT, PARTIAL, WRITE, EXPIRED, MISS, UNKNOWN
+	Tokens      TokenBreakdown `json:"tokens"`
+	CacheStatus string         `json:"cache_status"` // HIT, PARTIAL, WRITE, EXPIRED, MISS, UNKNOWN
 }
 
 // GetAgentRole returns the authoritative role of the agent executing this step (MAIN, SUBAGENT, or INTERNAL)
@@ -176,8 +176,8 @@ type ModelTokenStats struct {
 	TotalCached       int     `json:"total_cached"`
 	TotalNew          int     `json:"total_new"`
 	CacheHitRate      float64 `json:"cache_hit_rate"`
-	DiscountRate      float64 `json:"discount_rate"` // e.g. 0.75 for 75% OFF
-	PriceFactor       float64 `json:"price_factor"`  // e.g. 0.25
+	DiscountRate      float64 `json:"discount_rate"`  // e.g. 0.75 for 75% OFF
+	PriceFactor       float64 `json:"price_factor"`   // e.g. 0.25
 	DiscountLabel     string  `json:"discount_label"` // e.g. "0.25x (75% OFF)"
 	EffectiveTokens   int     `json:"effective_tokens"`
 	TokensSaved       int     `json:"tokens_saved"`
@@ -189,22 +189,3 @@ type SessionAggregateMetrics struct {
 	TotalStats ModelTokenStats   `json:"total_stats"`
 	ModelStats []ModelTokenStats `json:"model_stats"`
 }
-
-// TurnTrendPoint holds telemetry metrics for a single cloud turn to be plotted in trend sparklines
-type TurnTrendPoint struct {
-	StepIndex    int     `json:"step_index"`
-	TotalTokens  int     `json:"total_tokens"`
-	CachedTokens int     `json:"cached_tokens"`
-	NewTokens    int     `json:"new_tokens"`
-	CacheHitRate float64 `json:"cache_hit_rate"`
-}
-
-// TurnTrendSeries holds the chronological sequence of cloud turns for trend visualization
-type TurnTrendSeries struct {
-	Points       []TurnTrendPoint `json:"points"`
-	MaxContext   int              `json:"max_context"`
-	PeakNew      int              `json:"peak_new"`
-	AvgHitRate   float64          `json:"avg_hit_rate"`
-	LatestCached int              `json:"latest_cached"`
-}
-

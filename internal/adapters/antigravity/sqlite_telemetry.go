@@ -11,11 +11,10 @@ import (
 
 // SQLiteTelemetryReader polls and extracts official Gemini generation telemetry from the local SQLite DB
 type SQLiteTelemetryReader struct {
-	dbPath    string
-	mu        sync.RWMutex
+	dbPath     string
+	mu         sync.RWMutex
 	lastGenIdx int
-	records   map[int]*GeminiGenerationMetadata // keyed by LastStepIdx
-	latest    *GeminiGenerationMetadata
+	records    map[int]*GeminiGenerationMetadata // keyed by LastStepIdx
 }
 
 // NewSQLiteTelemetryReader creates a new SQLite telemetry reader
@@ -54,18 +53,18 @@ func (r *SQLiteTelemetryReader) PollLatest() error {
 
 		meta, err := ParseGeminiGenMetadata(idx, data)
 		if err != nil {
-			continue
-		}
-
-		if strings.Contains(meta.ModelName, "safety-le") {
+			r.lastGenIdx = idx
 			continue
 		}
 
 		r.lastGenIdx = idx
+		if strings.Contains(meta.ModelName, "safety-le") {
+			continue
+		}
+
 		if meta.LastStepIdx > 0 {
 			r.records[meta.LastStepIdx] = meta
 		}
-		r.latest = meta
 	}
 
 	return nil
@@ -86,11 +85,4 @@ func (r *SQLiteTelemetryReader) GetTelemetryForStep(stepIdx int) *GeminiGenerati
 		return meta
 	}
 	return nil
-}
-
-// GetLatestTelemetry returns the most recently captured official telemetry
-func (r *SQLiteTelemetryReader) GetLatestTelemetry() *GeminiGenerationMetadata {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.latest
 }

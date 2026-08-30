@@ -2,7 +2,7 @@
 * **1. System Instruction (系統提示詞)** : 基礎系統規範、專案憲法（AGENTS.md）與操作限制。
   - **物理邊界** : 位於 GPU 顯存 KV Cache 的最前端頂部（Prefix Offset 0），在對話生命週期中永久常駐。
   - **容量佔比** : 約佔總視窗的 2% ~ 8%（約 5k ~ 20k Tokens），視載入的自訂 Skill 與 Agent Role 數量而定。
-  - **快取效益** : 享有 100% 顯存復用率，是全會話快取命中率與延遲降低的基本盤。
+  - **快取效益** : 穩定前綴可能有利於快取復用；實際命中率必須以每輪遙測為準，不能保證 100%。
 
 * **2. MCP Tools Schema (工具定義規格)** : 工具函式呼叫的結構化 JSON Schema 規格庫。
   - **規格內容** : 包含所有可用 Tool（如 view_file, run_command, replace_file_content 等）的參數型別、欄位描述與呼叫限制。

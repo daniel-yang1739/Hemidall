@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -20,9 +19,8 @@ import (
 )
 
 const (
-	defaultTranscriptPath = "/Users/daniel_y_yang/.gemini/antigravity-cli/brain/aa726359-08e2-4687-a15c-073a2f4a705b/.system_generated/logs/transcript_full.jsonl"
-	defaultSessionID      = "aa726359-08e2-4687-a15c-073a2f4a705b"
-	version               = "v0.5.0-session-switcher"
+	defaultHTTPPort = 8080
+	version         = "v0.5.0-session-switcher"
 )
 
 type PlainLogConfig struct {
@@ -32,17 +30,13 @@ type PlainLogConfig struct {
 	Adapter   string
 	File      string
 	DB        string
-	Analyzer  *core.PayloadAnalyzer
 	EventChan chan core.UnifiedAgentEvent
 }
 
 func main() {
-	homeDir, _ := os.UserHomeDir()
-	defaultDBPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "conversations", defaultSessionID+".db")
-
 	filePath := flag.String("file", "", "Path to the agent transcript_full.jsonl file (leave empty for auto-detection)")
 	dbPath := flag.String("db", "", "Path to SQLite conversation database (leave empty for auto-detection)")
-	port := flag.Int("port", 8080, "HTTP server port for dashboard & health check")
+	port := flag.Int("port", defaultHTTPPort, "HTTP server port for dashboard & health check")
 	adapterName := flag.String("adapter", "antigravity", "Adapter to use (antigravity, generic_jsonl)")
 	sessionID := flag.String("session", "", "Session ID to track (leave empty for auto-detection of latest active session)")
 	plainMode := flag.Bool("plain", false, "Use plain scrolling log mode instead of full-screen interactive TUI")
@@ -69,37 +63,38 @@ func main() {
 			if targetDBPath == "" {
 				targetDBPath = latest.DBPath
 			}
-		} else {
-			targetSessionID = defaultSessionID
-			if targetFilePath == "" {
-				targetFilePath = defaultTranscriptPath
-			}
-			if targetDBPath == "" {
-				targetDBPath = defaultDBPath
-			}
 		}
 	}
 
-	openSwitcherOnStart := false
+	openSwitcherOnStart := targetSessionID == ""
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Initialize core payload analyzer
-	analyzer := core.NewPayloadAnalyzer()
+	analyzer := core.NewPayloadAnalyzer(antigravity.LoadAntigravityHostConfig())
 
 	// Initialize event channel with large buffer for seamless history warmup
 	eventChan := make(chan core.UnifiedAgentEvent, 10000)
 
 	// Initialize Dynamic Watcher Hub
 	hub := adapters.NewWatcherHub(ctx, eventChan, analyzer)
-	_ = hub.StartSession(targetSessionID, core.AgentTypeAntigravity, targetFilePath, targetDBPath)
+	if targetSessionID != "" {
+		if err := hub.StartSession(targetSessionID, core.AgentTypeAntigravity, targetFilePath, targetDBPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to start session watcher: %v\n", err)
+			os.Exit(1)
+		}
+	}
 
 	// Start background HTTP server
 	go startHTTPServer(*port)
 
 	// If plain mode requested, run traditional scrolling CLI
 	if *plainMode {
+		if targetSessionID == "" {
+			fmt.Fprintln(os.Stderr, "Plain mode requires a discoverable session or an explicit -session value")
+			return
+		}
 		runPlainLogMode(PlainLogConfig{
 			Ctx:       ctx,
 			Cancel:    cancel,
@@ -107,7 +102,6 @@ func main() {
 			Adapter:   *adapterName,
 			File:      targetFilePath,
 			DB:        targetDBPath,
-			Analyzer:  analyzer,
 			EventChan: eventChan,
 		})
 		return
@@ -154,7 +148,6 @@ func runPlainLogMode(config PlainLogConfig) {
 		case <-config.Ctx.Done():
 			return
 		case event := <-config.EventChan:
-			config.Analyzer.AnalyzeStep(&event)
 			table := core.FormatTokenBreakdownTable(event)
 			fmt.Println(table)
 		}

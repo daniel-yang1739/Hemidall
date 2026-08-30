@@ -173,6 +173,14 @@ func TestView3DocsPageRenderingAndSearch(t *testing.T) {
 
 func TestView2ContextPageRenderingAndDualModeToggle(t *testing.T) {
 	m := NewModel("test-session", false)
+	m.history = []core.UnifiedAgentEvent{{
+		SessionID: "test-session",
+		Type:      core.StepTypeToolCall,
+		ToolCalls: []core.ToolCallInfo{{
+			ToolName:  "write_to_file",
+			Arguments: map[string]interface{}{"TargetFile": "main.go"},
+		}},
+	}}
 	m.width = 100
 	m.height = 30
 
@@ -184,14 +192,14 @@ func TestView2ContextPageRenderingAndDualModeToggle(t *testing.T) {
 	}
 
 	view := m.View()
-	if !strings.Contains(view, "CONTEXT PAYLOAD TREE") {
-		t.Fatalf("Expected 'CONTEXT PAYLOAD TREE' in context view, got: %s", view)
+	if !strings.Contains(view, "CONTEXT EVIDENCE TREE") {
+		t.Fatalf("Expected 'CONTEXT EVIDENCE TREE' in context view, got: %s", view)
 	}
 	if !strings.Contains(view, "[MODE: REFINED [r]]") {
 		t.Errorf("Expected default mode '[MODE: REFINED [r]]' in view, got: %s", view)
 	}
 
-	// 2. Press 'r' to toggle Raw Wire JSON mode
+	// 2. Press 'r' to toggle decoded evidence JSON mode
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
 	m = updated.(Model)
 	if !m.isContextRawMode {
@@ -199,18 +207,18 @@ func TestView2ContextPageRenderingAndDualModeToggle(t *testing.T) {
 	}
 
 	rawView := m.View()
-	if !strings.Contains(rawView, "[MODE: RAW WIRE [r]]") {
-		t.Errorf("Expected '[MODE: RAW WIRE [r]]' after 'r' toggle, got: %s", rawView)
+	if !strings.Contains(rawView, "[MODE: TRANSCRIPT FA") {
+		t.Errorf("Expected transcript fallback mode after 'r' toggle, got: %s", rawView)
 	}
-	if !strings.Contains(rawView, "systemInstruction") && !strings.Contains(rawView, "contents") {
-		t.Errorf("Expected Gemini Wire JSON for Full Request in rawView, got: %s", rawView)
+	if !strings.Contains(rawView, "evidence") && !strings.Contains(rawView, "transcript_observations") {
+		t.Errorf("Expected evidence representation in rawView, got: %s", rawView)
 	}
 
 	// 3. Navigate down to Native Tools (SubcatTools = 4) and check specific raw tools schema
 	m.contextSubItemIndex = SubcatTools
 	toolsRawView := m.View()
-	if !strings.Contains(toolsRawView, "functionDeclarations") || !strings.Contains(toolsRawView, "write_to_file") {
-		t.Errorf("Expected specific raw tool declarations in toolsRawView, got: %s", toolsRawView)
+	if !strings.Contains(toolsRawView, "decoded_tool_entries") || !strings.Contains(toolsRawView, "write_to_file") {
+		t.Errorf("Expected decoded tool entries in toolsRawView, got: %s", toolsRawView)
 	}
 
 	// 4. Press 'r' again to return to Refined Cards mode
@@ -218,6 +226,70 @@ func TestView2ContextPageRenderingAndDualModeToggle(t *testing.T) {
 	m = updated.(Model)
 	if m.isContextRawMode {
 		t.Fatal("Expected isContextRawMode=false after second 'r'")
+	}
+}
+
+func TestFormatPersistedUserRuleLines_SeparatesAndPreservesRuleSources(t *testing.T) {
+	rules := `<RULE[user_global]>
+Global rule text
+</RULE[user_global]>
+<RULE[/workspace/AGENTS.md]>
+Project rule text
+</RULE[/workspace/AGENTS.md]>`
+
+	lines := formatPersistedUserRuleLines(rules, 120)
+	formatted := strings.Join(lines, "\n")
+	if !strings.Contains(formatted, "<RULE[user_global]>") || !strings.Contains(formatted, "<RULE[/workspace/AGENTS.md]>") {
+		t.Fatalf("expected both original rule tags to be preserved: %q", formatted)
+	}
+	if !strings.Contains(formatted, "</RULE[user_global]>\n\n  <RULE[/workspace/AGENTS.md]>") {
+		t.Errorf("expected a blank line between rule blocks: %q", formatted)
+	}
+	if !strings.Contains(formatted, "  Global rule text") || !strings.Contains(formatted, "  Project rule text") {
+		t.Errorf("expected rule text to remain unchanged except for display indentation: %q", formatted)
+	}
+}
+
+func TestCheckpointAnchorInspector_CombinesSummaryAndTranscriptLocation(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.contextSubItemIndex = SubcatAnchor
+	payload := core.AgentContextPayload{
+		CheckpointStepIndex: 2255,
+		CheckpointSummary:   "<CONTEXT_SUMMARY>Saved conversation summary</CONTEXT_SUMMARY>",
+	}
+
+	inspector := strings.Join(m.buildRefinedInspectorLines(payload, 120), "\n")
+	if !strings.Contains(inspector, "Observed at transcript step #2255.") {
+		t.Errorf("expected transcript location in combined checkpoint inspector: %q", inspector)
+	}
+	if !strings.Contains(inspector, "Saved conversation summary") {
+		t.Errorf("expected checkpoint summary in combined checkpoint inspector: %q", inspector)
+	}
+	if strings.Contains(inspector, "SLICED & COMPACTED HISTORY WINDOW") {
+		t.Errorf("expected obsolete standalone compaction section to be absent: %q", inspector)
+	}
+}
+
+func TestContextTree_SeparatesSectionTokensAndShowsTotal(t *testing.T) {
+	sectionLines := renderContextSectionHeader("TRANSCRIPT HISTORY", 123456, 20)
+	if len(sectionLines) != 2 {
+		t.Fatalf("expected a narrow section header to use two lines, got %d", len(sectionLines))
+	}
+	if !strings.Contains(sectionLines[1], "123.5k Tok") {
+		t.Errorf("expected compact token label on the second line: %q", sectionLines[1])
+	}
+
+	m := NewModel("test-session", false)
+	payload := core.AgentContextPayload{TotalTokens: 123456, CheckpointStepIndex: 2255}
+	tree := m.renderContextTree(payload, 38, 30)
+	if !strings.Contains(tree, "Total: 123,456 Tok") {
+		t.Errorf("expected latest total context tokens near the tree title: %q", tree)
+	}
+	if strings.Contains(tree, "Checkpoint Anchor · Step") {
+		t.Errorf("expected checkpoint step to be absent from the left tree: %q", tree)
+	}
+	if strings.Contains(tree, "Observed model") {
+		t.Errorf("expected model identity to be absent from the context tree: %q", tree)
 	}
 }
 
@@ -265,6 +337,63 @@ func TestContextVimPaneSwitchingLH(t *testing.T) {
 	m = updated.(Model)
 	if m.contextFocusPane != FocusList {
 		t.Fatalf("Expected contextFocusPane=FocusList after 'h', got %v", m.contextFocusPane)
+	}
+}
+
+func TestContextTree_NavigationMatchesRenderedHistoryOrder(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.width = 100
+	m.height = 30
+	m.activeView = ViewContext
+	m.contextFocusPane = FocusList
+	m.contextSubItemIndex = SubcatAnchor
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	m = updated.(Model)
+	if m.contextSubItemIndex != SubcatCurrentHistory {
+		t.Fatalf("expected Current History after Compacted Checkpoint, got subcategory %d", m.contextSubItemIndex)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	m = updated.(Model)
+	if m.contextSubItemIndex != SubcatTurns {
+		t.Fatalf("expected Active Turns after Current History, got subcategory %d", m.contextSubItemIndex)
+	}
+}
+
+func TestCurrentHistoryList_NavigationLeavesCompactedCheckpoint(t *testing.T) {
+	m := NewModel("test-session", false)
+	m.activeView = ViewContext
+	m.contextFocusPane = FocusList
+	m.contextHistoryList = true
+	m.contextHistoryItemCount = 3
+	m.contextHistoryIndex = 2
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")})
+	m = updated.(Model)
+	if m.contextHistoryIndex != 1 {
+		t.Fatalf("expected up navigation to leave the last history item, got index %d", m.contextHistoryIndex)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("G")})
+	m = updated.(Model)
+	if m.contextHistoryIndex != 2 {
+		t.Fatalf("expected G to select the last history item, got index %d", m.contextHistoryIndex)
+	}
+}
+
+func TestCurrentHistoryList_CheckpointStaysOnOneMutedLine(t *testing.T) {
+	m := NewModel("test-session", false)
+	payload := core.AgentContextPayload{PersistedRecords: []core.PersistedContextRecord{
+		{Position: 1, IsCompactedCheckpoint: true},
+		{Position: 2, ByteSize: 1024},
+		{Position: 3, ByteSize: 2048},
+	}}
+	m.contextHistoryList = true
+	m.contextHistoryIndex = 2
+	rendered := m.renderCurrentHistoryList(payload, 38, 30)
+	if !strings.Contains(rendered, "CHECKPOINT") || strings.Contains(rendered, "CHECK\n") {
+		t.Fatalf("checkpoint must remain a single line: %q", rendered)
 	}
 }
 
@@ -618,7 +747,6 @@ func TestHistoryThreePanelSplitAndZeroTruncation(t *testing.T) {
 	}
 }
 
-
 func TestAllViewsZeroHeightVariationAcrossSizes(t *testing.T) {
 	for _, size := range []struct{ w, h int }{{80, 24}, {100, 30}, {120, 35}, {140, 40}} {
 		for _, view := range []ActiveView{ViewDashboard, ViewContext, ViewHistory, ViewDocs} {
@@ -638,7 +766,7 @@ func TestAllViewsZeroHeightVariationAcrossSizes(t *testing.T) {
 }
 
 func TestSessionSwitcherModalRenderingAndFilter(t *testing.T) {
-	m := NewModel("aa726359-08e2-4687-a15c-073a2f4a705b", true)
+	m := NewModel("session-test", true)
 	m.width = 100
 	m.height = 30
 
@@ -687,8 +815,8 @@ func TestSessionSwitcherHalfScreenVerticalStacking(t *testing.T) {
 		mockSessions = append(mockSessions, core.SessionInfo{
 			AgentType:    core.AgentTypeAntigravity,
 			SessionID:    fmt.Sprintf("session-narrow-%d", i),
-			WorkspaceDir: fmt.Sprintf("/Users/test/Documents/self/proj-%d", i),
-			ShortPath:    fmt.Sprintf("self/proj-%d", i),
+			WorkspaceDir: fmt.Sprintf("/home/example/projects/proj-%d", i),
+			ShortPath:    fmt.Sprintf("projects/proj-%d", i),
 			InitialGoal:  fmt.Sprintf("Initial goal for session %d", i),
 			LastPrompt:   fmt.Sprintf("Last prompt for session %d", i),
 			StepCount:    10 * (i + 1),
@@ -719,8 +847,8 @@ func TestSessionSwitcherHalfScreenVerticalStacking(t *testing.T) {
 	// Case 3: At bottom (index 5) -> YES top '...', NO bottom '...'
 	m.switcherSelectedIdx = 5
 	viewBot := m.View()
-	if !strings.Contains(viewBot, "self/proj-5") {
-		t.Errorf("Expected last session 'self/proj-5' to be visible, got: %s", viewBot)
+	if !strings.Contains(viewBot, "projects/proj-5") {
+		t.Errorf("Expected last session 'projects/proj-5' to be visible, got: %s", viewBot)
 	}
 }
 
@@ -770,8 +898,8 @@ func TestSessionSwitcherKeyboardNavigationAndActions(t *testing.T) {
 		{
 			AgentType:    core.AgentTypeAntigravity,
 			SessionID:    "session-alpha-12345678",
-			WorkspaceDir: "/Users/test/Documents/self/project-a",
-			ShortPath:    "self/project-a",
+			WorkspaceDir: "/home/example/projects/project-a",
+			ShortPath:    "projects/project-a",
 			InitialGoal:  "Create a new microservice",
 			LastPrompt:   "Add unit tests",
 			StepCount:    100,
@@ -780,8 +908,8 @@ func TestSessionSwitcherKeyboardNavigationAndActions(t *testing.T) {
 		{
 			AgentType:    core.AgentTypeAntigravity,
 			SessionID:    "session-beta-87654321",
-			WorkspaceDir: "/Users/test/Documents/self/project-b",
-			ShortPath:    "self/project-b",
+			WorkspaceDir: "/home/example/projects/project-b",
+			ShortPath:    "projects/project-b",
 			InitialGoal:  "Fix database deadlock bug",
 			LastPrompt:   "Verify WAL mode",
 			StepCount:    50,
@@ -790,8 +918,8 @@ func TestSessionSwitcherKeyboardNavigationAndActions(t *testing.T) {
 		{
 			AgentType:    core.AgentTypeClaudeCode,
 			SessionID:    "session-claude-999999",
-			WorkspaceDir: "/Users/test/Documents/self/claude-app",
-			ShortPath:    "self/claude-app",
+			WorkspaceDir: "/home/example/projects/claude-app",
+			ShortPath:    "projects/claude-app",
 			InitialGoal:  "Refactor React frontend",
 			LastPrompt:   "Update Tailwind styles",
 			StepCount:    10,
@@ -865,8 +993,8 @@ func TestSessionSwitcherKeyboardNavigationAndActions(t *testing.T) {
 	if !strings.Contains(view, "LATEST PROGRESS / LAST ACTION") {
 		t.Errorf("Expected 'LATEST PROGRESS / LAST ACTION' inspector block, got: %s", view)
 	}
-	if !strings.Contains(view, "self/project-a") {
-		t.Errorf("Expected 'self/project-a' short path in view, got: %s", view)
+	if !strings.Contains(view, "projects/project-a") {
+		t.Errorf("Expected 'projects/project-a' short path in view, got: %s", view)
 	}
 
 	// 8. Test Escape Key (Cancel without switching)
@@ -882,9 +1010,9 @@ func TestFormatShortPath(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"/Users/daniel_y_yang/Documents/self/ithome2026", "self/ithome2026"},
-		{"/Users/daniel_y_yang/Documents/self/bookkeeper", "self/bookkeeper"},
-		{"/Users/daniel_y_yang/.gemini/antigravity-cli", ".gemini/antigravity-cli"},
+		{"/home/example/projects/ithome2026", "projects/ithome2026"},
+		{"/home/example/projects/bookkeeper", "projects/bookkeeper"},
+		{"/home/example/.gemini/antigravity-cli", ".gemini/antigravity-cli"},
 		{"/project", "project"},
 		{"", "workspace"},
 	}
@@ -945,7 +1073,7 @@ func TestDirectSessionSwitchMsgState(t *testing.T) {
 }
 
 func TestWidthMeasurement(t *testing.T) {
-	m := NewModel("aa726359-08e2-4687-a15c-073a2f4a705b", false)
+	m := NewModel("session-test", false)
 	m.width = 120
 	m.height = 30
 	m.eventCount = 2200
@@ -974,7 +1102,7 @@ func TestWidthMeasurement(t *testing.T) {
 	}
 }
 
-func TestDashboardSparklinesAndKpiRendering(t *testing.T) {
+func TestDashboardKpiRendering(t *testing.T) {
 	m := NewModel("test-session-multi-model", false)
 	m.width = 120
 	m.height = 35
@@ -1034,21 +1162,6 @@ func TestDashboardSparklinesAndKpiRendering(t *testing.T) {
 		t.Error("Dashboard table missing TOTAL SUMMARY row")
 	}
 
-	// 3. Verify Trend Sparklines renderer standalone
-	trend := core.ExtractTurnTrendSeries(m.history, 50)
-	trendStr := renderTrendPanel(trend, 100)
-	if !strings.Contains(trendStr, "Context Total (Cyan)") {
-		t.Error("Trend panel missing Context Total sparkline")
-	}
-	if !strings.Contains(trendStr, "Cached Volume (Green)") {
-		t.Error("Trend panel missing Cached Volume sparkline")
-	}
-	if !strings.Contains(trendStr, "New Input     (Orange)") {
-		t.Error("Trend panel missing New Input sparkline")
-	}
-	if !strings.Contains(trendStr, "Hit Rate %    (Lime)") {
-		t.Error("Trend panel missing Hit Rate sparkline")
-	}
 }
 
 func TestDashboardHalfWidthResponsiveRendering(t *testing.T) {
@@ -1259,7 +1372,7 @@ func TestCommandModeColonQuitAndSave(t *testing.T) {
 	}
 }
 
-func TestContextSubcatAllAndNavigation12Items(t *testing.T) {
+func TestContextSubcatAllAndNavigation(t *testing.T) {
 	m := NewModel("test-session", false)
 	m.width = 120
 	m.height = 35
@@ -1271,18 +1384,18 @@ func TestContextSubcatAllAndNavigation12Items(t *testing.T) {
 	}
 
 	viewStr := m.View()
-	if !strings.Contains(viewStr, "FULL OUTBOUND PAYLOAD (ALL)") {
-		t.Errorf("Expected view to render 'FULL OUTBOUND PAYLOAD (ALL)'")
+	if !strings.Contains(viewStr, "CONTEXT EVIDENCE") {
+		t.Errorf("Expected view to render evidence-oriented context root")
 	}
 
-	// Navigate down to item 11 (SubcatBuffers)
-	for i := 0; i < 11; i++ {
+	// Navigate down to the last tree item (SubcatBuffers).
+	for i := SubcatAll; i < SubcatLast; i++ {
 		updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 		m = updatedModel.(Model)
 	}
 
-	if m.contextSubItemIndex != 11 {
-		t.Errorf("Expected contextSubItemIndex 11 after 11 down steps, got %d", m.contextSubItemIndex)
+	if m.contextSubItemIndex != SubcatLast {
+		t.Errorf("Expected contextSubItemIndex %d after navigation, got %d", SubcatLast, m.contextSubItemIndex)
 	}
 
 	// Navigate back up with 'g'
@@ -1618,8 +1731,8 @@ func TestVisualMode_Pos_PageDownAndPageUp(t *testing.T) {
 	m.focusPane = FocusDetail
 	m.history = []core.UnifiedAgentEvent{
 		{
-			StepIndex: 1,
-			Summary:   "Step 1",
+			StepIndex:  1,
+			Summary:    "Step 1",
 			RawContent: "L1\nL2\nL3\nL4\nL5\nL6\nL7\nL8\nL9\nL10\nL11\nL12\nL13\nL14\nL15\nL16\nL17\nL18\nL19\nL20\nL21\nL22\nL23\nL24\nL25",
 		},
 	}
@@ -1641,4 +1754,3 @@ func TestVisualMode_Pos_PageDownAndPageUp(t *testing.T) {
 		t.Errorf("Expected visualCursor to return to 0 on Ctrl+U, got %d", m.visualCursor)
 	}
 }
-

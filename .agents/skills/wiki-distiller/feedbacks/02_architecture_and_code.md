@@ -92,6 +92,13 @@
 
 ---
 
+### 📌 條目 02-K：Host Artifact 必須採用 Evidence Taxonomy，禁止將 Snapshot 或 Transcript 直接命名為 HTTP Request
+* **決策狀態**：🟢 **ACCEPTED (已採納為標準規範)**
+* **首次記錄**：2026-08-30 | **累犯次數**：1 次
+* **適用檔案**：所有 Agent adapter、Context UI、Host storage wiki 與 API trace 文件。
+* **【問題本質】**：本機儲存可能保存持久化 context snapshot 或 execution transcript，但沒有保存 HTTP body；以「official wire request」呈現會讓使用者對證據能力做錯誤判讀。
+* **【強制執行標準】**：每個 context 欄位必須標示 `persisted snapshot`、`observed telemetry`、`transcript-derived fallback`、`filesystem discovery` 或 `inferred`；身份是 system prompt 的 subsection，MCP owner 未有 schema 時必須標示 unknown。
+
 ## 🔴 駁回警示 (REJECTED Guidelines - 嚴禁重複提出或實裝)
 
 ### 🚫 條目 02-R1：嚴禁為了追求理論通用性而將 Pure Go 實作重構為 Go/Python 雙語言混合

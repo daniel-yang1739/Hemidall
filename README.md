@@ -36,16 +36,16 @@ In Norse myth and Marvel lore, **Heimdall** is the all-seeing guardian of the Bi
 
 ### 🔍 1. 5-Dimension Context Anatomy
 Never wonder what was sent to the model. Heimdall breaks down complex outbound payloads in real time:
-- **System Instructions & Identity** (`<identity>`, Core Prompts)
+- **Persisted System Prompt and Identity Subsection** (`<identity>` is a subsection, not a synonym for the full prompt)
 - **Constitutional Rules** (`AGENTS.md`, `GEMINI.md`, Guidelines)
-- **Native Tools & MCP Schemas** (Tool declarations and function signatures)
+- **Persisted Tool Definitions and MCP Attribution State** (tool entries are observed; MCP ownership can be unknown)
 - **Conversation History & Compaction Checkpoints** (Active window vs. truncated turns)
 - **Active Inbound Prompt & Buffers** (User requests and staged tool outputs)
 
 ### 👑 2. Dual-Track Telemetry & KV Cache Forensics
 Heimdall directly decodes **Google Cloud gRPC Protobufs** from local SQLite WAL without requiring intrusive HTTP proxies or custom CA certificates:
 - **L1 GPU HBM vs. L2 Global Prefix Cache**: Explains why requests idle for hours can still achieve an **87.9% Cache Hit rate (0.25x discount)** via persistent prefix hashing.
-- **Physical Billing Ground Truth**: Displays the exact `TotalTokens`, `CachedTokens`, `NewTokens`, and official model names.
+- **Observed Generation Telemetry**: Displays values decoded from local generation metadata, with provenance and explicit fallback status.
 
 ### ⏳ 3. Time Machine Replay & Causality Graph
 - **`k9s`-style Terminal Navigation**: Instant search (`/`), category filters, and step causality links.
@@ -85,7 +85,7 @@ make build
 | `Tab` / `Shift+Tab` | Cyclic Switch | Cycle forward and backward through all views |
 | `j` / `k` (or `↑`/`↓`) | Navigate Items | Move selection up and down in tree and step lists |
 | `l` / `h` (or `Enter`/`Esc`) | Focus Pane | Switch focus between left list and right inspector |
-| `r` | Dual-Mode Toggle | Toggle between **Refined Analysis** and **Raw Wire JSON** |
+| `r` | Dual-Mode Toggle | Toggle between **Refined Analysis** and **Decoded Evidence JSON** |
 | `y` or `c` | Clipboard Yank | Copy currently inspected payload directly to system clipboard |
 | `:` | Vim Command Bar | Type `:q` to quit, `:w` to export JSON, `:h` for help |
 | `Ctrl+P` | Session Switcher | Fuzzy switch across active and historical agent sessions |

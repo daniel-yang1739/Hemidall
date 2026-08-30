@@ -11,18 +11,28 @@ import (
 
 // Subcategory identifiers in Context Tree (0..11)
 const (
-	SubcatAll       = core.SubcatAll // 0
-	SubcatIdentity  = core.SubcatIdentity
-	SubcatAgentsMD  = core.SubcatAgentsMD
-	SubcatRuntime   = core.SubcatRuntime
-	SubcatTools     = core.SubcatTools
-	SubcatSkills    = core.SubcatSkills
-	SubcatMCP       = core.SubcatMCP
-	SubcatAnchor    = core.SubcatAnchor
-	SubcatCompacted = core.SubcatCompacted
-	SubcatTurns     = core.SubcatTurns
-	SubcatPrompt    = core.SubcatPrompt
-	SubcatBuffers   = core.SubcatBuffers
+	SubcatAll            = core.SubcatAll // 0
+	SubcatIdentity       = core.SubcatIdentity
+	SubcatAgentsMD       = core.SubcatAgentsMD
+	SubcatRuntime        = core.SubcatRuntime
+	SubcatTools          = core.SubcatTools
+	SubcatSkills         = core.SubcatSkills
+	SubcatMCP            = core.SubcatMCP
+	SubcatAnchor         = core.SubcatAnchor
+	SubcatTurns          = core.SubcatTurns
+	SubcatCurrentHistory = core.SubcatCurrentHistory
+	SubcatPrompt         = core.SubcatPrompt
+	SubcatBuffers        = core.SubcatBuffers
+	SubcatLast           = core.SubcatLast
+)
+
+const (
+	contextHistoryListHeaderLines = 4
+	contextHistoryListBorderLines = 4
+	minimumContextHistoryRows     = 1
+	bytesPerKilobyte              = 1024
+	bytesPerMegabyte              = bytesPerKilobyte * bytesPerKilobyte
+	bytesPerGigabyte              = bytesPerMegabyte * bytesPerKilobyte
 )
 
 func (m Model) renderContextView() string {
@@ -35,7 +45,7 @@ func (m Model) renderContextView() string {
 		width = 40
 	}
 
-	payload := core.ExtractAgentContextPayload(m.history, m.sessionID, "Gemini 3.7 Flash")
+	payload := m.cachedContextPayload()
 	payload.IsRawMode = m.isContextRawMode
 
 	// 1. Calculate Split Widths (30% Left Tree, 70% Right Inspector)
@@ -52,6 +62,9 @@ func (m Model) renderContextView() string {
 	}
 
 	leftTree := m.renderContextTree(payload, leftWidth, height)
+	if m.contextHistoryList {
+		leftTree = m.renderCurrentHistoryList(payload, leftWidth, height)
+	}
 	rightInspector := m.renderContextInspector(payload, rightWidth, height)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftTree, rightInspector)
@@ -73,45 +86,60 @@ func (m Model) renderContextTree(payload core.AgentContextPayload, width, height
 		boxStyle = boxStyle.BorderForeground(ColorSecondary)
 	}
 
-	title := lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary).Render(" CONTEXT PAYLOAD TREE ")
-	target := lipgloss.NewStyle().Foreground(ColorLightText).Render(" [Target: " + payload.TargetModel + "]")
+	title := lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary).Render(" CONTEXT EVIDENCE TREE ")
+	totalContext := lipgloss.NewStyle().Foreground(ColorHighlight).Render(fmt.Sprintf(" [Total: %s Tok]", formatNumber(payload.TotalTokens)))
 
 	var treeLines []string
+	systemTokens := core.CountTokens(payload.SystemPrompt)
+	if systemTokens == 0 {
+		systemTokens = core.CountTokens(payload.IdentityPrompt) + core.CountTokens(payload.ConstitutionDoc)
+	}
+	toolsTokens := 0
+	for _, tool := range payload.NativeTools {
+		toolsTokens += core.CountTokens(tool.RawSchema)
+	}
+	toolsTokens += core.CountTokens(payload.SkillsSection)
+	historyTokens := core.CountTokens(payload.CheckpointSummary)
+	for _, event := range payload.ActiveHistoryTurns {
+		historyTokens += core.CountTokens(event.RawContent)
+	}
+	inboundTokens := core.CountTokens(payload.LatestPrompt) + core.CountTokens(payload.StagedBuffers)
 	treeLines = append(treeLines, title)
-	treeLines = append(treeLines, target)
+	treeLines = append(treeLines, totalContext)
 	treeLines = append(treeLines, "")
 
 	// Root Level: FULL OUTBOUND PAYLOAD (ALL)
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatAll, "• FULL OUTBOUND PAYLOAD (ALL)"))
+	treeLines = append(treeLines, m.renderTreeLeaf(SubcatAll, "• CONTEXT EVIDENCE"))
 	treeLines = append(treeLines, "")
 
 	// Section 1: SYSTEM & RULES
-	sec1Header := lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render("SYSTEM & RULES (3.8k | 2%)")
-	treeLines = append(treeLines, sec1Header)
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatIdentity, "  - Identity & System"))
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatAgentsMD, "  - AGENTS.md Rules"))
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatRuntime, "  - Runtime Metadata"))
+	treeLines = append(treeLines, renderContextSectionHeader("SYSTEM & RULES", systemTokens, innerWidth)...)
+	treeLines = append(treeLines, m.renderTreeLeaf(SubcatIdentity, "  - Identity Subsection"))
+	treeLines = append(treeLines, m.renderTreeLeaf(SubcatAgentsMD, "  - Persisted User Rules"))
+	treeLines = append(treeLines, m.renderTreeLeaf(SubcatRuntime, "  - Heimdall Runtime Metadata"))
 	treeLines = append(treeLines, "")
 
 	// Section 2: TOOLS & SCHEMAS
-	sec2Header := lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render("TOOLS & SCHEMAS (1.4k | 1%)")
-	treeLines = append(treeLines, sec2Header)
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatTools, fmt.Sprintf("  - Native Tools (%d)", len(payload.NativeTools))))
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatSkills, fmt.Sprintf("  - Active Skills (%d)", len(payload.ActiveSkills))))
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatMCP, fmt.Sprintf("  - MCP Servers (%d)", len(payload.MCPServers))))
+	treeLines = append(treeLines, renderContextSectionHeader("CAPABILITIES", toolsTokens, innerWidth)...)
+	treeLines = append(treeLines, m.renderTreeLeaf(SubcatTools, fmt.Sprintf("  - Tool Definitions (%d)", len(payload.NativeTools))))
+	treeLines = append(treeLines, m.renderTreeLeaf(SubcatSkills, "  - Skills Prompt Section"))
+	treeLines = append(treeLines, m.renderTreeLeaf(SubcatMCP, "  - MCP Attribution"))
 	treeLines = append(treeLines, "")
 
 	// Section 3: CONTEXT HIST
-	sec3Header := lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render("CONTEXT HIST (158k | 86%)")
-	treeLines = append(treeLines, sec3Header)
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatAnchor, "  - Checkpoint Anchor"))
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatCompacted, fmt.Sprintf("  - %s Compacted Steps", formatNumber(payload.CompactedStepsCount))))
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatTurns, "  - Active Turns (146k)"))
+	treeLines = append(treeLines, renderContextSectionHeader("TRANSCRIPT HISTORY", historyTokens, innerWidth)...)
+	if payload.SnapshotAvailable {
+		if compactedCheckpoint(payload) != nil {
+			treeLines = append(treeLines, m.renderTreeLeaf(SubcatAnchor, "  - Compacted Checkpoint"))
+		}
+		treeLines = append(treeLines, m.renderTreeLeaf(SubcatCurrentHistory, fmt.Sprintf("  - Active History (%d)", len(currentHistoryRecords(payload)))))
+		treeLines = append(treeLines, m.renderTreeLeaf(SubcatTurns, fmt.Sprintf("  - Active Turns (%d)", len(payload.ActiveHistoryTurns))))
+	} else {
+		treeLines = append(treeLines, m.renderTreeLeaf(SubcatAnchor, "  - Checkpoint Anchor"))
+		treeLines = append(treeLines, m.renderTreeLeaf(SubcatTurns, fmt.Sprintf("  - Active Turns (%d)", len(payload.ActiveHistoryTurns))))
+	}
 	treeLines = append(treeLines, "")
-
-	// Section 4: ACTIVE INBOUND
-	sec4Header := lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render("ACTIVE INBOUND (21k | 11%)")
-	treeLines = append(treeLines, sec4Header)
+	treeLines = append(treeLines, renderContextSectionHeader("LATEST TRANSCRIPT INPUT", inboundTokens, innerWidth)...)
 	treeLines = append(treeLines, m.renderTreeLeaf(SubcatPrompt, "  - Inbound Prompt"))
 	treeLines = append(treeLines, m.renderTreeLeaf(SubcatBuffers, "  - Staged Tool Buffers"))
 
@@ -125,6 +153,126 @@ func (m Model) renderContextTree(payload core.AgentContextPayload, width, height
 	return boxStyle.Render(content)
 }
 
+func currentHistoryRecords(payload core.AgentContextPayload) []core.PersistedContextRecord {
+	if len(payload.PersistedRecords) > 0 && payload.PersistedRecords[0].IsCompactedCheckpoint {
+		return payload.PersistedRecords[1:]
+	}
+	return payload.PersistedRecords
+}
+
+func compactedCheckpoint(payload core.AgentContextPayload) *core.PersistedContextRecord {
+	if len(payload.PersistedRecords) > 0 && payload.PersistedRecords[0].IsCompactedCheckpoint {
+		return &payload.PersistedRecords[0]
+	}
+	return nil
+}
+
+func historyListItemCount(payload core.AgentContextPayload) int {
+	count := len(currentHistoryRecords(payload))
+	if compactedCheckpoint(payload) != nil {
+		count++
+	}
+	return count
+}
+
+func (m Model) renderCurrentHistoryList(payload core.AgentContextPayload, width, height int) string {
+	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(ColorSecondary).Width(width - 2).Height(height - 2)
+	records := currentHistoryRecords(payload)
+	if len(records) == 0 {
+		return box.Render(strings.Join([]string{lipgloss.NewStyle().Foreground(ColorMuted).Render("← [Esc] Back to Context"), "", lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary).Render("ACTIVE HISTORY (0)"), "", "No decoded persisted records are available."}, "\n"))
+	}
+	itemCount := historyListItemCount(payload)
+	selectedOffset := m.contextHistoryIndex
+	if selectedOffset >= itemCount {
+		selectedOffset = itemCount - 1
+	}
+	maxRows := height - contextHistoryListBorderLines - contextHistoryListHeaderLines
+	if compactedCheckpoint(payload) != nil {
+		maxRows--
+	}
+	if maxRows < minimumContextHistoryRows {
+		maxRows = minimumContextHistoryRows
+	}
+	if maxRows < minimumContextHistoryRows {
+		maxRows = minimumContextHistoryRows
+	}
+	startOffset := m.contextHistoryScrollOffset
+	if startOffset < 0 {
+		startOffset = 0
+	}
+	if startOffset >= itemCount {
+		startOffset = itemCount - 1
+	}
+	endOffset := startOffset + maxRows
+	if endOffset > itemCount {
+		endOffset = itemCount
+	}
+	if selectedOffset < startOffset {
+		startOffset = selectedOffset
+		endOffset = startOffset + maxRows
+		if endOffset > itemCount {
+			endOffset = itemCount
+		}
+	}
+	if selectedOffset >= endOffset {
+		endOffset = selectedOffset + 1
+		startOffset = endOffset - maxRows
+	}
+	lines := []string{lipgloss.NewStyle().Foreground(ColorMuted).Render("← [Esc] Back to Context"), "", lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary).Render(fmt.Sprintf("ACTIVE HISTORY (%d)", len(records))), ""}
+	positionWidth := len(fmt.Sprintf("%d", records[len(records)-1].Position))
+	referenceWidth := 0
+	sizeWidth := 0
+	for _, record := range records {
+		reference := formatObservedEventReference(record.ObservedSequence)
+		if len(reference) > referenceWidth {
+			referenceWidth = len(reference)
+		}
+		value, _ := formatContextRecordSize(record.ByteSize)
+		if len(value) > sizeWidth {
+			sizeWidth = len(value)
+		}
+	}
+	for offset := startOffset; offset < endOffset; offset++ {
+		line := ""
+		isCompactedCheckpoint := offset == len(records)
+		if offset == len(records) {
+			line = fmt.Sprintf("  #%-*d  %-*s  CHECKPOINT", positionWidth, 1, referenceWidth, "")
+		} else {
+			r := records[len(records)-1-offset]
+			sizeValue, sizeUnit := formatContextRecordSize(r.ByteSize)
+			line = fmt.Sprintf("  #%-*d  %-*s  %-*s %s", positionWidth, r.Position, referenceWidth, formatObservedEventReference(r.ObservedSequence), sizeWidth, sizeValue, sizeUnit)
+		}
+		if offset == selectedOffset {
+			line = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render("> " + strings.TrimSpace(line))
+		}
+		if isCompactedCheckpoint {
+			line = lipgloss.NewStyle().Foreground(ColorMuted).Render(line)
+		}
+		lines = append(lines, line)
+	}
+	return box.Render(strings.Join(lines, "\n"))
+}
+
+func formatObservedEventReference(sequence uint64) string {
+	if sequence == 0 {
+		return ""
+	}
+	return fmt.Sprintf("[%d]", sequence)
+}
+
+func formatContextRecordSize(bytes int) (string, string) {
+	switch {
+	case bytes >= bytesPerGigabyte:
+		return fmt.Sprintf("%.1f", float64(bytes)/float64(bytesPerGigabyte)), "GB"
+	case bytes >= bytesPerMegabyte:
+		return fmt.Sprintf("%.1f", float64(bytes)/float64(bytesPerMegabyte)), "MB"
+	case bytes >= bytesPerKilobyte:
+		return fmt.Sprintf("%.1f", float64(bytes)/float64(bytesPerKilobyte)), "KB"
+	default:
+		return fmt.Sprintf("%d", bytes), "Bytes"
+	}
+}
+
 func (m Model) renderTreeLeaf(idx int, label string) string {
 	isSelected := (m.contextSubItemIndex == idx)
 	if isSelected {
@@ -134,6 +282,19 @@ func (m Model) renderTreeLeaf(idx int, label string) string {
 		return styled
 	}
 	return lipgloss.NewStyle().Foreground(ColorLightText).Render(label)
+}
+
+func renderContextSectionHeader(title string, tokens, width int) []string {
+	tokenLabel := fmt.Sprintf("%s Tok", formatCompactNumber(tokens))
+	combined := fmt.Sprintf("%s (%s)", title, tokenLabel)
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorLightText)
+	if lipgloss.Width(combined) <= width {
+		return []string{headerStyle.Render(combined)}
+	}
+	return []string{
+		headerStyle.Render(title),
+		lipgloss.NewStyle().Foreground(ColorMuted).Render("  " + tokenLabel),
+	}
 }
 
 func (m Model) renderContextInspector(payload core.AgentContextPayload, width, height int) string {
@@ -158,7 +319,10 @@ func (m Model) renderContextInspector(payload core.AgentContextPayload, width, h
 
 	modeBadge := "[MODE: REFINED [r]]"
 	if m.isContextRawMode {
-		modeBadge = "[MODE: RAW WIRE [r]]"
+		modeBadge = "[MODE: TRANSCRIPT FALLBACK [r]]"
+		if payload.SnapshotAvailable {
+			modeBadge = "[MODE: DECODED SNAPSHOT [r]]"
+		}
 	}
 	modeStyled := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(modeBadge)
 
@@ -172,11 +336,12 @@ func (m Model) renderContextInspector(payload core.AgentContextPayload, width, h
 	}
 	sepLine := strings.Repeat("─", sepWidth)
 
-	var bodyLines []string
-	if m.isContextRawMode {
-		bodyLines = m.buildRawWireLines(payload, innerWidth)
-	} else {
+	bodyLines := m.contextInspectorLines
+	if !m.hasContextInspectorCache(innerWidth, innerHeight) {
 		bodyLines = m.buildRefinedInspectorLines(payload, innerWidth)
+		if m.isContextRawMode {
+			bodyLines = m.buildRawWireLines(payload, innerWidth)
+		}
 	}
 
 	// Apply scrolling
@@ -211,32 +376,81 @@ func (m Model) renderContextInspector(payload core.AgentContextPayload, width, h
 	return boxStyle.Render(content)
 }
 
+func (m Model) contextInspectorMaxScroll() int {
+	return m.contextInspectorMax
+}
+
+func (m Model) contextInspectorDimensions() (int, int) {
+	width := m.width
+	height := m.height - 2
+	if height < 8 {
+		height = 8
+	}
+	if width < 40 {
+		width = 40
+	}
+	leftWidth := width * 30 / 100
+	if leftWidth < 26 {
+		leftWidth = 26
+	}
+	if leftWidth > 38 {
+		leftWidth = 38
+	}
+	rightWidth := width - leftWidth
+	if rightWidth < 30 {
+		rightWidth = 30
+	}
+	innerWidth := rightWidth - 4
+	innerHeight := height - 4
+	if innerWidth < 10 {
+		innerWidth = 10
+	}
+	if innerHeight < 2 {
+		innerHeight = 2
+	}
+	return innerWidth, innerHeight
+}
+
 func (m Model) getInspectorHeaderTitle(payload core.AgentContextPayload) string {
 	switch m.contextSubItemIndex {
 	case SubcatAll:
-		return "FULL OUTBOUND PAYLOAD (185.2k Tok)"
+		return fmt.Sprintf("CONTEXT EVIDENCE: %s", payload.SourceKind)
 	case SubcatIdentity:
-		return "IDENTITY & SYSTEM INSTRUCTIONS (~1,200 Tok)"
+		return fmt.Sprintf("IDENTITY SUBSECTION (%s Tok)", formatCompactNumber(core.CountTokens(payload.IdentityPrompt)))
 	case SubcatAgentsMD:
-		return "AGENTS.MD CONSTITUTION RULES (~2,600 Tok)"
+		return fmt.Sprintf("PERSISTED USER RULES (%s Tok)", formatCompactNumber(core.CountTokens(payload.ConstitutionDoc)))
 	case SubcatRuntime:
-		return "RUNTIME ENVIRONMENT METADATA (~280 Tok)"
+		return "RUNTIME ENVIRONMENT METADATA"
 	case SubcatTools:
-		return fmt.Sprintf("NATIVE HARNESS TOOLS SCHEMAS (%d Tools | ~1,120 Tok)", len(payload.NativeTools))
+		return fmt.Sprintf("PERSISTED TOOL DEFINITIONS (%d Tools)", len(payload.NativeTools))
 	case SubcatSkills:
-		return fmt.Sprintf("INSTALLED AGENT SKILLS (%d Skills | ~4,200 Tok)", len(payload.ActiveSkills))
+		return "PERSISTED SKILLS PROMPT SECTION"
 	case SubcatMCP:
-		return "MODEL CONTEXT PROTOCOL (MCP) SERVERS (0 Servers)"
+		return "MCP ATTRIBUTION STATUS"
 	case SubcatAnchor:
-		return "TRUNCATION CHECKPOINT BASE ANCHOR (12.5k Tok)"
-	case SubcatCompacted:
-		return fmt.Sprintf("%s COMPACTED CONVERSATION STEPS", formatNumber(payload.CompactedStepsCount))
+		if payload.SnapshotAvailable && compactedCheckpoint(payload) != nil {
+			return "COMPACTED CHECKPOINT · LATEST PERSISTED SNAPSHOT"
+		}
+		return fmt.Sprintf("TRANSCRIPT CHECKPOINT ANCHOR · STEP %s", formatNumber(payload.CheckpointStepIndex))
+	case SubcatCurrentHistory:
+		records := currentHistoryRecords(payload)
+		if m.contextHistoryList && compactedCheckpoint(payload) != nil && m.contextHistoryIndex >= len(records) {
+			return "COMPACTED CHECKPOINT · LATEST PERSISTED SNAPSHOT"
+		}
+		if m.contextHistoryList && len(records) > 0 {
+			index := len(records) - 1 - m.contextHistoryIndex
+			if index < 0 {
+				index = 0
+			}
+			return fmt.Sprintf("RECORD #%d · LATEST PERSISTED SNAPSHOT", records[index].Position)
+		}
+		return fmt.Sprintf("ACTIVE HISTORY (%d Records)", len(records))
 	case SubcatTurns:
-		return "ACTIVE CONVERSATION TURNS (5 Active Turns | 146k Tok)"
+		return fmt.Sprintf("ACTIVE CONVERSATION TURNS (%d Turns)", len(payload.ActiveHistoryTurns))
 	case SubcatPrompt:
-		return "LATEST INBOUND USER PROMPT (~340 Tok)"
+		return fmt.Sprintf("LATEST INBOUND USER PROMPT (%s Tok)", formatCompactNumber(core.CountTokens(payload.LatestPrompt)))
 	case SubcatBuffers:
-		return "STAGED LOCAL EXECUTION BUFFERS (110 Tok)"
+		return fmt.Sprintf("STAGED LOCAL EXECUTION BUFFERS (%s Tok)", formatCompactNumber(core.CountTokens(payload.StagedBuffers)))
 	default:
 		return "CONTEXT PAYLOAD INSPECTOR"
 	}
@@ -247,22 +461,37 @@ func (m Model) buildRefinedInspectorLines(payload core.AgentContextPayload, widt
 
 	switch m.contextSubItemIndex {
 	case SubcatAll:
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("🌐 COMPREHENSIVE OUTBOUND PAYLOAD OVERVIEW:"))
+		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("🌐 ANTIGRAVITY CONTEXT OBSERVATION:"))
 		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("  • Target API Endpoint: Google Gemini GenerateContentRequest"))
-		lines = append(lines, fmt.Sprintf("  • Target Architecture: %s (Context Limit: %s Tok)", payload.TargetModel, formatNumber(payload.ContextLimit)))
-		lines = append(lines, fmt.Sprintf("  • Total Outbound Tokens: %s Tok (%.1f%% of limit)", formatNumber(payload.TotalTokens), float64(payload.TotalTokens)/float64(payload.ContextLimit)*100.0))
-		lines = append(lines, fmt.Sprintf("  • Projected KV Cache Hit: %.1f%% (~%s cached, ~%s new)", payload.ProjectedHitRate, formatNumber(payload.ProjectedCached), formatNumber(payload.ProjectedNew)))
-		lines = append(lines, fmt.Sprintf("  • Estimated Cloud Turn Cost: $%.4f USD (~NT$ %.2f TWD)", payload.ProjectedCostUSD, payload.ProjectedCostTWD))
+		lines = append(lines, fmt.Sprintf("  • Evidence class: %s", payload.SourceKind))
+		if payload.SnapshotAvailable {
+			lines = append(lines, fmt.Sprintf("  • Source database: %s", payload.SourcePath))
+			lines = append(lines, fmt.Sprintf("  • Snapshot record: gen_metadata.idx=%d (%s bytes)", payload.SnapshotGenIndex, formatNumber(payload.SnapshotBytes)))
+		} else {
+			lines = append(lines, "  • Persisted context snapshot: unavailable; using transcript observations.")
+		}
+		lines = append(lines, fmt.Sprintf("  • Observed model: %s (configured window: %s Tok)", targetModelLabel(payload.TargetModel), formatNumber(payload.ContextLimit)))
+		usagePercent := 0.0
+		if payload.ContextLimit > 0 {
+			usagePercent = float64(payload.TotalTokens) / float64(payload.ContextLimit) * 100.0
+		}
+		lines = append(lines, fmt.Sprintf("  • Latest available context tokens: %s Tok (%.1f%% of limit)", formatNumber(payload.TotalTokens), usagePercent))
+		if payload.ProjectedCached > 0 || payload.ProjectedNew > 0 || payload.ProjectedCostUSD > 0 || payload.ProjectedCostTWD > 0 {
+			lines = append(lines, fmt.Sprintf("  • Projected KV Cache Hit: %.1f%% (~%s cached, ~%s new)", payload.ProjectedHitRate, formatNumber(payload.ProjectedCached), formatNumber(payload.ProjectedNew)))
+			lines = append(lines, fmt.Sprintf("  • Estimated Cloud Turn Cost: $%.4f USD (~NT$ %.2f TWD)", payload.ProjectedCostUSD, payload.ProjectedCostTWD))
+		} else {
+			lines = append(lines, "  • Next-turn cache and cost projection: not calculated.")
+		}
 		lines = append(lines, "")
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render("📦 4 Core Payload Segments:"))
-		lines = append(lines, "  1. SYSTEM & RULES :   3,806 Tok ( 2.1%)  [Identity, AGENTS.md Constitution, Runtime]")
-		lines = append(lines, fmt.Sprintf("  2. TOOLS & SCHEMAS:   1,377 Tok ( 0.7%%)  [%d Native Tools, %d Active Skills, %d MCP]", len(payload.NativeTools), len(payload.ActiveSkills), len(payload.MCPServers)))
-		lines = append(lines, fmt.Sprintf("  3. CONTEXT HISTORY: 158,537 Tok (85.6%%)  [Base Anchor, %s Compacted, 5 Active Turns]", formatNumber(payload.CompactedStepsCount)))
-		lines = append(lines, "  4. ACTIVE INBOUND :  21,480 Tok (11.6%)  [User Prompt + Staged Tool Buffers]")
+		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render("📦 Persisted Snapshot Segments:"))
+		lines = append(lines, fmt.Sprintf("  1. SYSTEM PROMPT   : %s Tok [contains identity, rules, skills and host instructions]", formatNumber(core.CountTokens(payload.SystemPrompt))))
+		lines = append(lines, fmt.Sprintf("  2. TOOL DEFINITIONS: %d repeated protobuf entries", len(payload.NativeTools)))
+		lines = append(lines, fmt.Sprintf("  3. FIELD 2 COUNT  : %d repeated protobuf field-2 occurrences", payload.PersistedContextEntryCount))
+		lines = append(lines, "  4. MCP ATTRIBUTION  : unknown without the official protobuf schema")
 		lines = append(lines, "")
 		lines = append(lines, lipgloss.NewStyle().Foreground(ColorHighlight).Render("💡 Action Hints:"))
-		lines = append(lines, "  • Press [r] to view the COMPLETE official Gemini JSON Wire Request.")
+		lines = append(lines, "  • Press [r] to view Heimdall's decoded evidence representation.")
+		lines = append(lines, "  • This is not an HTTP body capture or an official GenerateContentRequest serialization.")
 		lines = append(lines, "  • Press [y] or [c] to copy the displayed payload directly to clipboard.")
 		lines = append(lines, "  • Use [j/k] to navigate to specific subcategories for isolated inspection.")
 
@@ -275,22 +504,18 @@ func (m Model) buildRefinedInspectorLines(payload core.AgentContextPayload, widt
 			}
 		}
 		lines = append(lines, "")
-		lines = append(lines, lipgloss.NewStyle().Foreground(ColorLightText).Render("📌 Static Prefix Invariant: KV Cache locked at Step 0, shared across 100% of turns."))
+		lines = append(lines, lipgloss.NewStyle().Foreground(ColorLightText).Render("📌 Identity is one subsection of the persisted system prompt; cache reuse is not proven by this snapshot."))
 
 	case SubcatAgentsMD:
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("📜 REPOSITORY CONSTITUTION (Immutable Laws):"))
+		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("📜 PERSISTED USER RULES (Formatted for Reading):"))
 		lines = append(lines, "")
-		for _, rawL := range strings.Split(payload.ConstitutionDoc, "\n") {
-			for _, wL := range wrapText("  "+rawL, width) {
-				lines = append(lines, wL)
-			}
-		}
+		lines = append(lines, formatPersistedUserRuleLines(payload.ConstitutionDoc, width)...)
 
 	case SubcatRuntime:
 		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("⚙️ RUNTIME HOST & ENVIRONMENT METADATA:"))
 		lines = append(lines, "")
-		for k, v := range payload.RuntimeMetadata {
-			for _, wL := range wrapText(fmt.Sprintf("  • %-12s: %s", k, v), width) {
+		for _, key := range core.SortedRuntimeMetadataKeys(payload.RuntimeMetadata) {
+			for _, wL := range wrapText(fmt.Sprintf("  • %-12s: %s", key, payload.RuntimeMetadata[key]), width) {
 				lines = append(lines, wL)
 			}
 		}
@@ -307,28 +532,34 @@ func (m Model) buildRefinedInspectorLines(payload core.AgentContextPayload, widt
 		}
 
 	case SubcatSkills:
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(fmt.Sprintf("🧠 INSTALLED AGENT SKILLS & CAPABILITIES (%d Skills):", len(payload.ActiveSkills))))
+		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("🧠 SKILLS SECTION EMBEDDED IN THE SYSTEM PROMPT:"))
 		lines = append(lines, "")
-		for _, skill := range payload.ActiveSkills {
-			statusTag := lipgloss.NewStyle().Foreground(ColorSuccess).Render("[" + skill.Status + "]")
-			lines = append(lines, fmt.Sprintf("• %s %s", lipgloss.NewStyle().Bold(true).Render(skill.Name), statusTag))
-			for _, wL := range wrapText("  └ "+skill.Description, width) {
-				lines = append(lines, wL)
-			}
-			for _, wL := range wrapText("  └ Guidelines: "+skill.Guidelines, width) {
-				lines = append(lines, wL)
-			}
-			lines = append(lines, "")
+		for _, rawLine := range strings.Split(payload.SkillsSection, "\n") {
+			lines = append(lines, wrapText("  "+rawLine, width)...)
 		}
 
 	case SubcatMCP:
 		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("🔌 MODEL CONTEXT PROTOCOL (MCP) INTEGRATIONS:"))
 		lines = append(lines, "")
-		lines = append(lines, "  No external MCP servers currently active.")
-		lines = append(lines, "  All tool calls serviced natively by built-in Antigravity harness.")
+		lines = append(lines, "  The persisted snapshot contains tool definitions and MCP-related text,")
+		lines = append(lines, "  but the reverse-engineered wire paths cannot yet attribute each tool")
+		lines = append(lines, "  to native harness code or a specific MCP server.")
+		lines = append(lines, "  Status: UNKNOWN, not NONE.")
 
 	case SubcatAnchor:
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("⚓ COMPACTION RE-ANCHORING BASELINE:"))
+		if checkpoint := compactedCheckpoint(payload); checkpoint != nil {
+			lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("📦 COMPACTED CHECKPOINT:"), "")
+			for _, l := range strings.Split(checkpoint.PrimaryText, "\n") {
+				lines = append(lines, wrapText("  "+l, width)...)
+			}
+			lines = append(lines, "", "  • Record #1 is separated from Active History because it is a compacted summary.")
+			break
+		}
+		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("⚓ TRANSCRIPT CHECKPOINT ANCHOR:"))
+		lines = append(lines, "")
+		lines = append(lines, fmt.Sprintf("  • Observed at transcript step #%d.", payload.CheckpointStepIndex))
+		lines = append(lines, "  • The text below is the checkpoint event's captured summary.")
+		lines = append(lines, "  • This does not prove the remote context window's exact truncation or cache state.")
 		lines = append(lines, "")
 		for _, l := range strings.Split(payload.CheckpointSummary, "\n") {
 			for _, wL := range wrapText("  "+l, width) {
@@ -336,12 +567,36 @@ func (m Model) buildRefinedInspectorLines(payload core.AgentContextPayload, widt
 			}
 		}
 
-	case SubcatCompacted:
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("📦 SLICED & COMPACTED HISTORY WINDOW:"))
-		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("  • %d Historical Steps truncated from active GPU window.", payload.CompactedStepsCount))
-		lines = append(lines, "  • Retained structured summary preserves critical decisions and test constraints.")
-		lines = append(lines, "  • Prevents context window explosion while maintaining 88.4% cache hit rates.")
+	case SubcatCurrentHistory:
+		records := currentHistoryRecords(payload)
+		if !m.contextHistoryList {
+			lines = append(lines, "  • Press [Enter] to browse active events from the latest persisted snapshot.")
+			break
+		}
+		if len(records) == 0 {
+			lines = append(lines, "  • No decoded persisted records are available.")
+			break
+		}
+		if checkpoint := compactedCheckpoint(payload); checkpoint != nil && m.contextHistoryIndex >= len(records) {
+			lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("📦 COMPACTED CHECKPOINT:"), "")
+			for _, l := range strings.Split(checkpoint.PrimaryText, "\n") {
+				lines = append(lines, wrapText("  "+l, width)...)
+			}
+			lines = append(lines, "", "  • This is record #1 in the latest persisted snapshot.")
+			break
+		}
+		index := len(records) - 1 - m.contextHistoryIndex
+		if index < 0 {
+			index = 0
+		}
+		record := records[index]
+		lines = append(lines, fmt.Sprintf("  • Snapshot position: #%d", record.Position), fmt.Sprintf("  • Record size: %s bytes", formatNumber(record.ByteSize)), fmt.Sprintf("  • Observed kind: %d (schema meaning unknown)", record.ObservedKind), "")
+		for _, l := range strings.Split(record.PrimaryText, "\n") {
+			lines = append(lines, wrapText("  "+l, width)...)
+		}
+		if record.HasPrivateContent {
+			lines = append(lines, "", "  • Private content is present and intentionally not displayed.")
+		}
 
 	case SubcatTurns:
 		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("🔄 ACTIVE CONVERSATION TURNS (Sliding Window):"))
@@ -388,14 +643,14 @@ func (m Model) buildRefinedInspectorLines(payload core.AgentContextPayload, widt
 }
 
 func (m Model) buildRawWireLines(payload core.AgentContextPayload, width int) []string {
-	wireJSON, err := core.SerializeSubcategoryRaw(payload, m.contextSubItemIndex)
+	wireJSON, err := m.serializeContextRaw(payload)
 	if err != nil {
 		return []string{"Error serializing wire payload: " + err.Error()}
 	}
 
 	subcatName := m.getSubcategoryName(m.contextSubItemIndex)
 	var formattedLines []string
-	formattedLines = append(formattedLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(fmt.Sprintf("// Google Gemini Wire Payload Part: %s", subcatName)))
+	formattedLines = append(formattedLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(fmt.Sprintf("// Heimdall decoded context view [%s]: %s", payload.SourceKind, subcatName)))
 	formattedLines = append(formattedLines, "")
 
 	for _, line := range strings.Split(wireJSON, "\n") {
@@ -422,26 +677,42 @@ func (m Model) buildRawWireLines(payload core.AgentContextPayload, width int) []
 	return formattedLines
 }
 
+func (m Model) serializeContextRaw(payload core.AgentContextPayload) (string, error) {
+	if m.contextSubItemIndex != SubcatCurrentHistory {
+		return core.SerializeSubcategoryRaw(payload, m.contextSubItemIndex)
+	}
+	if !m.contextHistoryList {
+		return core.SerializePersistedActiveEventRaw(payload, 0)
+	}
+	records := currentHistoryRecords(payload)
+	if m.contextHistoryIndex >= len(records) {
+		return core.SerializePersistedActiveEventRaw(payload, 1)
+	}
+	index := len(records) - 1 - m.contextHistoryIndex
+	if index < 0 {
+		index = 0
+	}
+	return core.SerializePersistedActiveEventRaw(payload, records[index].Position)
+}
+
 func (m Model) getSubcategoryName(subcat int) string {
 	switch subcat {
 	case SubcatAll:
-		return "FULL OUTBOUND PAYLOAD (ALL)"
+		return "Context Evidence"
 	case SubcatIdentity:
-		return "Identity & System"
+		return "Identity Subsection"
 	case SubcatAgentsMD:
-		return "AGENTS.md Rules"
+		return "Persisted User Rules"
 	case SubcatRuntime:
 		return "Runtime Metadata"
 	case SubcatTools:
-		return "Native Tools (8)"
+		return "Persisted Tool Definitions"
 	case SubcatSkills:
-		return "Active Skills (3)"
+		return "Persisted Skills Section"
 	case SubcatMCP:
-		return "MCP Servers (0)"
+		return "MCP Attribution"
 	case SubcatAnchor:
 		return "Checkpoint Anchor"
-	case SubcatCompacted:
-		return "Compacted Steps"
 	case SubcatTurns:
 		return "Active Turns"
 	case SubcatPrompt:
@@ -464,6 +735,36 @@ func wrapText(text string, maxWidth int) []string {
 	return strings.Split(wrapped, "\n")
 }
 
+func formatPersistedUserRuleLines(rules string, width int) []string {
+	var lines []string
+	rawLines := strings.Split(rules, "\n")
+	for index, rawLine := range rawLines {
+		if isRuleTagLine(rawLine) {
+			lines = append(lines, renderRuleTag(rawLine))
+			if isClosingRuleTag(rawLine) && index < len(rawLines)-1 {
+				lines = append(lines, "")
+			}
+			continue
+		}
+		lines = append(lines, wrapText("  "+rawLine, width)...)
+	}
+	return lines
+}
+
+func isRuleTagLine(line string) bool {
+	tag := strings.TrimSpace(line)
+	return (strings.HasPrefix(tag, "<RULE[") || strings.HasPrefix(tag, "</RULE[")) && strings.HasSuffix(tag, "]>")
+}
+
+func isClosingRuleTag(line string) bool {
+	return strings.HasPrefix(strings.TrimSpace(line), "</RULE[")
+}
+
+func renderRuleTag(line string) string {
+	tag := strings.TrimSpace(line)
+	return lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary).Render("  " + tag)
+}
+
 func formatNumber(n int) string {
 	in := fmt.Sprintf("%d", n)
 	var out []byte
@@ -477,10 +778,17 @@ func formatNumber(n int) string {
 	return string(out)
 }
 
+func targetModelLabel(model string) string {
+	if model == "" {
+		return "unknown"
+	}
+	return model
+}
+
 // GetContextInspectorContent returns the full text of the current context inspector for clipboard copy
 func (m Model) GetContextInspectorContent(payload core.AgentContextPayload) string {
 	if m.isContextRawMode {
-		wireJSON, err := core.SerializeSubcategoryRaw(payload, m.contextSubItemIndex)
+		wireJSON, err := m.serializeContextRaw(payload)
 		if err != nil {
 			return err.Error()
 		}
