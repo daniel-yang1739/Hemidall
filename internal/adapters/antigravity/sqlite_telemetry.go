@@ -15,7 +15,6 @@ type SQLiteTelemetryReader struct {
 	mu         sync.RWMutex
 	lastGenIdx int
 	records    map[int]*GeminiGenerationMetadata // keyed by LastStepIdx
-	latest     *GeminiGenerationMetadata
 }
 
 // NewSQLiteTelemetryReader creates a new SQLite telemetry reader
@@ -66,7 +65,6 @@ func (r *SQLiteTelemetryReader) PollLatest() error {
 		if meta.LastStepIdx > 0 {
 			r.records[meta.LastStepIdx] = meta
 		}
-		r.latest = meta
 	}
 
 	return nil
@@ -87,11 +85,4 @@ func (r *SQLiteTelemetryReader) GetTelemetryForStep(stepIdx int) *GeminiGenerati
 		return meta
 	}
 	return nil
-}
-
-// GetLatestTelemetry returns the most recently captured official telemetry
-func (r *SQLiteTelemetryReader) GetLatestTelemetry() *GeminiGenerationMetadata {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.latest
 }

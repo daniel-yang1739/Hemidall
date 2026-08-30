@@ -51,7 +51,7 @@ func LoadAntigravityHostConfig(customPaths ...string) *core.HostConfig {
 	if len(searchPaths) == 0 {
 		home, _ := os.UserHomeDir()
 		searchPaths = []string{
-			filepath.Join(home, ".gemini", "antigravity-cli", "settings.json"),
+			SettingsPath(home),
 			filepath.Join(".gemini", "settings.json"),
 			filepath.Join(home, ".gemini", "settings.json"),
 		}

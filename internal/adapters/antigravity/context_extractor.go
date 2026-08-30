@@ -1,13 +1,9 @@
 package antigravity
 
 import (
-	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
-	"strings"
 
 	"heimdall/internal/core"
 )
@@ -19,13 +15,17 @@ func ExtractAgentContextPayload(history []core.UnifiedAgentEvent, sessionID, tar
 		targetModel = latestObservedModel(history)
 	}
 	cwd, _ := os.Getwd()
+	home, _ := os.UserHomeDir()
 	payload := core.BuildContextPayloadFromHistory(core.ContextBuildInput{
-		History:      history,
-		SessionID:    sessionID,
-		AgentType:    core.AgentTypeAntigravity,
-		TargetModel:  targetModel,
-		NativeTools:  observedTools(history),
-		ActiveSkills: discoveredSkills(cwd),
+		History:     history,
+		SessionID:   sessionID,
+		AgentType:   core.AgentTypeAntigravity,
+		TargetModel: targetModel,
+		NativeTools: core.GetNativeToolsDefinitions(history),
+		ActiveSkills: core.DiscoverSkillDefinitions(
+			core.FindNearestDirectory(cwd, filepath.Join(".agents", "skills")),
+			BuiltinSkillsPath(home),
+		),
 		RuntimeMetadata: map[string]string{
 			"OS":        runtime.GOOS,
 			"Arch":      runtime.GOARCH,
@@ -50,9 +50,8 @@ func ExtractAgentContextPayload(history []core.UnifiedAgentEvent, sessionID, tar
 	if err != nil {
 		return payload
 	}
-	home, _ := os.UserHomeDir()
 	payload.SourceKind = core.ContextEvidencePersistedSnapshot
-	payload.SourcePath = filepath.Join(home, ".gemini", "antigravity-cli", "conversations", sessionID+".db")
+	payload.SourcePath = snapshot.SourcePath
 	payload.SnapshotAvailable = true
 	payload.SnapshotGenIndex = snapshot.GenIndex
 	payload.SnapshotBytes = snapshot.BlobBytes
@@ -82,111 +81,6 @@ func ExtractAgentContextPayload(history []core.UnifiedAgentEvent, sessionID, tar
 		"runtime":          "observed_from_heimdall_process_environment",
 	}
 	return payload
-}
-
-func observedTools(history []core.UnifiedAgentEvent) []core.ToolSignature {
-	observed := make(map[string]map[string]struct{})
-	for _, event := range history {
-		for _, call := range event.ToolCalls {
-			if call.ToolName == "" {
-				continue
-			}
-			if observed[call.ToolName] == nil {
-				observed[call.ToolName] = make(map[string]struct{})
-			}
-			for key := range call.Arguments {
-				observed[call.ToolName][key] = struct{}{}
-			}
-		}
-	}
-	var names []string
-	for name := range observed {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	tools := make([]core.ToolSignature, 0, len(names))
-	for _, name := range names {
-		var keys []string
-		for key := range observed[name] {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		raw, _ := json.MarshalIndent(map[string]interface{}{"name": name, "observedArgumentKeys": keys}, "", "  ")
-		tools = append(tools, core.ToolSignature{
-			Name:        name,
-			Signature:   fmt.Sprintf("%s(%s)", name, strings.Join(keys, ", ")),
-			Description: "Observed in the Antigravity transcript; authoritative schema unavailable.",
-			RawSchema:   string(raw),
-		})
-	}
-	return tools
-}
-
-func discoveredSkills(cwd string) []core.SkillInfo {
-	home, _ := os.UserHomeDir()
-	roots := []string{
-		findNearestDirectory(cwd, filepath.Join(".agents", "skills")),
-		filepath.Join(home, ".gemini", "antigravity-cli", "builtin", "skills"),
-	}
-	seen := make(map[string]struct{})
-	var skills []core.SkillInfo
-	for _, root := range roots {
-		entries, err := os.ReadDir(root)
-		if err != nil {
-			continue
-		}
-		for _, entry := range entries {
-			path := filepath.Join(root, entry.Name(), "SKILL.md")
-			content, err := os.ReadFile(path)
-			if err != nil {
-				continue
-			}
-			name, description := parseSkillFrontmatter(string(content), entry.Name())
-			if _, exists := seen[name]; exists {
-				continue
-			}
-			seen[name] = struct{}{}
-			skills = append(skills, core.SkillInfo{
-				Name: name, Status: "DISCOVERED", Path: path,
-				Description: description, RawMarkdown: string(content),
-			})
-		}
-	}
-	sort.Slice(skills, func(i, j int) bool { return skills[i].Name < skills[j].Name })
-	return skills
-}
-
-func findNearestDirectory(startDir, relativePath string) string {
-	for dir := startDir; dir != ""; dir = filepath.Dir(dir) {
-		candidate := filepath.Join(dir, relativePath)
-		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			return candidate
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-	}
-	return ""
-}
-
-func parseSkillFrontmatter(markdown, fallbackName string) (string, string) {
-	name := fallbackName
-	description := ""
-	for _, line := range strings.Split(markdown, "\n") {
-		key, value, found := strings.Cut(line, ":")
-		if !found {
-			continue
-		}
-		switch strings.TrimSpace(key) {
-		case "name":
-			name = strings.Trim(strings.TrimSpace(value), `"'`)
-		case "description":
-			description = strings.Trim(strings.TrimSpace(value), `"'`)
-		}
-	}
-	return name, description
 }
 
 func latestObservedModel(history []core.UnifiedAgentEvent) string {

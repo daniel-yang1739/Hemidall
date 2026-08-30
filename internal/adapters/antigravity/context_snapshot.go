@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -29,6 +28,7 @@ type protoField struct {
 type ContextSnapshot struct {
 	GenIndex                   int
 	BlobBytes                  int
+	SourcePath                 string
 	SystemPrompt               string
 	Identity                   string
 	UserRules                  string
@@ -49,7 +49,7 @@ func LoadContextSnapshot(sessionID string) (*ContextSnapshot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve user home: %w", err)
 	}
-	dbPath := filepath.Join(home, ".gemini", "antigravity-cli", "conversations", sessionID+".db")
+	dbPath := ConversationDatabasePath(home, sessionID)
 	dsn := fmt.Sprintf("file:%s?mode=ro&_journal=WAL", dbPath)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
@@ -66,7 +66,12 @@ func LoadContextSnapshot(sessionID string) (*ContextSnapshot, error) {
 	if len(data) < minimumContextSnapshotBytes {
 		return nil, fmt.Errorf("no persisted context snapshot found")
 	}
-	return ParseContextSnapshot(genIndex, data)
+	snapshot, err := ParseContextSnapshot(genIndex, data)
+	if err != nil {
+		return nil, err
+	}
+	snapshot.SourcePath = dbPath
+	return snapshot, nil
 }
 
 // ParseContextSnapshot decodes the stable wire paths observed in Antigravity session databases.

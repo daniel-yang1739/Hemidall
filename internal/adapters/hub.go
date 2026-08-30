@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sync"
 
 	"heimdall/internal/adapters/antigravity"
@@ -17,10 +16,8 @@ import (
 type WatcherHub struct {
 	mu            sync.Mutex
 	rootCtx       context.Context
-	currentCtx    context.Context
 	currentCancel context.CancelFunc
 	currentSID    string
-	currentType   core.AgentType
 	eventChan     chan core.UnifiedAgentEvent
 	analyzer      *core.PayloadAnalyzer
 }
@@ -39,13 +36,6 @@ func (h *WatcherHub) ActiveSessionID() string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.currentSID
-}
-
-// ActiveAgentType returns the currently monitored agent type
-func (h *WatcherHub) ActiveAgentType() core.AgentType {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return h.currentType
 }
 
 // StartSession initiates watching on a specific session, stopping any previously active session watcher
@@ -69,10 +59,8 @@ func (h *WatcherHub) StartSession(sessionID string, agentType core.AgentType, cu
 
 	// 2. Create a dedicated child context for the new session watcher
 	childCtx, cancel := context.WithCancel(h.rootCtx)
-	h.currentCtx = childCtx
 	h.currentCancel = cancel
 	h.currentSID = sessionID
-	h.currentType = agentType
 
 	// 3. Resolve paths based on agent type
 	switch agentType {
@@ -82,9 +70,7 @@ func (h *WatcherHub) StartSession(sessionID string, agentType core.AgentType, cu
 		home, _ := os.UserHomeDir()
 
 		if logPath == "" {
-			geminiBrain := filepath.Join(home, ".gemini", "antigravity-cli", "brain", sessionID, ".system_generated", "logs")
-			fullLog := filepath.Join(geminiBrain, "transcript_full.jsonl")
-			compactLog := filepath.Join(geminiBrain, "transcript.jsonl")
+			fullLog, compactLog := antigravity.TranscriptPaths(home, sessionID)
 			if _, err := os.Stat(fullLog); err == nil {
 				logPath = fullLog
 			} else {
@@ -93,7 +79,7 @@ func (h *WatcherHub) StartSession(sessionID string, agentType core.AgentType, cu
 		}
 
 		if dbPath == "" {
-			dbPath = filepath.Join(home, ".gemini", "antigravity-cli", "conversations", sessionID+".db")
+			dbPath = antigravity.ConversationDatabasePath(home, sessionID)
 		}
 
 		watcher := antigravity.NewWatcher(logPath, sessionID, h.analyzer, dbPath)

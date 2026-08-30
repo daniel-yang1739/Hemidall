@@ -2,7 +2,6 @@ package core
 
 import (
 	"encoding/json"
-	"os"
 )
 
 // ModelOverrideConfig specifies per-model configuration overrides.
@@ -39,11 +38,6 @@ func NewDefaultHostConfig() *HostConfig {
 		CompressionThreshold: 0.5,
 		ModelOverrides:       make(map[string]ModelOverrideConfig),
 	}
-}
-
-// LoadHostConfigFile attempts to parse a raw JSON config file into a generic map or HostConfig.
-func LoadHostConfigFile(path string) ([]byte, error) {
-	return os.ReadFile(path)
 }
 
 // UnmarshalHostConfig decodes JSON bytes into HostConfig.

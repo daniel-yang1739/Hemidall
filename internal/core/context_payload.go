@@ -121,7 +121,7 @@ func MeasureDynamicBaselineTokens() (systemTokens int, toolsDefTokens int) {
 	}
 
 	// Calculate Tools JSON Schema tokens
-	skills := GetActiveSkillsDefinitions()
+	skills := DiscoverSkillDefinitions(FindNearestDirectory(cwd, filepath.Join(".agents", "skills")))
 	toolsText := ""
 	for _, s := range skills {
 		toolsText += s.RawMarkdown + "\n"
@@ -136,12 +136,9 @@ func MeasureDynamicBaselineTokens() (systemTokens int, toolsDefTokens int) {
 
 // GetNativeToolsDefinitions derives tool names and argument keys observed in session history.
 // Antigravity does not persist the authoritative request schema in the JSONL transcript.
-func GetNativeToolsDefinitions(histories ...[]UnifiedAgentEvent) []ToolSignature {
-	if len(histories) == 0 {
-		return nil
-	}
+func GetNativeToolsDefinitions(history []UnifiedAgentEvent) []ToolSignature {
 	observed := make(map[string]map[string]struct{})
-	for _, event := range histories[0] {
+	for _, event := range history {
 		for _, call := range event.ToolCalls {
 			if call.ToolName == "" {
 				continue
@@ -180,45 +177,6 @@ func GetNativeToolsDefinitions(histories ...[]UnifiedAgentEvent) []ToolSignature
 		})
 	}
 	return tools
-}
-
-// GetActiveSkillsDefinitions discovers readable SKILL.md files from the workspace and user installation.
-func GetActiveSkillsDefinitions() []SkillInfo {
-	cwd, _ := os.Getwd()
-	home, _ := os.UserHomeDir()
-	roots := []string{
-		findNearestDirectory(cwd, filepath.Join(".agents", "skills")),
-		filepath.Join(home, ".gemini", "antigravity-cli", "builtin", "skills"),
-	}
-	seen := make(map[string]struct{})
-	var skills []SkillInfo
-	for _, root := range roots {
-		entries, err := os.ReadDir(root)
-		if err != nil {
-			continue
-		}
-		for _, entry := range entries {
-			path := filepath.Join(root, entry.Name(), "SKILL.md")
-			content, err := os.ReadFile(path)
-			if err != nil {
-				continue
-			}
-			name, description := parseSkillFrontmatter(string(content), entry.Name())
-			if _, exists := seen[name]; exists {
-				continue
-			}
-			seen[name] = struct{}{}
-			skills = append(skills, SkillInfo{
-				Name:        name,
-				Status:      "DISCOVERED",
-				Path:        path,
-				Description: description,
-				RawMarkdown: string(content),
-			})
-		}
-	}
-	sort.Slice(skills, func(i, j int) bool { return skills[i].Name < skills[j].Name })
-	return skills
 }
 
 // BuildContextPayloadFromHistory assembles adapter-observed facts into the universal context model.
@@ -293,47 +251,6 @@ func readNearestFile(startDir, name string) string {
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			break
-		}
-	}
-	return ""
-}
-
-func findNearestDirectory(startDir, relativePath string) string {
-	for dir := startDir; dir != ""; dir = filepath.Dir(dir) {
-		candidate := filepath.Join(dir, relativePath)
-		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-			return candidate
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-	}
-	return ""
-}
-
-func parseSkillFrontmatter(markdown, fallbackName string) (string, string) {
-	name := fallbackName
-	description := ""
-	for _, line := range strings.Split(markdown, "\n") {
-		key, value, found := strings.Cut(line, ":")
-		if !found {
-			continue
-		}
-		switch strings.TrimSpace(key) {
-		case "name":
-			name = strings.Trim(strings.TrimSpace(value), `"'`)
-		case "description":
-			description = strings.Trim(strings.TrimSpace(value), `"'`)
-		}
-	}
-	return name, description
-}
-
-func latestObservedModel(history []UnifiedAgentEvent) string {
-	for i := len(history) - 1; i >= 0; i-- {
-		if history[i].Tokens.OfficialModel != "" {
-			return history[i].Tokens.OfficialModel
 		}
 	}
 	return ""

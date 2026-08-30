@@ -86,7 +86,7 @@ func (w *Watcher) Start(ctx context.Context, out chan<- core.UnifiedAgentEvent) 
 			if err == io.EOF {
 				if len(line) > 0 {
 					if json.Valid([]byte(strings.TrimSpace(line))) {
-						w.warmupLine(line, ctx, out)
+						w.processLine(line, ctx, out)
 					} else {
 						w.pendingLine = line
 					}
@@ -95,7 +95,7 @@ func (w *Watcher) Start(ctx context.Context, out chan<- core.UnifiedAgentEvent) 
 			}
 			return fmt.Errorf("error reading initial lines: %w", err)
 		}
-		w.warmupLine(line, ctx, out)
+		w.processLine(line, ctx, out)
 	}
 
 	// 3. Poll file tail and SQLite periodically for new live steps
@@ -121,37 +121,13 @@ func (w *Watcher) Start(ctx context.Context, out chan<- core.UnifiedAgentEvent) 
 				}
 				completeLine := w.pendingLine + line
 				w.pendingLine = ""
-				w.handleLiveLine(completeLine, ctx, out)
+				w.processLine(completeLine, ctx, out)
 			}
 		}
 	}
 }
 
-func (w *Watcher) warmupLine(line string, ctx context.Context, out chan<- core.UnifiedAgentEvent) {
-	trimmed := strings.TrimSpace(line)
-	if trimmed == "" {
-		return
-	}
-	event, err := w.parseLine(trimmed)
-	if err != nil {
-		return
-	}
-	if event.StepIndex <= w.lastStepIdx && event.StepIndex != 0 {
-		return
-	}
-	w.lastStepIdx = event.StepIndex
-
-	if w.analyzer != nil {
-		w.analyzer.AnalyzeStep(&event)
-	}
-
-	select {
-	case out <- event:
-	case <-ctx.Done():
-	}
-}
-
-func (w *Watcher) handleLiveLine(line string, ctx context.Context, out chan<- core.UnifiedAgentEvent) {
+func (w *Watcher) processLine(line string, ctx context.Context, out chan<- core.UnifiedAgentEvent) {
 	trimmed := strings.TrimSpace(line)
 	if trimmed == "" {
 		return

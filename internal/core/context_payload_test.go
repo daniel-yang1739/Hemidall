@@ -7,7 +7,7 @@ import (
 )
 
 // ==============================================================================
-// 11. CONTEXT DATA EXTRACTION & WIRE SERIALIZATION (5 Positive + 5 Negative)
+// 11. CONTEXT PAYLOAD ASSEMBLY & WIRE SERIALIZATION (5 Positive + 5 Negative)
 // ==============================================================================
 
 func TestContext_Pos_ExtractSystemAndConstitution(t *testing.T) {
@@ -21,7 +21,7 @@ ARTICLE I: LANGUAGE POLICY - Code EN, Docs TC.</user_rules>`,
 		},
 	}
 
-	payload := ExtractAgentContextPayload(history, "sess-test", "Gemini 3.7 Flash")
+	payload := buildContextPayloadForTest(history, "sess-test", "Gemini 3.7 Flash")
 
 	if !strings.Contains(payload.IdentityPrompt, "senior pair programmer") {
 		t.Errorf("Expected identity prompt to contain 'senior pair programmer', got %q", payload.IdentityPrompt)
@@ -39,7 +39,7 @@ func TestContext_Pos_ExtractObservedToolArguments(t *testing.T) {
 			Arguments: map[string]interface{}{"TargetFile": "main.go", "Overwrite": true},
 		}},
 	}}
-	payload := ExtractAgentContextPayload(history, "sess-test", "Gemini 3.7 Flash")
+	payload := buildContextPayloadForTest(history, "sess-test", "Gemini 3.7 Flash")
 
 	if len(payload.NativeTools) != 1 {
 		t.Fatalf("Expected one observed tool, got %d", len(payload.NativeTools))
@@ -57,27 +57,6 @@ func TestContext_Pos_ExtractObservedToolArguments(t *testing.T) {
 	}
 }
 
-func TestContext_Pos_ExtractSkillsYamlFrontmatter(t *testing.T) {
-	payload := ExtractAgentContextPayload(nil, "sess-test", "Gemini 3.7 Flash")
-
-	if len(payload.ActiveSkills) == 0 {
-		t.Fatal("Expected at least one discovered skill")
-	}
-
-	foundWiki := false
-	for _, s := range payload.ActiveSkills {
-		if s.Name == "wiki-distiller" {
-			foundWiki = true
-			if s.Status != "DISCOVERED" {
-				t.Errorf("Expected wiki-distiller status 'DISCOVERED', got %s", s.Status)
-			}
-		}
-	}
-	if !foundWiki {
-		t.Errorf("Expected to find 'wiki-distiller' in active skills")
-	}
-}
-
 func TestContext_Pos_3StageHistorySlicingConservation(t *testing.T) {
 	var history []UnifiedAgentEvent
 	for i := 0; i < 50; i++ {
@@ -91,7 +70,7 @@ func TestContext_Pos_3StageHistorySlicingConservation(t *testing.T) {
 	history[10].Type = StepTypeCheckpoint
 	history[10].RawContent = "<CONTEXT_SUMMARY>Compacted summary base anchor</CONTEXT_SUMMARY>"
 
-	payload := ExtractAgentContextPayload(history, "sess-test", "Gemini 3.7 Flash")
+	payload := buildContextPayloadForTest(history, "sess-test", "Gemini 3.7 Flash")
 
 	if !strings.Contains(payload.CheckpointSummary, "Compacted summary base anchor") {
 		t.Errorf("Expected checkpoint summary to be extracted, got %q", payload.CheckpointSummary)
@@ -102,7 +81,7 @@ func TestContext_Pos_3StageHistorySlicingConservation(t *testing.T) {
 }
 
 func TestContext_Pos_EvidenceJsonSerialization(t *testing.T) {
-	payload := ExtractAgentContextPayload(nil, "sess-test", "Gemini 3.7 Flash")
+	payload := buildContextPayloadForTest(nil, "sess-test", "Gemini 3.7 Flash")
 	wireJSON, err := SerializeContextEvidence(payload)
 	if err != nil {
 		t.Fatalf("SerializeContextEvidence failed: %v", err)
@@ -128,7 +107,7 @@ func TestContext_Pos_EvidenceJsonSerialization(t *testing.T) {
 }
 
 func TestContext_Neg_NilHistoryDoesNotFabricateSessionData(t *testing.T) {
-	payload := ExtractAgentContextPayload(nil, "sess-empty", "Gemini 3.7 Flash")
+	payload := buildContextPayloadForTest(nil, "sess-empty", "Gemini 3.7 Flash")
 
 	if payload.TotalTokens != 0 {
 		t.Errorf("Expected zero observed tokens, got %d", payload.TotalTokens)
@@ -160,7 +139,7 @@ func TestContext_Neg_EmptyToolsListValidEvidence(t *testing.T) {
 }
 
 func TestContext_Neg_NilHistoryEventsEmptyPayload(t *testing.T) {
-	payload := ExtractAgentContextPayload(nil, "", "")
+	payload := buildContextPayloadForTest(nil, "", "")
 	if payload.TotalTokens < 0 {
 		t.Errorf("TotalTokens cannot be negative, got %d", payload.TotalTokens)
 	}
@@ -178,7 +157,7 @@ func TestContext_Neg_UnrecognizedSkillFormatFallback(t *testing.T) {
 }
 
 func TestContext_Pos_SerializeSubcategoryRawAllParts(t *testing.T) {
-	payload := ExtractAgentContextPayload(nil, "sess-test", "Gemini 3.7 Flash")
+	payload := buildContextPayloadForTest(nil, "sess-test", "Gemini 3.7 Flash")
 
 	for subcat := 0; subcat <= SubcatBuffers; subcat++ {
 		raw, err := SerializeSubcategoryRaw(payload, subcat)
@@ -197,7 +176,7 @@ func TestContext_Pos_SerializeSubcategoryRawAllParts(t *testing.T) {
 }
 
 func TestContext_Neg_InvalidSubcategoryIndexFallback(t *testing.T) {
-	payload := ExtractAgentContextPayload(nil, "sess-test", "Gemini 3.7 Flash")
+	payload := buildContextPayloadForTest(nil, "sess-test", "Gemini 3.7 Flash")
 
 	raw, err := SerializeSubcategoryRaw(payload, 999)
 	if err != nil {
@@ -225,9 +204,9 @@ func TestSerializePersistedActiveEventRaw_ScopesAllAndSelectedEvents(t *testing.
 	}
 }
 
-func ExtractAgentContextPayload(history []UnifiedAgentEvent, sessionID, targetModel string) AgentContextPayload {
+func buildContextPayloadForTest(history []UnifiedAgentEvent, sessionID, targetModel string) AgentContextPayload {
 	return BuildContextPayloadFromHistory(ContextBuildInput{
 		History: history, SessionID: sessionID, AgentType: AgentTypeAntigravity, TargetModel: targetModel,
-		NativeTools: GetNativeToolsDefinitions(history), ActiveSkills: GetActiveSkillsDefinitions(),
+		NativeTools: GetNativeToolsDefinitions(history),
 	})
 }
