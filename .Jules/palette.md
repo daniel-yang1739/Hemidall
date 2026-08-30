@@ -1,0 +1,3 @@
+## 2023-11-20 - [Added Semantic Toasts and Dimmed Empty States]
+**Learning:** Empty states in terminal applications can blend in with the surrounding interface causing confusion. Dimming these empty states helps clearly differentiate them from actionable content. Adding simple semantic backgrounds (red for warning/error, blue/primary for info, green for success) based on standard emoji prefixes on terminal toasts provides immediate and intuitive feedback without adding any new dependencies.
+**Action:** Always check terminal UI empty states to ensure they are visually distinct (e.g., using a dimmed or muted style). Standardize on semantic coloring for transient alerts/toasts based on their intent.

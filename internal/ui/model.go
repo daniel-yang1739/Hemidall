@@ -1759,12 +1759,24 @@ func (m Model) renderFooter() string {
 	}
 
 	if m.statusMessage != "" && time.Since(m.statusMessageTime) < statusMessageDuration {
-		alert := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorSuccess).Padding(0, 1).Render(m.statusMessage)
+		bg := ColorSuccess
+		if strings.HasPrefix(m.statusMessage, "⚠️") {
+			bg = ColorDanger
+		} else if strings.HasPrefix(m.statusMessage, "💡") {
+			bg = ColorPrimary
+		}
+		alert := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(bg).Padding(0, 1).Render(m.statusMessage)
 		return lipgloss.NewStyle().MaxWidth(m.width).Render(alert)
 	}
 
 	if m.clipboardStatus != "" && time.Since(m.clipboardStatusTime) < statusMessageDuration {
-		alert := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorSuccess).Padding(0, 1).Render(m.clipboardStatus)
+		bg := ColorSuccess
+		if strings.HasPrefix(m.clipboardStatus, "⚠️") {
+			bg = ColorDanger
+		} else if strings.HasPrefix(m.clipboardStatus, "💡") {
+			bg = ColorPrimary
+		}
+		alert := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(bg).Padding(0, 1).Render(m.clipboardStatus)
 		return lipgloss.NewStyle().MaxWidth(m.width).Render(alert)
 	}
 

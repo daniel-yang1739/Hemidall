@@ -713,8 +713,8 @@ func (m Model) renderHistoryViewVertical() string {
 	}
 
 	if len(filtered) == 0 {
-		leftLines = append(leftLines, truncateVisualWidth("  No matching steps...", topLeftContentWidth))
-		leftLines = append(leftLines, truncateVisualWidth("  Press [Esc] to reset", topLeftContentWidth))
+		leftLines = append(leftLines, DimRowStyle.Render(truncateVisualWidth("  No matching steps...", topLeftContentWidth)))
+		leftLines = append(leftLines, DimRowStyle.Render(truncateVisualWidth("  Press [Esc] to reset", topLeftContentWidth)))
 	} else {
 		maxCards := m.getHistoryVisibleCards()
 		endIdx := m.historyOffset + maxCards
@@ -765,7 +765,7 @@ func (m Model) renderHistoryViewVertical() string {
 			rightLines = append(rightLines, truncateVisualWidth(line, topRightContentWidth))
 		}
 	} else {
-		rightLines = append(rightLines, truncateVisualWidth("  No step selected", topRightContentWidth))
+		rightLines = append(rightLines, DimRowStyle.Render(truncateVisualWidth("  No step selected", topRightContentWidth)))
 	}
 	for len(rightLines) < topContentRows {
 		rightLines = append(rightLines, "")
@@ -838,7 +838,7 @@ func (m Model) renderHistoryViewVertical() string {
 			}
 		}
 	} else {
-		bottomLines = append(bottomLines, truncateVisualWidth("  Select a step above to inspect details.", bottomContentWidth))
+		bottomLines = append(bottomLines, DimRowStyle.Render(truncateVisualWidth("  Select a step above to inspect details.", bottomContentWidth)))
 	}
 
 	for len(bottomLines) < bottomContentRows {
@@ -929,8 +929,8 @@ func (m Model) renderHistoryViewHorizontal() string {
 	}
 
 	if len(filtered) == 0 {
-		leftLines = append(leftLines, truncateVisualWidth("  No matching steps...", listContentWidth))
-		leftLines = append(leftLines, truncateVisualWidth("  Press [Esc] to reset", listContentWidth))
+		leftLines = append(leftLines, DimRowStyle.Render(truncateVisualWidth("  No matching steps...", listContentWidth)))
+		leftLines = append(leftLines, DimRowStyle.Render(truncateVisualWidth("  Press [Esc] to reset", listContentWidth)))
 	} else {
 		maxCards := m.getHistoryVisibleCards()
 		endIdx := m.historyOffset + maxCards
@@ -988,7 +988,7 @@ func (m Model) renderHistoryViewHorizontal() string {
 			telemetryLines = append(telemetryLines, truncateVisualWidth(line, rightContentWidth))
 		}
 	} else {
-		telemetryLines = append(telemetryLines, truncateVisualWidth("  No step selected", rightContentWidth))
+		telemetryLines = append(telemetryLines, DimRowStyle.Render(truncateVisualWidth("  No step selected", rightContentWidth)))
 	}
 	for len(telemetryLines) < topContentRows {
 		telemetryLines = append(telemetryLines, "")
@@ -1052,7 +1052,7 @@ func (m Model) renderHistoryViewHorizontal() string {
 			}
 		}
 	} else {
-		payloadLines = append(payloadLines, truncateVisualWidth("  Select a step on the left to inspect details.", rightContentWidth))
+		payloadLines = append(payloadLines, DimRowStyle.Render(truncateVisualWidth("  Select a step on the left to inspect details.", rightContentWidth)))
 	}
 
 	for len(payloadLines) < bottomContentRows {
