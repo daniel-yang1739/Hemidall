@@ -26,7 +26,7 @@ var allShortcutItems = []ShortcutItem{
 	{Category: "Global Navigation", Key: "q / Ctrl+c", Desc: "Gracefully quit agent-observer"},
 
 	// 2. Context View Controls
-	{Category: "Context View", Key: "r / R", Desc: "Toggle Raw Wire JSON / Refined Cards Mode"},
+	{Category: "Context View", Key: "r / R", Desc: "Toggle Decoded Evidence JSON / Refined Cards Mode"},
 	{Category: "Context View", Key: "j / k / ↑ / ↓", Desc: "Select subcategory (Tree) / Scroll (Inspector)"},
 	{Category: "Context View", Key: "l / Enter / Right", Desc: "Switch focus to Right Inspector pane"},
 	{Category: "Context View", Key: "h / Esc / Left", Desc: "Return focus to Left Context Tree"},

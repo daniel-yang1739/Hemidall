@@ -21,7 +21,7 @@ func GetTokenizer() (*tiktoken.Tiktoken, error) {
 	return bpeInstance, err
 }
 
-// CountTokens calculates the exact number of BPE tokens in a string
+// CountTokens estimates tokens with the configured local BPE encoding.
 func CountTokens(text string) int {
 	if text == "" {
 		return 0

@@ -52,6 +52,9 @@ func (h *WatcherHub) ActiveAgentType() core.AgentType {
 func (h *WatcherHub) StartSession(sessionID string, agentType core.AgentType, customFile string, customDB string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if agentType != core.AgentTypeAntigravity && agentType != "" {
+		return fmt.Errorf("unsupported agent type for live watching: %s", agentType)
+	}
 
 	// If already watching this session, no need to restart
 	if h.currentSID == sessionID && h.currentCancel != nil {
@@ -99,9 +102,6 @@ func (h *WatcherHub) StartSession(sessionID string, agentType core.AgentType, cu
 		go func(ctx context.Context, w *antigravity.Watcher, sid string) {
 			_ = w.Start(ctx, h.eventChan)
 		}(childCtx, watcher, sessionID)
-
-	default:
-		return fmt.Errorf("unsupported agent type for live watching: %s", agentType)
 	}
 
 	return nil

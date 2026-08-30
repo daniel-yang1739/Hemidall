@@ -31,6 +31,14 @@ const (
 	FocusDetail
 )
 
+func (m Model) contextHistoryVisibleRows() int {
+	rows := m.height - 2 - contextHistoryListBorderLines - contextHistoryListHeaderLines - 1
+	if rows < minimumContextHistoryRows {
+		return minimumContextHistoryRows
+	}
+	return rows
+}
+
 const (
 	// statusMessageDuration defines the on-screen display duration for transient notifications
 	statusMessageDuration = 4 * time.Second
@@ -44,50 +52,66 @@ type AgentEventMsg core.UnifiedAgentEvent
 
 // Model represents the bubbletea application state
 type Model struct {
-	sessionID             string
-	activeView            ActiveView
-	focusPane             FocusPane
-	dashboardIdx          int
-	detailScroll          int
-	isVisualMode          bool
-	visualStart           int
-	visualCursor          int
-	clipboardStatus       string
-	clipboardStatusTime   time.Time
-	latestEvent           core.UnifiedAgentEvent
-	history               []core.UnifiedAgentEvent
-	selectedIdx           int
-	historyOffset         int
-	width                 int
-	height                int
-	eventCount            int
-	lastActivity          time.Time
-	isSessionSwitcherOpen bool
-	isShortcutsModalOpen  bool
-	sessionSearchQuery    string
-	selectedAgentTab      core.AgentType
-	availableSessions     []core.SessionInfo
-	filteredSessions      []core.SessionInfo
-	switcherSelectedIdx   int
-	docsSearchQuery       string
-	isDocsSearching       bool
-	docsScroll            int
-	docsLang              string
-	historyTypeFilter     TypeFilter
-	historyCacheFilter    CacheFilter
-	historyStepQuery      string
-	isHistorySearching    bool
-	historySearchErr      string
-	contextSubItemIndex   int
-	isContextRawMode      bool
-	contextFocusPane      FocusPane
-	contextDetailScroll   int
-	contextTargetAgent    string
-	isCommandMode         bool
-	commandInput          string
-	statusMessage         string
-	statusMessageTime     time.Time
-	switcher              SessionSwitcher
+	sessionID                  string
+	activeView                 ActiveView
+	focusPane                  FocusPane
+	dashboardIdx               int
+	detailScroll               int
+	isVisualMode               bool
+	visualStart                int
+	visualCursor               int
+	clipboardStatus            string
+	clipboardStatusTime        time.Time
+	latestEvent                core.UnifiedAgentEvent
+	history                    []core.UnifiedAgentEvent
+	selectedIdx                int
+	historyOffset              int
+	width                      int
+	height                     int
+	eventCount                 int
+	lastActivity               time.Time
+	isSessionSwitcherOpen      bool
+	isShortcutsModalOpen       bool
+	sessionSearchQuery         string
+	selectedAgentTab           core.AgentType
+	availableSessions          []core.SessionInfo
+	filteredSessions           []core.SessionInfo
+	switcherSelectedIdx        int
+	docsSearchQuery            string
+	isDocsSearching            bool
+	docsScroll                 int
+	docsLang                   string
+	historyTypeFilter          TypeFilter
+	historyCacheFilter         CacheFilter
+	historyStepQuery           string
+	isHistorySearching         bool
+	historySearchErr           string
+	contextSubItemIndex        int
+	isContextRawMode           bool
+	contextFocusPane           FocusPane
+	contextDetailScroll        int
+	contextHistoryList         bool
+	contextHistoryIndex        int
+	contextHistoryItemCount    int
+	contextHistoryScrollOffset int
+	contextTargetAgent         string
+	contextPayload             core.AgentContextPayload
+	contextPayloadReady        bool
+	contextPayloadHistoryCount int
+	contextPayloadLastStep     int
+	contextInspectorLines      []string
+	contextInspectorMax        int
+	contextInspectorSubcat     int
+	contextInspectorRaw        bool
+	contextInspectorHistory    bool
+	contextInspectorEventIndex int
+	contextInspectorWidth      int
+	contextInspectorHeight     int
+	isCommandMode              bool
+	commandInput               string
+	statusMessage              string
+	statusMessageTime          time.Time
+	switcher                   SessionSwitcher
 }
 
 // TypeFilter defines step category filter in History Explorer
@@ -345,8 +369,64 @@ func NewModel(sessionID string, openSwitcherOnStart bool, switcher ...SessionSwi
 			break
 		}
 	}
+	m.refreshContextPayload()
 
 	return m
+}
+
+func (m *Model) refreshContextPayload() {
+	m.contextPayload = antigravity.ExtractAgentContextPayload(m.history, m.sessionID, "")
+	m.contextPayloadReady = true
+	m.contextPayloadHistoryCount = len(m.history)
+	m.contextPayloadLastStep = m.latestContextHistoryStep()
+	m.refreshContextInspectorCache()
+}
+
+func (m *Model) refreshContextInspectorCache() {
+	if m.width == 0 || m.height == 0 {
+		return
+	}
+	payload := m.cachedContextPayload()
+	innerWidth, innerHeight := m.contextInspectorDimensions()
+	payload.IsRawMode = m.isContextRawMode
+	m.contextInspectorLines = m.buildRefinedInspectorLines(payload, innerWidth)
+	if m.isContextRawMode {
+		m.contextInspectorLines = m.buildRawWireLines(payload, innerWidth)
+	}
+	m.contextInspectorMax = len(m.contextInspectorLines) - innerHeight
+	if m.contextInspectorMax < 0 {
+		m.contextInspectorMax = 0
+	}
+	m.contextInspectorSubcat = m.contextSubItemIndex
+	m.contextInspectorRaw = m.isContextRawMode
+	m.contextInspectorHistory = m.contextHistoryList
+	m.contextInspectorEventIndex = m.contextHistoryIndex
+	m.contextInspectorWidth = innerWidth
+	m.contextInspectorHeight = innerHeight
+}
+
+func (m Model) hasContextInspectorCache(innerWidth, innerHeight int) bool {
+	return len(m.contextInspectorLines) > 0 &&
+		m.contextInspectorSubcat == m.contextSubItemIndex &&
+		m.contextInspectorRaw == m.isContextRawMode &&
+		m.contextInspectorHistory == m.contextHistoryList &&
+		m.contextInspectorEventIndex == m.contextHistoryIndex &&
+		m.contextInspectorWidth == innerWidth &&
+		m.contextInspectorHeight == innerHeight
+}
+
+func (m Model) cachedContextPayload() core.AgentContextPayload {
+	if m.contextPayloadReady && m.contextPayloadHistoryCount == len(m.history) && m.contextPayloadLastStep == m.latestContextHistoryStep() {
+		return m.contextPayload
+	}
+	return core.BuildContextPayloadFromHistory(core.ContextBuildInput{History: m.history, SessionID: m.sessionID, AgentType: core.AgentTypeAntigravity, NativeTools: core.GetNativeToolsDefinitions(m.history)})
+}
+
+func (m Model) latestContextHistoryStep() int {
+	if len(m.history) == 0 {
+		return 0
+	}
+	return m.history[len(m.history)-1].StepIndex
 }
 
 func (m Model) getHistoryVisibleCards() int {
@@ -406,7 +486,7 @@ func (m Model) getHistoryVisibleCards() int {
 
 		if i < len(filtered)-1 {
 			// Reserve 1 line for bottom "..." if there are more cards
-			if usedLines+linesNeeded > (availLines - 1) && cardCount > 0 {
+			if usedLines+linesNeeded > (availLines-1) && cardCount > 0 {
 				break
 			}
 		} else {
@@ -710,6 +790,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.refreshContextInspectorCache()
 		return m, nil
 
 	case AgentEventMsg:
@@ -764,6 +845,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.historyOffset++
 			}
 		}
+		m.refreshContextPayload()
 		return m, nil
 
 	case SessionResetMsg:
@@ -778,6 +860,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.isSessionSwitcherOpen = false
 		m.isShortcutsModalOpen = false
 		m.activeView = ViewDashboard
+		m.refreshContextPayload()
 		m.clipboardStatus = fmt.Sprintf("Live attached to %s", truncateStr(msg.SessionID, 8))
 		m.clipboardStatusTime = time.Now()
 		return m, nil
@@ -805,6 +888,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.isSessionSwitcherOpen = false
 		m.isShortcutsModalOpen = false
 		m.activeView = ViewDashboard
+		m.refreshContextPayload()
 		m.clipboardStatus = fmt.Sprintf("Attached session %s (%d steps, live)", truncateStr(msg.SessionID, 8), len(events))
 		m.clipboardStatusTime = time.Now()
 		return m, nil
@@ -826,6 +910,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.isSessionSwitcherOpen = false
 		m.isShortcutsModalOpen = false
 		m.activeView = ViewDashboard
+		m.refreshContextPayload()
 		m.clipboardStatus = fmt.Sprintf("Switched to session %s (%d steps)", truncateStr(msg.SessionID, 8), len(msg.Events))
 		m.clipboardStatusTime = time.Now()
 		return m, nil
@@ -855,7 +940,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case "q", "quit", "q!", "exit":
 					return m, tea.Quit
 				case "w", "write":
-					payload := core.ExtractAgentContextPayload(m.history, m.sessionID, "Gemini 3.7 Flash")
+					payload := m.cachedContextPayload()
 					content := m.GetContextInspectorContent(payload)
 					_ = os.WriteFile("context_payload_export.json", []byte(content), 0644)
 					m.statusMessage = "💾 Saved payload to context_payload_export.json!"
@@ -1086,7 +1171,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			if (key == "y" || key == "c") && m.activeView == ViewContext {
-				payload := core.ExtractAgentContextPayload(m.history, m.sessionID, "Gemini 3.7 Flash")
+				payload := m.cachedContextPayload()
 				text := m.GetContextInspectorContent(payload)
 				_ = CopyToClipboard(text)
 				subcatName := m.getSubcategoryName(m.contextSubItemIndex)
@@ -1136,6 +1221,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch key {
 			case "r", "R":
 				m.isContextRawMode = !m.isContextRawMode
+				m.refreshContextInspectorCache()
 				return m, nil
 			case "m", "M":
 				if m.contextTargetAgent == "" || m.contextTargetAgent == "MAIN" {
@@ -1145,40 +1231,99 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			case "j", "down":
+				if m.contextHistoryList && m.contextFocusPane == FocusList {
+					if m.contextHistoryIndex < m.contextHistoryItemCount-1 {
+						m.contextHistoryIndex++
+						if m.contextHistoryIndex >= m.contextHistoryScrollOffset+m.contextHistoryVisibleRows() {
+							m.contextHistoryScrollOffset = m.contextHistoryIndex - m.contextHistoryVisibleRows() + 1
+						}
+					}
+					m.refreshContextInspectorCache()
+					return m, nil
+				}
 				if m.contextFocusPane == FocusList {
-					if m.contextSubItemIndex < 11 {
+					if m.contextSubItemIndex < SubcatLast {
 						m.contextSubItemIndex++
 						m.contextDetailScroll = 0
 					}
+					m.refreshContextInspectorCache()
 				} else {
-					m.contextDetailScroll++
+					if m.contextDetailScroll < m.contextInspectorMaxScroll() {
+						m.contextDetailScroll++
+					}
 				}
 				return m, nil
 			case "k", "up":
+				if m.contextHistoryList && m.contextFocusPane == FocusList {
+					if m.contextHistoryIndex > 0 {
+						m.contextHistoryIndex--
+						if m.contextHistoryIndex < m.contextHistoryScrollOffset {
+							m.contextHistoryScrollOffset = m.contextHistoryIndex
+						}
+					}
+					m.refreshContextInspectorCache()
+					return m, nil
+				}
 				if m.contextFocusPane == FocusList {
 					if m.contextSubItemIndex > 0 {
 						m.contextSubItemIndex--
 						m.contextDetailScroll = 0
 					}
+					m.refreshContextInspectorCache()
 				} else {
+					maxScroll := m.contextInspectorMaxScroll()
+					if m.contextDetailScroll > maxScroll {
+						m.contextDetailScroll = maxScroll
+					}
 					if m.contextDetailScroll > 0 {
 						m.contextDetailScroll--
 					}
 				}
 				return m, nil
-			case "l", "enter", "right":
+			case "enter":
+				if m.contextFocusPane == FocusList && !m.contextHistoryList && m.contextSubItemIndex == SubcatCurrentHistory {
+					payload := m.cachedContextPayload()
+					m.contextHistoryList = true
+					m.contextHistoryIndex = 0
+					m.contextHistoryItemCount = historyListItemCount(payload)
+					m.contextHistoryScrollOffset = 0
+					m.contextDetailScroll = 0
+					m.refreshContextInspectorCache()
+					return m, nil
+				}
 				m.contextFocusPane = FocusDetail
 				return m, nil
-			case "h", "esc", "left":
+			case "l", "right":
+				m.contextFocusPane = FocusDetail
+				return m, nil
+			case "h", "left":
 				if m.contextFocusPane == FocusDetail {
 					m.contextFocusPane = FocusList
 					m.contextDetailScroll = 0
+				} else if !m.contextHistoryList {
+					m.activeView = ViewDashboard
+				}
+				return m, nil
+			case "esc":
+				if m.contextFocusPane == FocusDetail {
+					m.contextFocusPane = FocusList
+					m.contextDetailScroll = 0
+				} else if m.contextHistoryList {
+					m.contextHistoryList = false
+					m.contextDetailScroll = 0
+					m.contextHistoryItemCount = 0
+					m.contextHistoryScrollOffset = 0
+					m.refreshContextInspectorCache()
 				} else {
 					m.activeView = ViewDashboard
 				}
 				return m, nil
 			case "ctrl+d":
 				m.contextDetailScroll += 10
+				maxScroll := m.contextInspectorMaxScroll()
+				if m.contextDetailScroll > maxScroll {
+					m.contextDetailScroll = maxScroll
+				}
 				return m, nil
 			case "ctrl+u":
 				m.contextDetailScroll -= 10
@@ -1187,17 +1332,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			case "g", "home":
+				if m.contextHistoryList && m.contextFocusPane == FocusList {
+					m.contextHistoryIndex = 0
+					m.contextHistoryScrollOffset = 0
+					m.refreshContextInspectorCache()
+					return m, nil
+				}
 				if m.contextFocusPane == FocusList {
 					m.contextSubItemIndex = 0
+					m.contextDetailScroll = 0
+					m.refreshContextInspectorCache()
 				} else {
 					m.contextDetailScroll = 0
 				}
 				return m, nil
 			case "G", "end":
+				if m.contextHistoryList && m.contextFocusPane == FocusList {
+					m.contextHistoryIndex = m.contextHistoryItemCount - 1
+					m.contextHistoryScrollOffset = m.contextHistoryItemCount - m.contextHistoryVisibleRows()
+					if m.contextHistoryScrollOffset < 0 {
+						m.contextHistoryScrollOffset = 0
+					}
+					m.refreshContextInspectorCache()
+					return m, nil
+				}
 				if m.contextFocusPane == FocusList {
-					m.contextSubItemIndex = 11
+					m.contextSubItemIndex = SubcatLast
+					m.contextDetailScroll = 0
+					m.refreshContextInspectorCache()
 				} else {
-					m.contextDetailScroll = 9999
+					m.contextDetailScroll = m.contextInspectorMaxScroll()
 				}
 				return m, nil
 			}

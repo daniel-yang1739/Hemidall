@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
-	"time"
 )
 
 // ==============================================================================
@@ -32,19 +31,26 @@ ARTICLE I: LANGUAGE POLICY - Code EN, Docs TC.</user_rules>`,
 	}
 }
 
-func TestContext_Pos_ExtractNativeTools8Schemas(t *testing.T) {
-	payload := ExtractAgentContextPayload(nil, "sess-test", "Gemini 3.7 Flash")
+func TestContext_Pos_ExtractObservedToolArguments(t *testing.T) {
+	history := []UnifiedAgentEvent{{
+		Type: StepTypeToolCall,
+		ToolCalls: []ToolCallInfo{{
+			ToolName:  "write_to_file",
+			Arguments: map[string]interface{}{"TargetFile": "main.go", "Overwrite": true},
+		}},
+	}}
+	payload := ExtractAgentContextPayload(history, "sess-test", "Gemini 3.7 Flash")
 
-	if len(payload.NativeTools) != 8 {
-		t.Fatalf("Expected 8 native tools, got %d", len(payload.NativeTools))
+	if len(payload.NativeTools) != 1 {
+		t.Fatalf("Expected one observed tool, got %d", len(payload.NativeTools))
 	}
 
 	tool0 := payload.NativeTools[0]
 	if tool0.Name != "write_to_file" {
 		t.Errorf("Expected tool 0 to be 'write_to_file', got %s", tool0.Name)
 	}
-	if !strings.Contains(tool0.Signature, "write_to_file(TargetFile, CodeContent, Overwrite)") {
-		t.Errorf("Expected clean signature for write_to_file, got %s", tool0.Signature)
+	if tool0.Signature != "write_to_file(Overwrite, TargetFile)" {
+		t.Errorf("Expected sorted observed arguments, got %s", tool0.Signature)
 	}
 	if tool0.RawSchema == "" {
 		t.Errorf("Expected non-empty RawSchema for write_to_file")
@@ -54,16 +60,16 @@ func TestContext_Pos_ExtractNativeTools8Schemas(t *testing.T) {
 func TestContext_Pos_ExtractSkillsYamlFrontmatter(t *testing.T) {
 	payload := ExtractAgentContextPayload(nil, "sess-test", "Gemini 3.7 Flash")
 
-	if len(payload.ActiveSkills) < 3 {
-		t.Fatalf("Expected at least 3 active skills, got %d", len(payload.ActiveSkills))
+	if len(payload.ActiveSkills) == 0 {
+		t.Fatal("Expected at least one discovered skill")
 	}
 
 	foundWiki := false
 	for _, s := range payload.ActiveSkills {
 		if s.Name == "wiki-distiller" {
 			foundWiki = true
-			if s.Status != "ACTIVE" {
-				t.Errorf("Expected wiki-distiller status 'ACTIVE', got %s", s.Status)
+			if s.Status != "DISCOVERED" {
+				t.Errorf("Expected wiki-distiller status 'DISCOVERED', got %s", s.Status)
 			}
 		}
 	}
@@ -90,16 +96,16 @@ func TestContext_Pos_3StageHistorySlicingConservation(t *testing.T) {
 	if !strings.Contains(payload.CheckpointSummary, "Compacted summary base anchor") {
 		t.Errorf("Expected checkpoint summary to be extracted, got %q", payload.CheckpointSummary)
 	}
-	if payload.CompactedStepsCount <= 0 {
-		t.Errorf("Expected positive compacted steps count, got %d", payload.CompactedStepsCount)
+	if payload.CheckpointStepIndex != 10 {
+		t.Errorf("Expected checkpoint step index 10, got %d", payload.CheckpointStepIndex)
 	}
 }
 
-func TestContext_Pos_RawWireJsonSerialization(t *testing.T) {
+func TestContext_Pos_EvidenceJsonSerialization(t *testing.T) {
 	payload := ExtractAgentContextPayload(nil, "sess-test", "Gemini 3.7 Flash")
-	wireJSON, err := SerializeToWirePayload(payload)
+	wireJSON, err := SerializeContextEvidence(payload)
 	if err != nil {
-		t.Fatalf("SerializeToWirePayload failed: %v", err)
+		t.Fatalf("SerializeContextEvidence failed: %v", err)
 	}
 
 	var parsed map[string]interface{}
@@ -107,34 +113,48 @@ func TestContext_Pos_RawWireJsonSerialization(t *testing.T) {
 		t.Fatalf("Serialized wire payload is not valid JSON: %v\nJSON:\n%s", err, wireJSON)
 	}
 
-	if _, ok := parsed["systemInstruction"]; !ok {
-		t.Errorf("Expected 'systemInstruction' in wire payload JSON")
+	if _, ok := parsed["evidence"]; !ok {
+		t.Errorf("Expected evidence metadata in serialized JSON")
 	}
-	if _, ok := parsed["tools"]; !ok {
-		t.Errorf("Expected 'tools' in wire payload JSON")
+	if _, ok := parsed["persisted_tool_entries"]; !ok {
+		t.Errorf("Expected persisted tool entry field in evidence JSON")
+	}
+	if _, ok := parsed["persisted_field_2_occurrence_count"]; !ok {
+		t.Errorf("Expected field-2 occurrence count in evidence JSON")
+	}
+	if _, ok := parsed["heimdall_runtime_metadata"]; !ok {
+		t.Errorf("Expected Heimdall runtime metadata in evidence JSON")
 	}
 }
 
-func TestContext_Neg_MissingAgentsMdGracefulFallback(t *testing.T) {
-	// Nil history with no AGENTS.md in events
+func TestContext_Neg_NilHistoryDoesNotFabricateSessionData(t *testing.T) {
 	payload := ExtractAgentContextPayload(nil, "sess-empty", "Gemini 3.7 Flash")
 
-	if payload.ConstitutionDoc == "" {
-		t.Errorf("Expected default constitution fallback, got empty")
+	if payload.TotalTokens != 0 {
+		t.Errorf("Expected zero observed tokens, got %d", payload.TotalTokens)
+	}
+	if payload.IdentityPrompt != "" {
+		t.Errorf("Expected no fabricated identity, got %q", payload.IdentityPrompt)
+	}
+	if payload.LatestPrompt != "" || payload.CheckpointSummary != "" || payload.StagedBuffers != "" {
+		t.Error("Expected absent session fields to remain empty")
+	}
+	if len(payload.NativeTools) != 0 {
+		t.Errorf("Expected no fabricated tools, got %d", len(payload.NativeTools))
 	}
 }
 
-func TestContext_Neg_EmptyToolsListValidSchema(t *testing.T) {
+func TestContext_Neg_EmptyToolsListValidEvidence(t *testing.T) {
 	// Custom payload with 0 tools
 	customPayload := AgentContextPayload{
 		TargetModel: "custom-model",
 		NativeTools: []ToolSignature{},
 	}
-	wireJSON, err := SerializeToWirePayload(customPayload)
+	wireJSON, err := SerializeContextEvidence(customPayload)
 	if err != nil {
-		t.Fatalf("SerializeToWirePayload on empty tools failed: %v", err)
+		t.Fatalf("SerializeContextEvidence on empty tools failed: %v", err)
 	}
-	if !strings.Contains(wireJSON, `"tools": []`) && !strings.Contains(wireJSON, `"tools":[]`) {
+	if !strings.Contains(wireJSON, `"persisted_tool_entries": []`) && !strings.Contains(wireJSON, `"persisted_tool_entries":[]`) {
 		t.Errorf("Expected valid empty tools array in JSON, got %s", wireJSON)
 	}
 }
@@ -166,7 +186,7 @@ func TestContext_Pos_SerializeSubcategoryRawAllParts(t *testing.T) {
 			t.Fatalf("SerializeSubcategoryRaw failed on subcat %d: %v", subcat, err)
 		}
 		if raw == "" {
-			t.Fatalf("Expected non-empty raw wire JSON for subcat %d", subcat)
+			t.Fatalf("Expected non-empty evidence JSON for subcat %d", subcat)
 		}
 
 		var parsed interface{}
@@ -183,11 +203,31 @@ func TestContext_Neg_InvalidSubcategoryIndexFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expected graceful fallback on invalid subcategory index, got error: %v", err)
 	}
-	if !strings.Contains(raw, "systemInstruction") {
-		t.Errorf("Expected fallback to full wire payload with 'systemInstruction', got:\n%s", raw)
+	if !strings.Contains(raw, "evidence") {
+		t.Errorf("Expected fallback to full evidence payload, got:\n%s", raw)
 	}
 }
 
-func init() {
-	_ = time.Now()
+func TestSerializePersistedActiveEventRaw_ScopesAllAndSelectedEvents(t *testing.T) {
+	payload := AgentContextPayload{PersistedRecords: []PersistedContextRecord{
+		{Position: 1, PrimaryText: "checkpoint"},
+		{Position: 2, PrimaryText: "selected event"},
+	}}
+
+	all, err := SerializePersistedActiveEventRaw(payload, 0)
+	if err != nil || !strings.Contains(all, "active_events") || !strings.Contains(all, "selected event") {
+		t.Fatalf("all-event raw scope was not serialized: %q, %v", all, err)
+	}
+
+	selected, err := SerializePersistedActiveEventRaw(payload, 2)
+	if err != nil || !strings.Contains(selected, "active_event") || !strings.Contains(selected, "selected event") || strings.Contains(selected, "checkpoint") {
+		t.Fatalf("single-event raw scope was not serialized: %q, %v", selected, err)
+	}
+}
+
+func ExtractAgentContextPayload(history []UnifiedAgentEvent, sessionID, targetModel string) AgentContextPayload {
+	return BuildContextPayloadFromHistory(ContextBuildInput{
+		History: history, SessionID: sessionID, AgentType: AgentTypeAntigravity, TargetModel: targetModel,
+		NativeTools: GetNativeToolsDefinitions(history), ActiveSkills: GetActiveSkillsDefinitions(),
+	})
 }

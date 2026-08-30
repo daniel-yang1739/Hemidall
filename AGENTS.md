@@ -1,6 +1,6 @@
 # 📜 REPOSITORY CONSTITUTION
 
-> **Status**: ACTIVE & IMMUTABLE (Highest Authority)  
+> **Status**: ACTIVE & IMMUTABLE (Highest Authority)
 > **Scope**: All AI Agents, Subagents, and Pair-Programming Sessions
 
 ---
@@ -12,7 +12,7 @@
    - **Repository Root Rules & Configs (`AGENTS.md`, configs)**: Strictly English only. Zero Chinese allowed outside `docs/`.
    - **Code Comments**: English only. Zero non-English comments allowed in `.go`, `.py`, `Makefile`, or configuration files.
    - **Terminal & System Logs**: English only (`fmt.Printf`, `log.Println`, CLI banners, error messages).
-   
+
 2. **Documentation (`docs/` - HUMAN-FACING KNOWLEDGE HUB)**:
    - The `docs/` directory (`02_wiki/`, `ithome_draft/`, `ithome_ready/`, `reviews/`) is designated for human reading, study, and publication.
    - Traditional Chinese (繁體中文) is the primary language for `docs/` technical articles, analogies, and explanations.
@@ -57,9 +57,11 @@
 3. **Expectations Are Inviolable (Business Expectations First, No Assertion Weakening or Code Pollution)**:
    - Real business expectations are immutable. Never modify test assertions to make a test pass against flawed logic.
    - Never compromise production codebase architecture for testing convenience (e.g., adding dummy function parameters or returns solely for test hooks).
-4. **Zero Control Flow in Unit Tests (No Logic Statements in Test Bodies)**:
-   - Unit tests **MUST NOT contain control flow logic (`for-loop`, `if-else`, `switch-case`)** inside test execution bodies.
-   - Control flow inside tests creates code that itself requires testing. When testing multiple scenarios, decompose into distinct, flat, independent test functions or subtests with explicit, direct assertions.
+4. **Restricted Control Flow in Unit Tests (Table-Driven Loops and Assertions Only)**:
+   - Table-driven tests **MAY use `for` loops** to execute a declarative list or map of test cases, preferably with explicit `t.Run` subtests. Test cases must define their inputs and expected outputs directly.
+   - `if` statements **MAY be used for assertions and failure reporting only**, such as comparing actual and expected values before calling `t.Errorf`, `t.Fatalf`, or an equivalent assertion helper.
+   - Tests **MUST NOT use conditional logic to calculate, alter, or select expected results**, reproduce production branching, or make the asserted business expectation depend on the implementation result.
+   - Other behavioral control flow in test execution bodies, including non-table-driven loops and `switch` statements, is prohibited. Extract setup mechanics into test helpers when necessary, while keeping each test case's expectation explicit and independently reviewable.
 
 ---
 
