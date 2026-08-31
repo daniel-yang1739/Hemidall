@@ -10,6 +10,19 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
+const (
+	percentageScale                   = 100.0
+	zeroPercentage                    = 0.0
+	tokensPerThousand                 = 1_000
+	tokensPerMillion                  = 1_000_000
+	dashboardNarrowContentWidth       = 70
+	dashboardNarrowProgressBarBlocks  = 8
+	dashboardDefaultProgressBarBlocks = 15
+	dashboardContextLabelWidth        = 30
+	dashboardContextTokenWidth        = 8
+	dashboardContextPercentageWidth   = 5
+)
+
 func formatCommas(n int) string {
 	if n < 0 {
 		return "-" + formatCommas(-n)
@@ -36,13 +49,116 @@ func formatCommas(n int) string {
 }
 
 func formatTokShort(n int) string {
-	if n >= 1000000 {
-		return fmt.Sprintf("%.2fM", float64(n)/1000000.0)
+	if n >= tokensPerMillion {
+		return fmt.Sprintf("%.2fM", float64(n)/float64(tokensPerMillion))
 	}
-	if n >= 1000 {
-		return fmt.Sprintf("%.1fk", float64(n)/1000.0)
+	if n >= tokensPerThousand {
+		return fmt.Sprintf("%.1fk", float64(n)/float64(tokensPerThousand))
 	}
 	return fmt.Sprintf("%d", n)
+}
+
+func formatTokFloatShort(n float64) string {
+	if n >= float64(tokensPerMillion) {
+		return fmt.Sprintf("%.2fM", n/float64(tokensPerMillion))
+	}
+	if n >= float64(tokensPerThousand) {
+		return fmt.Sprintf("%.1fk", n/float64(tokensPerThousand))
+	}
+	return fmt.Sprintf("%.0f", n)
+}
+
+func formatCacheCoverage(stats core.ModelTokenStats) string {
+	if stats.TurnCount == 0 {
+		return "unavailable"
+	}
+	return fmt.Sprintf("%d/%d comparable", stats.CachedTurnCount, stats.TurnCount)
+}
+
+func hasComparableCacheMetrics(stats core.ModelTokenStats) bool {
+	return stats.CachedTurnCount > 0 && stats.ComparableTokens > 0
+}
+
+func formatCacheHitCell(stats core.ModelTokenStats) string {
+	if !hasComparableCacheMetrics(stats) {
+		return "unavailable"
+	}
+	return fmt.Sprintf("%s (%.1f%%)", formatTokShort(stats.TotalCached), stats.CacheHitRate)
+}
+
+func formatUncachedCell(stats core.ModelTokenStats) string {
+	if !hasComparableCacheMetrics(stats) {
+		return "unavailable"
+	}
+	return formatTokShort(stats.TotalNew)
+}
+
+func formatEffectiveInputCell(stats core.ModelTokenStats) string {
+	projection, available := core.ProjectCacheAdjustedInput(stats)
+	if !available {
+		return "unavailable"
+	}
+	return fmt.Sprintf("%s @%.2fx", formatTokFloatShort(projection.EffectiveInputTokens), projection.CacheInputMultiplier)
+}
+
+func formatObservedContextSum(stats core.ModelTokenStats) string {
+	if stats.TurnCount == 0 {
+		return "unavailable"
+	}
+	return formatTokShort(stats.TotalProcessed) + " Tok"
+}
+
+func cacheMetricSubLabel(stats core.ModelTokenStats, hitRate bool) string {
+	if !hasComparableCacheMetrics(stats) {
+		return "fields unavailable"
+	}
+	if hitRate {
+		return fmt.Sprintf("%.1f%% comparable hit", stats.CacheHitRate)
+	}
+	return fmt.Sprintf("%.1f%% comparable new", percentageScale-stats.CacheHitRate)
+}
+
+func cacheMetricLabel(base string, stats core.ModelTokenStats) string {
+	if !hasComparableCacheMetrics(stats) {
+		return base
+	}
+	if stats.CompleteUsage {
+		return base
+	}
+	return base + " (PARTIAL)"
+}
+
+func formatCacheFields(usage core.PersistedUsageObservation) string {
+	if !usage.HasCachedTokens {
+		return "cached token field unavailable"
+	}
+	uncached, hasUncached := usage.UncachedTokens()
+	hitRate, hasHitRate := usage.CacheHitRate()
+	if !hasUncached || !hasHitRate {
+		return "invalid relative to observed total"
+	}
+	return fmt.Sprintf("%s cached (%.1f%% hit), %s uncached", formatTokShort(usage.CachedTokens), hitRate, formatTokShort(uncached))
+}
+
+func formatEstimateDimension(name string, tokens, total, barBlocks int, color lipgloss.TerminalColor) string {
+	percentage := zeroPercentage
+	if total > 0 {
+		percentage = float64(tokens) / float64(total) * percentageScale
+	}
+	return fmt.Sprintf("  %-*s %*s Tokens (%*.1f%%) [%s]", dashboardContextLabelWidth, name, dashboardContextTokenWidth, formatTokShort(tokens), dashboardContextPercentageWidth, percentage, renderVisibleContentBar(percentage, barBlocks, color))
+}
+
+func renderVisibleContentBar(percentage float64, totalBlocks int, color lipgloss.TerminalColor) string {
+	filled := int((percentage / percentageScale) * float64(totalBlocks))
+	if filled > totalBlocks {
+		filled = totalBlocks
+	}
+	if filled < 0 {
+		filled = 0
+	}
+	filledBar := lipgloss.NewStyle().Foreground(color).Render(strings.Repeat("█", filled))
+	emptyBar := lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("░", totalBlocks-filled))
+	return filledBar + emptyBar
 }
 
 func renderBorderlessKpiStrip(tot core.ModelTokenStats, width int) string {
@@ -54,19 +170,19 @@ func renderBorderlessKpiStrip(tot core.ModelTokenStats, width int) string {
 		}
 		hStyle := lipgloss.NewStyle().Foreground(ColorMuted).Bold(true)
 
-		h1 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "TOTAL PROCESSED"), colW))
-		h2 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "CACHE HIT VOLUME"), colW))
+		h1 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "OBSERVED CONTEXT SUM"), colW))
+		h2 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, cacheMetricLabel("CACHE HIT VOLUME", tot)), colW))
 		v1 := lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render(
-			truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%s Tok (%d Turns)", formatTokShort(tot.TotalProcessed), tot.TurnCount)), colW))
+			truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%s (%d Turns)", formatObservedContextSum(tot), tot.TurnCount)), colW))
 		v2 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(
-			truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%s Tok (%.1f%% Hit)", formatTokShort(tot.TotalCached), tot.CacheHitRate)), colW))
+			truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheHitCell(tot)), colW))
 
-		h3 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "UNCACHED INBOUND"), colW))
-		h4 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "CACHED SAVED (%)"), colW))
+		h3 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, cacheMetricLabel("UNCACHED INBOUND", tot)), colW))
+		h4 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "CACHE DATA"), colW))
 		v3 := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(
-			truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%s Tok (%.1f%% Cold)", formatTokShort(tot.TotalNew), 100.0-tot.CacheHitRate)), colW))
+			truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatUncachedCell(tot)), colW))
 		v4 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(
-			truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%s Tok (%.1f%% Saved)", formatTokShort(tot.TokensSaved), tot.SavingsPercentage)), colW))
+			truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheCoverage(tot)), colW))
 
 		row1 := fmt.Sprintf("  %s %s", h1, h2)
 		row2 := fmt.Sprintf("  %s %s", v1, v2)
@@ -85,27 +201,23 @@ func renderBorderlessKpiStrip(tot core.ModelTokenStats, width int) string {
 	hStyle := lipgloss.NewStyle().Foreground(ColorMuted).Bold(true)
 	subStyle := lipgloss.NewStyle().Foreground(ColorMuted)
 
-	h1 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "TOTAL PROCESSED"), colW))
-	h2 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "CACHE HIT VOLUME"), colW))
-	h3 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "UNCACHED INBOUND"), colW))
-	h4 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "EFFECTIVE TOKENS"), colW))
-	h5 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "CACHED SAVED (%)"), colW))
+	h1 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "OBSERVED CONTEXT SUM"), colW))
+	h2 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, cacheMetricLabel("CACHE HIT VOLUME", tot)), colW))
+	h3 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, cacheMetricLabel("UNCACHED INBOUND", tot)), colW))
+	h4 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "CACHE DATA"), colW))
+	h5 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "OBSERVED TURNS"), colW))
 
-	v1 := lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatTokShort(tot.TotalProcessed)+" Tok"), colW))
-	v2 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatTokShort(tot.TotalCached)+" Tok"), colW))
-	v3 := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatTokShort(tot.TotalNew)+" Tok"), colW))
-	v4 := lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatTokShort(tot.EffectiveTokens)+" Tok"), colW))
-	v5 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatTokShort(tot.TokensSaved)+" Tok"), colW))
+	v1 := lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatObservedContextSum(tot)), colW))
+	v2 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheHitCell(tot)), colW))
+	v3 := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatUncachedCell(tot)), colW))
+	v4 := lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheCoverage(tot)), colW))
+	v5 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%d turns", tot.TurnCount)), colW))
 
-	s1 := subStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%d Cloud Turns", tot.TurnCount)), colW))
-	s2 := lipgloss.NewStyle().Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%.1f%% Hit Rate", tot.CacheHitRate)), colW))
-	s3 := lipgloss.NewStyle().Foreground(ColorHighlight).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%.1f%% Cold In", 100.0-tot.CacheHitRate)), colW))
-	effPct := 0.0
-	if tot.TotalProcessed > 0 {
-		effPct = float64(tot.EffectiveTokens) / float64(tot.TotalProcessed) * 100.0
-	}
-	s4 := lipgloss.NewStyle().Foreground(ColorSecondary).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%.1f%% of Raw", effPct)), colW))
-	s5 := lipgloss.NewStyle().Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%.1f%% Net Saved", tot.SavingsPercentage)), colW))
+	s1 := subStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%d observed turns", tot.TurnCount)), colW))
+	s2 := lipgloss.NewStyle().Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, cacheMetricSubLabel(tot, true)), colW))
+	s3 := lipgloss.NewStyle().Foreground(ColorHighlight).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, cacheMetricSubLabel(tot, false)), colW))
+	s4 := lipgloss.NewStyle().Foreground(ColorSecondary).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "schema-inferred"), colW))
+	s5 := lipgloss.NewStyle().Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "persisted records"), colW))
 
 	row1 := fmt.Sprintf("  %s %s %s %s %s", h1, h2, h3, h4, h5)
 	row2 := fmt.Sprintf("  %s %s %s %s %s", v1, v2, v3, v4, v5)
@@ -159,7 +271,7 @@ func formatSpaceBetweenRow(cols []string, minWidths []int, leftAlign []bool, tar
 
 func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTokenStats, width int) string {
 	var sb strings.Builder
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("  MULTI-MODEL TOKEN & SAVINGS BREAKDOWN:") + "\n")
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("  MULTI-MODEL PERSISTED USAGE & PRICE-EQUIVALENT PROJECTIONS:") + "\n")
 
 	targetWidth := width - 4
 	if targetWidth < 30 {
@@ -171,17 +283,16 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 		minWidths := []int{14, 5, 10, 14}
 		leftAligns := []bool{true, false, false, false}
 
-		headers := []string{"Model Name", "Turns", "Processed", "Saved (%)"}
+		headers := []string{"Model Name", "Turns", "Observed", "Cache Data"}
 		headerStr := "  " + formatSpaceBetweenRow(headers, minWidths, leftAligns, targetWidth)
 		sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(headerStr) + "\n")
 
 		for _, m := range models {
-			savStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(m.TokensSaved), m.SavingsPercentage)
 			rowCols := []string{
 				truncateVisualWidth(m.ModelName, 14),
 				fmt.Sprintf("%d", m.TurnCount),
 				formatTokShort(m.TotalProcessed),
-				savStr,
+				formatCacheCoverage(m),
 			}
 			rowStr := "  " + formatSpaceBetweenRow(rowCols, minWidths, leftAligns, targetWidth)
 			sb.WriteString(rowStr + "\n")
@@ -190,12 +301,11 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 		sep := "  " + strings.Repeat("─", targetWidth)
 		sb.WriteString(lipgloss.NewStyle().Foreground(ColorBorder).Render(sep) + "\n")
 
-		totSavStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(total.TokensSaved), total.SavingsPercentage)
 		totCols := []string{
 			"TOTAL",
 			fmt.Sprintf("%d", total.TurnCount),
 			formatTokShort(total.TotalProcessed),
-			totSavStr,
+			formatCacheCoverage(total),
 		}
 		totStr := "  " + formatSpaceBetweenRow(totCols, minWidths, leftAligns, targetWidth)
 		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(totStr))
@@ -206,19 +316,17 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 		minWidths := []int{16, 5, 9, 14, 14}
 		leftAligns := []bool{true, false, false, false, false}
 
-		headers := []string{"Model Name", "Turns", "Processed", "Cached (Hit %)", "Cached Saved (%)"}
+		headers := []string{"Model Name", "Turns", "Observed", "Effective", "Coverage"}
 		headerStr := "  " + formatSpaceBetweenRow(headers, minWidths, leftAligns, targetWidth)
 		sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(headerStr) + "\n")
 
 		for _, m := range models {
-			hitStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(m.TotalCached), m.CacheHitRate)
-			savStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(m.TokensSaved), m.SavingsPercentage)
 			rowCols := []string{
 				truncateVisualWidth(m.ModelName, 16),
 				fmt.Sprintf("%d", m.TurnCount),
 				formatTokShort(m.TotalProcessed),
-				hitStr,
-				savStr,
+				formatEffectiveInputCell(m),
+				formatCacheCoverage(m),
 			}
 			rowStr := "  " + formatSpaceBetweenRow(rowCols, minWidths, leftAligns, targetWidth)
 			sb.WriteString(rowStr + "\n")
@@ -227,14 +335,12 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 		sep := "  " + strings.Repeat("─", targetWidth)
 		sb.WriteString(lipgloss.NewStyle().Foreground(ColorBorder).Render(sep) + "\n")
 
-		totHitStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(total.TotalCached), total.CacheHitRate)
-		totSavStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(total.TokensSaved), total.SavingsPercentage)
 		totCols := []string{
 			"TOTAL SUMMARY",
 			fmt.Sprintf("%d", total.TurnCount),
 			formatTokShort(total.TotalProcessed),
-			totHitStr,
-			totSavStr,
+			"per-model only",
+			formatCacheCoverage(total),
 		}
 		totStr := "  " + formatSpaceBetweenRow(totCols, minWidths, leftAligns, targetWidth)
 		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(totStr))
@@ -242,26 +348,24 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 		return sb.String()
 	}
 
-	// Tier 3: 7-Column Full Table for Wide Terminals (>= 110 cols)
-	minWidths := []int{22, 6, 11, 16, 11, 16, 16}
-	leftAligns := []bool{true, false, false, false, false, false, false}
+	// Tier 3: 8-Column Full Table for Wide Terminals (>= 110 cols)
+	minWidths := []int{18, 5, 10, 15, 10, 16, 15, 8}
+	leftAligns := []bool{true, false, false, false, false, false, false, false}
 
-	headers := []string{"Model Name", "Turns", "Processed", "Cached (Hit %)", "Uncached", "Effective (Factor)", "Cached Saved (%)"}
+	headers := []string{"Model Name", "Turns", "Observed", "Cached", "Uncached", "Effective Input", "Cache Coverage", "Source"}
 	headerStr := "  " + formatSpaceBetweenRow(headers, minWidths, leftAligns, targetWidth)
 	sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(headerStr) + "\n")
 
 	for _, m := range models {
-		hitStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(m.TotalCached), m.CacheHitRate)
-		effStr := fmt.Sprintf("%s (%s)", formatTokShort(m.EffectiveTokens), m.DiscountLabel)
-		savStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(m.TokensSaved), m.SavingsPercentage)
 		rowCols := []string{
-			truncateVisualWidth(m.ModelName, 22),
+			truncateVisualWidth(m.ModelName, 18),
 			fmt.Sprintf("%d", m.TurnCount),
 			formatTokShort(m.TotalProcessed),
-			hitStr,
-			formatTokShort(m.TotalNew),
-			effStr,
-			savStr,
+			formatCacheHitCell(m),
+			formatUncachedCell(m),
+			formatEffectiveInputCell(m),
+			formatCacheCoverage(m),
+			"metadata",
 		}
 		rowStr := "  " + formatSpaceBetweenRow(rowCols, minWidths, leftAligns, targetWidth)
 		sb.WriteString(rowStr + "\n")
@@ -270,26 +374,27 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 	sep := "  " + strings.Repeat("─", targetWidth)
 	sb.WriteString(lipgloss.NewStyle().Foreground(ColorBorder).Render(sep) + "\n")
 
-	totHitStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(total.TotalCached), total.CacheHitRate)
-	totEffStr := fmt.Sprintf("%s (%s)", formatTokShort(total.EffectiveTokens), total.DiscountLabel)
-	totSavStr := fmt.Sprintf("%s (%4.1f%%)", formatTokShort(total.TokensSaved), total.SavingsPercentage)
 	totCols := []string{
 		"TOTAL SUMMARY",
 		fmt.Sprintf("%d", total.TurnCount),
 		formatTokShort(total.TotalProcessed),
-		totHitStr,
-		formatTokShort(total.TotalNew),
-		totEffStr,
-		totSavStr,
+		formatCacheHitCell(total),
+		formatUncachedCell(total),
+		"per-model only",
+		formatCacheCoverage(total),
+		"metadata",
 	}
 	totStr := "  " + formatSpaceBetweenRow(totCols, minWidths, leftAligns, targetWidth)
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(totStr))
+	sb.WriteString("\n")
+	sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render("  Effective Input = uncached + cached × official model cache-price ratio; per-model projection, not an Antigravity invoice."))
 
 	return sb.String()
 }
 
 func (m Model) renderDashboardView() string {
 	e := m.latestEvent
+	dashboardHistoryIndex := -1
 	isPlayback := false
 	if len(m.history) > 0 {
 		idx := m.dashboardIdx
@@ -300,59 +405,42 @@ func (m Model) renderDashboardView() string {
 			idx = len(m.history) - 1
 		}
 		e = m.history[idx]
+		dashboardHistoryIndex = idx
 		if idx < len(m.history)-1 {
 			isPlayback = true
 		}
 	}
 
 	t := e.Tokens
+	usage := e.Usage
 	total := t.TotalTokens
-
-	dTotal := total
-	if dTotal == 0 {
-		dTotal = t.SystemTokens + t.ToolsDefTokens + t.ToolResultTokens + t.HistoryTokens + t.ActiveTurnTokens + t.ThinkingTokens
+	if usage.HasTotalTokens {
+		total = usage.TotalTokens
 	}
 
-	var sysPct, toolsPct, resPct, histPct, activePct float64
-	if dTotal > 0 {
-		sysPct = float64(t.SystemTokens) / float64(dTotal) * 100.0
-		toolsPct = float64(t.ToolsDefTokens) / float64(dTotal) * 100.0
-		resPct = float64(t.ToolResultTokens) / float64(dTotal) * 100.0
-		histPct = float64(t.HistoryTokens) / float64(dTotal) * 100.0
-		activePct = float64(t.ActiveTurnTokens+t.ThinkingTokens) / float64(dTotal) * 100.0
-	}
-
-	ctxLimit := t.ContextLimit
-	if ctxLimit == 0 {
-		ctxLimit = t.OfficialContextLimit
-	}
-	if ctxLimit == 0 {
-		ctxLimit = core.DefaultFallbackAgentWindow
+	ctxLimit := 0
+	if usage.HasContextLimit {
+		ctxLimit = usage.ContextLimit
 	}
 	var ctxUsagePct float64
-	if total > 0 {
+	if total > 0 && ctxLimit > 0 {
 		ctxUsagePct = float64(total) / float64(ctxLimit) * 100.0
 	}
 
 	var cacheBadge string
 	if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
-		cacheBadge = lipgloss.NewStyle().Foreground(ColorMuted).Render("[LOCAL OFFLINE / 0 GPU TOK]")
+		cacheBadge = lipgloss.NewStyle().Foreground(ColorMuted).Render("[LOCAL EXECUTION]")
 	} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
-		cacheBadge = lipgloss.NewStyle().Foreground(ColorHighlight).Render("[USER INBOUND / STAGED]")
+		cacheBadge = lipgloss.NewStyle().Foreground(ColorHighlight).Render("[USER INPUT]")
 	} else if e.IsCompactionStep() || e.Scope == core.ScopeSystemCompaction {
-		cacheBadge = TitleStyle.Render("[CONTEXT RE-ANCHORED]")
+		cacheBadge = TitleStyle.Render("[COMPACTION RECORD]")
 	} else {
 		switch e.CacheStatus {
-		case "HIT":
-			cacheBadge = BadgeSuccess.Render(fmt.Sprintf("[CACHE HIT %.1f%%]", t.CacheHitRate))
-		case "PARTIAL":
-			cacheBadge = BadgeWarning.Render(fmt.Sprintf("[PARTIAL HIT %.1f%%]", t.CacheHitRate))
-		case "WRITE":
-			cacheBadge = TitleStyle.Render("[CACHE WRITE / INITIAL]")
-		case "EXPIRED":
-			cacheBadge = BadgeDanger.Render("[TTL EXPIRED / COLD START]")
+		case "HIT", "PARTIAL":
+			hitRate, _ := usage.CacheHitRate()
+			cacheBadge = BadgeSuccess.Render(fmt.Sprintf("[DECODED CACHE %.1f%%]", hitRate))
 		default:
-			cacheBadge = BadgeDanger.Render("[CACHE MISS / BROKEN]")
+			cacheBadge = BadgeDanger.Render("[CACHE DATA UNAVAILABLE]")
 		}
 	}
 
@@ -396,36 +484,28 @@ func (m Model) renderDashboardView() string {
 		} else if e.Source == "SYSTEM" {
 			p1Title = "TRACK 1: INTERNAL HARNESS BACKGROUND TASK"
 		}
-		invokedModel := m.getStepModelName(e)
-		if invokedModel == "" {
-			invokedModel = "Gemini 3.7 Flash"
-		}
 		toolName := m.getLocalToolName(e)
 		if toolName == "" {
 			toolName = string(e.Type)
 		}
-		packagedInfo := "Staged for Next Cloud Turn"
+		packagedInfo := "No linked cloud step observed"
 		if e.PackagedInStepIdx > 0 {
-			packagedInfo = fmt.Sprintf("Billed in Cloud Turn #%04d ☁️", e.PackagedInStepIdx)
+			packagedInfo = fmt.Sprintf("Linked to Cloud Step #%04d", e.PackagedInStepIdx)
 		}
 
 		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 		if contentWidth < 80 {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role  : %s (%s | Step #%03d)\n", e.GetAgentRole(), toolName, e.StepIndex))
-			p1.WriteString(fmt.Sprintf("  • Total Context  : Nil (Local Subprocess)\n"))
-			p1.WriteString(fmt.Sprintf("  • Step Delta     : +%s Tok (Local Buffer)\n", formatTokShort(t.StepDelta)))
-			p1.WriteString(fmt.Sprintf("  • Status & Bill  : %s | %s", e.Status, packagedInfo))
+			p1.WriteString("  • Persisted Usage: unavailable for local event\n")
+			p1.WriteString(fmt.Sprintf("  • Local Text     : +%s Tok (cl100k_base)\n", formatTokShort(t.StepDelta)))
+			p1.WriteString(fmt.Sprintf("  • Status & Link  : %s | %s", e.Status, packagedInfo))
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role        : %s (Tool Action: %s | Step #%04d | Status: %s | %s)\n", e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Render(toolName), e.StepIndex, e.Status, timeStr))
-			p1.WriteString(fmt.Sprintf("  • Total Context Window : Nil (Local Machine Subprocess / 0 GPU Inbound)\n"))
-			p1.WriteString(fmt.Sprintf("  • Step Delta (Buffer)  : +%d Tokens (Local Output Buffer ➔ Staged for Next Turn)\n", t.StepDelta))
-			if e.Status == "BLOCKED" {
-				p1.WriteString("  • Billing Attribution  : Blocked by System Permission Guard (0 GPU Tokens Billed) 🛡️")
-			} else {
-				p1.WriteString(fmt.Sprintf("  • Billing Attribution  : Local Machine Subprocess (0 GPU Tokens) ➔ %s", packagedInfo))
-			}
+			p1.WriteString("  • Persisted Usage      : unavailable for local event\n")
+			p1.WriteString(fmt.Sprintf("  • Local Text Estimate  : +%d Tokens (cl100k_base)\n", t.StepDelta))
+			p1.WriteString(fmt.Sprintf("  • Observed Step Link   : %s", packagedInfo))
 			if !isPlayback && e.ParentStepIdx > 0 {
-				p1.WriteString(fmt.Sprintf("\n  • Invoking Parent      : Dispatched by Cloud Step #%04d (%s)", e.ParentStepIdx, invokedModel))
+				p1.WriteString(fmt.Sprintf("\n  • Parent Relationship  : Triggered by Step #%04d", e.ParentStepIdx))
 			}
 		}
 	} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
@@ -433,17 +513,17 @@ func (m Model) renderDashboardView() string {
 		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 		if contentWidth < 80 {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role  : HUMAN CLIENT (Step #%03d)\n", e.StepIndex))
-			p1.WriteString(fmt.Sprintf("  • Total Context  : Nil (Client Intent)\n"))
-			p1.WriteString(fmt.Sprintf("  • Step Delta     : +%s Tok (Prompt Buffer)\n", formatTokShort(t.StepDelta)))
+			p1.WriteString("  • Persisted Usage: unavailable for client input\n")
+			p1.WriteString(fmt.Sprintf("  • Local Text     : +%s Tok (cl100k_base)\n", formatTokShort(t.StepDelta)))
 			p1.WriteString(fmt.Sprintf("  • Status & Time  : %s | %s", e.Status, timeStr))
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role        : HUMAN CLIENT Intent (Step #%03d | Status: %s | %s)\n", e.StepIndex, e.Status, timeStr))
-			p1.WriteString(fmt.Sprintf("  • Total Context Window : Nil (Client Inbound Intent / Pre-Inference Staged)\n"))
-			p1.WriteString(fmt.Sprintf("  • Step Delta (Prompt)  : +%d Tokens (Natural Language Inbound Buffer)\n", t.StepDelta))
+			p1.WriteString("  • Persisted Usage      : unavailable for client input\n")
+			p1.WriteString(fmt.Sprintf("  • Local Text Estimate  : +%d Tokens (cl100k_base)\n", t.StepDelta))
 			if e.PackagedInStepIdx > 0 {
-				p1.WriteString(fmt.Sprintf("  • Inference Settlement : Ingested ➔ Settled & Billed in Cloud Step #%04d ☁️", e.PackagedInStepIdx))
+				p1.WriteString(fmt.Sprintf("  • Observed Step Link   : Linked to Cloud Step #%04d", e.PackagedInStepIdx))
 			} else {
-				p1.WriteString("  • Billing Status       : Inbound Intent ➔ Staged locally (Awaiting Next Cloud Inference Turn ⏳)")
+				p1.WriteString("  • Observed Step Link   : No linked cloud step observed")
 			}
 		}
 	} else if e.IsCompactionStep() || e.Scope == core.ScopeSystemCompaction {
@@ -451,72 +531,52 @@ func (m Model) renderDashboardView() string {
 		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 		if contentWidth < 80 {
 			p1.WriteString(fmt.Sprintf("  • Event / Role   : %s Context Compaction (Step #%03d)\n", e.GetAgentRole(), e.StepIndex))
-			p1.WriteString(fmt.Sprintf("  • Summary Size   : %d Tokens  %s\n", total, cacheBadge))
+			p1.WriteString(fmt.Sprintf("  • Summary Size   : %d Tokens (local estimate)  %s\n", t.StepDelta, cacheBadge))
 			p1.WriteString(fmt.Sprintf("  • Step Delta     : +%s Tok (GC Summary)\n", formatTokShort(t.StepDelta)))
 			p1.WriteString(fmt.Sprintf("  • Status & Time  : %s | %s", e.Status, timeStr))
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Origin / Role        : %s Middleware (Sidecar Context GC | Step #%03d | Status: %s | %s)\n", e.GetAgentRole(), e.StepIndex, e.Status, timeStr))
-			p1.WriteString(fmt.Sprintf("  • Summary Size         : %d Tokens (Replaces ~200k+ Old Historical Tokens)  %s\n", total, cacheBadge))
+			p1.WriteString(fmt.Sprintf("  • Summary Size         : %d Tokens (local text estimate)  %s\n", t.StepDelta, cacheBadge))
 			p1.WriteString(fmt.Sprintf("  • Step Delta (Summary) : +%d Tokens (Compacted Summary Payload)\n", t.StepDelta))
-			p1.WriteString("  • Window Action        : Prepend Checkpoint ➔ Re-anchors Active Window Base for Next Turn 🔄")
+			p1.WriteString("  • Interpretation       : A compaction checkpoint was observed; the omitted history is not reconstructed")
 		}
 	} else {
-		p1Title := "TRACK 1: OFFICIAL CLOUD TELEMETRY"
+		p1Title := "TRACK 1: PERSISTED CLOUD USAGE OBSERVATION"
 		if e.IsSubagent || e.GetAgentRole() == "SUBAGENT" {
-			p1Title = "TRACK 1: SUBAGENT CLOUD TELEMETRY"
+			p1Title = "TRACK 1: SUBAGENT PERSISTED USAGE OBSERVATION"
 		}
 		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 
-		// Dynamic financial & capacity calculations
-		modelName := t.OfficialModel
+		modelName := usage.ModelName
 		if modelName == "" {
-			modelName = "gemini-3.7-flash"
+			modelName = "unknown"
 		}
-		cachedRate := t.PricingCachedUSD
-		uncachedRate := t.PricingUncachedUSD
-		if uncachedRate == 0 {
-			spec := core.ResolveModelSpec(modelName, nil)
-			cachedRate = spec.Pricing.CachedPerMillionUSD
-			uncachedRate = spec.Pricing.UncachedPerMillionUSD
-		}
-		costUSD := float64(t.CachedTokens)*cachedRate/core.TokensPerMillion + float64(t.NewTokens)*uncachedRate/core.TokensPerMillion
-		discountRate := t.CacheDiscount
-		if discountRate == 0 {
-			discountRate = 0.90
-		}
-		savedTok := int(float64(t.CachedTokens) * discountRate)
-		exchangeRate := t.ExchangeRate
-		if exchangeRate == 0 {
-			exchangeRate = core.DefaultUSDtoTWDExchangeRate
-		}
-		costTWD := costUSD * exchangeRate
 
 		if contentWidth < 80 {
 			p1.WriteString(fmt.Sprintf("  • Agent / Model  : [%s] %s (Step #%03d)\n",
 				e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(modelName, contentWidth-28)), e.StepIndex))
-			if total > 0 {
-				p1.WriteString(fmt.Sprintf("  • Total Context  : %s Tok (%4.1f%% of %dk Window) %s\n",
-					lipgloss.NewStyle().Bold(true).Render(formatTokShort(total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
-				p1.WriteString(fmt.Sprintf("  • Step Delta     : +%s Tok | %s Cached (%.1f%%)\n",
-					formatTokShort(t.StepDelta), formatTokShort(t.CachedTokens), t.CacheHitRate))
+			if usage.HasTotalTokens {
+				p1.WriteString(fmt.Sprintf("  • Observed Total : %s Tok %s\n", lipgloss.NewStyle().Bold(true).Render(formatTokShort(total)), cacheBadge))
+				p1.WriteString(fmt.Sprintf("  • Cache Fields   : %s\n", formatCacheFields(usage)))
 			} else {
-				p1.WriteString(fmt.Sprintf("  • Total Context  : Nil (Awaiting Telemetry ⏳)\n"))
-				p1.WriteString(fmt.Sprintf("  • Step Delta     : +%s Tok (Estimated)\n", formatTokShort(t.StepDelta)))
+				p1.WriteString("  • Observed Total : unavailable\n")
+				p1.WriteString(fmt.Sprintf("  • Local Delta    : ~%s Tok (cl100k_base estimate)\n", formatTokShort(t.StepDelta)))
 			}
-			p1.WriteString(fmt.Sprintf("  • Status & Cost  : ~$%.4f USD | Status: %s", costUSD, e.Status))
+			p1.WriteString(fmt.Sprintf("  • Status         : %s", e.Status))
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Agent / Model        : [%s] %s  (Step #%03d | Status: %s | %s)\n",
 				e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName), e.StepIndex, e.Status, timeStr))
-			if total > 0 {
-				p1.WriteString(fmt.Sprintf("  • Total Context Window : %s Tokens (%5.1f%% of %dk Window)  %s\n",
-					lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1000, cacheBadge))
-				p1.WriteString(fmt.Sprintf("  • Step Delta (New In)  : +%s Tokens (Uncached Prefill) | Turn Cost: ~$%.4f USD (NT$ %.2f)\n",
-					formatTokShort(t.StepDelta), costUSD, costTWD))
-				p1.WriteString(fmt.Sprintf("  • Prefix Cache Savings : %s Tokens Cached (%.1f%% Hit) ➔ Net Saved ~%s Tok (%.1f%% Discount)",
-					formatTokShort(t.CachedTokens), t.CacheHitRate, formatTokShort(savedTok), discountRate*100.0))
+			if usage.HasTotalTokens {
+				if usage.HasContextLimit {
+					p1.WriteString(fmt.Sprintf("  • Observed Context      : %s Tokens (%5.1f%% of observed %dk limit)  %s\n", lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1_000, cacheBadge))
+				} else {
+					p1.WriteString(fmt.Sprintf("  • Observed Context      : %s Tokens (limit unavailable)  %s\n", lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), cacheBadge))
+				}
+				p1.WriteString(fmt.Sprintf("  • Decoded Cache Fields  : %s\n", formatCacheFields(usage)))
+				p1.WriteString(fmt.Sprintf("  • Local Delta Estimate  : +%s Tokens (cl100k_base)", formatTokShort(t.StepDelta)))
 			} else {
-				p1.WriteString(fmt.Sprintf("  • Total Context Window : Nil (Awaiting SQLite Telemetry Record ⏳)\n"))
-				p1.WriteString(fmt.Sprintf("  • Step Delta (Local)   : +%d Tokens (Estimated Local BPE)", t.StepDelta))
+				p1.WriteString("  • Observed Context      : unavailable\n")
+				p1.WriteString(fmt.Sprintf("  • Local Delta Estimate  : +%d Tokens (cl100k_base)", t.StepDelta))
 			}
 			if !isPlayback && len(e.ConsumedStepIndices) > 0 {
 				var childStrs []string
@@ -534,43 +594,49 @@ func (m Model) renderDashboardView() string {
 
 	panel1Box := PanelStyle.Width(panelInnerWidth).Render(p1.String())
 
-	// ==================== PANEL 2: TRACK 2: LOCAL 5-DIMENSION CONTEXT ANATOMY ====================
+	// ==================== PANEL 2: PLAYBACK CONTEXT EVIDENCE ====================
 	var p2 strings.Builder
-	p2Title := "TRACK 2: LOCAL 5-DIMENSION CONTEXT ANATOMY (PAYLOAD ANALYSIS)"
+	p2Title := "TRACK 2: PLAYBACK CONTEXT EVIDENCE (LOCAL ESTIMATE; NOT REQUEST ANATOMY)"
 	p2.WriteString(TitleStyle.Render(p2Title) + "\n")
-
-	barBlocks := 12
-	if contentWidth < 70 {
-		barBlocks = 8
-	}
-
-	if contentWidth < 80 {
-		p2.WriteString(fmt.Sprintf("  1. System Prompt : %-6s (%4.1f%%) [%s]\n",
-			formatTokShort(t.SystemTokens), sysPct, renderColorBar(sysPct, barBlocks, ColorSecondary)))
-		p2.WriteString(fmt.Sprintf("  2. Tools Schema  : %-6s (%4.1f%%) [%s]\n",
-			formatTokShort(t.ToolsDefTokens), toolsPct, renderColorBar(toolsPct, barBlocks, ColorSecondary)))
-		p2.WriteString(fmt.Sprintf("  3. Tool Results  : %-6s (%4.1f%%) [%s]\n",
-			formatTokShort(t.ToolResultTokens), resPct, renderColorBar(resPct, barBlocks, ColorHighlight)))
-		p2.WriteString(fmt.Sprintf("  4. History Turns : %-6s (%4.1f%%) [%s]\n",
-			formatTokShort(t.HistoryTokens), histPct, renderColorBar(histPct, barBlocks, ColorPrimary)))
-		p2.WriteString(fmt.Sprintf("  5. Active / CoT  : %-6s (%4.1f%%) [%s]",
-			formatTokShort(t.ActiveTurnTokens+t.ThinkingTokens), activePct, renderColorBar(activePct, barBlocks, ColorWarning)))
+	estimate := m.playbackContextEstimateFor(dashboardHistoryIndex, e)
+	if !estimate.Available {
+		p2.WriteString("  • Playback estimate: preparing cached transcript timeline\n")
+		p2.WriteString("  • Navigation remains local: no SQLite query runs when moving the cursor")
 	} else {
-		p2.WriteString(fmt.Sprintf("  1. System Instruction : %-8s Tokens (%5.1f%%)  [%s]\n",
-			formatTokShort(t.SystemTokens), sysPct, renderColorBar(sysPct, 15, ColorSecondary)))
-		p2.WriteString(fmt.Sprintf("  2. MCP Tools Schema   : %-8s Tokens (%5.1f%%)  [%s]\n",
-			formatTokShort(t.ToolsDefTokens), toolsPct, renderColorBar(toolsPct, 15, ColorSecondary)))
-		p2.WriteString(fmt.Sprintf("  3. Tool Results / Diff: %-8s Tokens (%5.1f%%)  [%s]\n",
-			formatTokShort(t.ToolResultTokens), resPct, renderColorBar(resPct, 15, ColorHighlight)))
-		p2.WriteString(fmt.Sprintf("  4. Conversation Hist  : %-8s Tokens (%5.1f%%)  [%s]\n",
-			formatTokShort(t.HistoryTokens), histPct, renderColorBar(histPct, 15, ColorPrimary)))
-		p2.WriteString(fmt.Sprintf("  5. Active Turn / CoT  : %-8s Tokens (%5.1f%%)  [%s]",
-			formatTokShort(t.ActiveTurnTokens+t.ThinkingTokens), activePct, renderColorBar(activePct, 15, ColorWarning)))
+		p2.WriteString(formatContextEstimateScope(estimate) + "\n")
+		barBlocks := dashboardDefaultProgressBarBlocks
+		if contentWidth < dashboardNarrowContentWidth {
+			barBlocks = dashboardNarrowProgressBarBlocks
+		}
+		p2.WriteString(formatEstimateDimension(contextEstimateDimensionLabel("1. System", estimate.SourceKind), estimate.SystemTokens, estimate.TotalTokens, barBlocks, ColorSecondary) + "\n")
+		p2.WriteString(formatEstimateDimension(contextEstimateDimensionLabel("2. Tools", estimate.SourceKind), estimate.ToolsTokens, estimate.TotalTokens, barBlocks, ColorHighlight) + "\n")
+		p2.WriteString(formatEstimateDimension("3. Tool buffers [transcript]", estimate.ToolBufferTokens, estimate.TotalTokens, barBlocks, ColorWarning) + "\n")
+		p2.WriteString(formatEstimateDimension(contextEstimateDimensionLabel("4. History", estimate.SourceKind), estimate.HistoryTokens, estimate.TotalTokens, barBlocks, ColorPrimary) + "\n")
+		p2.WriteString(formatEstimateDimension("5. Inbound [transcript]", estimate.InboundTokens, estimate.TotalTokens, barBlocks, ColorSuccess) + "\n")
+		p2.WriteString(fmt.Sprintf("  • Visible evidence counted locally: %s Tokens (the five bars add only to this number)\n", formatTokShort(estimate.TotalTokens)))
+		p2.WriteString("  • Private, non-text, and unclassified fields are not measured; Track 1 is separate stored telemetry")
 	}
 
 	panel2Box := PanelStyle.Width(panelInnerWidth).Render(p2.String())
 
 	return lipgloss.JoinVertical(lipgloss.Left, panel0Box, panel1Box, panel2Box)
+}
+
+func formatContextEstimateScope(estimate core.VisibleContextEvidenceEstimate) string {
+	if estimate.HasSnapshotGeneratedStep {
+		return fmt.Sprintf("  • Scope: selected Step #%d; snapshot idx=%d exactly matches this generated step", estimate.SelectedStepIndex, estimate.SnapshotGenIndex)
+	}
+	if estimate.IsGenerationInputEstimate {
+		return fmt.Sprintf("  • Scope: selected cloud Step #%d; transcript evidence observed before this generation", estimate.SelectedStepIndex)
+	}
+	return fmt.Sprintf("  • Scope: selected Step #%d; transcript evidence observed through this event", estimate.SelectedStepIndex)
+}
+
+func contextEstimateDimensionLabel(dimension string, source core.ContextEvidenceKind) string {
+	if source == core.ContextEvidencePersistedSnapshot {
+		return dimension + " [snapshot]"
+	}
+	return dimension + " [transcript]"
 }
 
 func (m Model) renderHistoryView() string {
@@ -1018,19 +1084,6 @@ func (m Model) renderHistoryViewHorizontal() string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightCol)
 }
 
-func renderColorBar(pct float64, totalBlocks int, color lipgloss.TerminalColor) string {
-	filled := int((pct / 100.0) * float64(totalBlocks))
-	if filled > totalBlocks {
-		filled = totalBlocks
-	}
-	if filled < 0 {
-		filled = 0
-	}
-	filledStr := lipgloss.NewStyle().Foreground(color).Render(strings.Repeat("█", filled))
-	emptyStr := lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("░", totalBlocks-filled))
-	return filledStr + emptyStr
-}
-
 // truncateVisualWidth truncates a string by its visual terminal column width (CJK, Emoji & ANSI escape aware)
 func truncateVisualWidth(s string, maxVisualWidth int) string {
 	s = strings.ReplaceAll(s, "\n", " ")
@@ -1100,23 +1153,29 @@ func shortenType(t string) string {
 }
 
 func formatShortCache(e core.UnifiedAgentEvent) string {
-	// Only cloud inference steps have GPU KV-Cache telemetry
-	if !e.IsCloudStep() {
+	if !e.IsCloudStep() || !e.Usage.Available {
 		return ""
 	}
 	status := e.CacheStatus
 	if status == "" {
-		status = core.ClassifyCacheStatus(e.Tokens.CacheHitRate, e.Tokens.CachedTokens, e.Tokens.TotalTokens, false)
+		hitRate, ok := e.Usage.CacheHitRate()
+		if !ok {
+			return ""
+		}
+		status = core.ClassifyCacheStatus(hitRate, e.Usage.CachedTokens, e.Usage.TotalTokens)
 	}
+	hitRate, hasHitRate := e.Usage.CacheHitRate()
 	switch status {
 	case "HIT":
-		return lipgloss.NewStyle().Foreground(ColorSuccess).Render(fmt.Sprintf("[HIT %.0f%%]", e.Tokens.CacheHitRate))
+		if hasHitRate {
+			return lipgloss.NewStyle().Foreground(ColorSuccess).Render(fmt.Sprintf("[HIT %.0f%%]", hitRate))
+		}
+		return ""
 	case "PARTIAL":
-		return lipgloss.NewStyle().Foreground(ColorWarning).Render(fmt.Sprintf("[PART %.0f%%]", e.Tokens.CacheHitRate))
-	case "WRITE":
-		return lipgloss.NewStyle().Foreground(ColorSecondary).Render("[WRITE]")
-	case "EXPIRED", "TTL_EXPIRED":
-		return lipgloss.NewStyle().Foreground(ColorHighlight).Render("[EXPIRED]")
+		if hasHitRate {
+			return lipgloss.NewStyle().Foreground(ColorWarning).Render(fmt.Sprintf("[PART %.0f%%]", hitRate))
+		}
+		return ""
 	case "MISS":
 		return lipgloss.NewStyle().Foreground(ColorDanger).Render("[MISS]")
 	default:
@@ -1306,7 +1365,7 @@ func (m Model) getStepModelName(e core.UnifiedAgentEvent) string {
 	if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution || e.Type == core.StepTypeUserInput {
 		return ""
 	}
-	model := e.Tokens.OfficialModel
+	model := e.Usage.ModelName
 	if model == "" && (e.IsCloudStep() || e.Type == core.StepTypeToolCall || e.Type == core.StepTypeModelResponse) {
 		model = m.getSessionModelName()
 	}

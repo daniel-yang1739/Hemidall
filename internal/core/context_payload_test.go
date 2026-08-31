@@ -95,15 +95,23 @@ func TestContext_Pos_EvidenceJsonSerialization(t *testing.T) {
 	if _, ok := parsed["evidence"]; !ok {
 		t.Errorf("Expected evidence metadata in serialized JSON")
 	}
-	if _, ok := parsed["persisted_tool_entries"]; !ok {
-		t.Errorf("Expected persisted tool entry field in evidence JSON")
-	}
-	if _, ok := parsed["persisted_field_2_occurrence_count"]; !ok {
-		t.Errorf("Expected field-2 occurrence count in evidence JSON")
+	if _, ok := parsed["context_snapshot"]; !ok {
+		t.Errorf("Expected context snapshot field in evidence JSON")
 	}
 	if _, ok := parsed["heimdall_runtime_metadata"]; !ok {
 		t.Errorf("Expected Heimdall runtime metadata in evidence JSON")
 	}
+}
+
+func TestContext_Pos_PersistedRecordRawUsesExplicitProvenance(t *testing.T) {
+	payload := AgentContextPayload{
+		Provenance:       map[string]string{"persisted_records": "persisted_gen_metadata_field_1.2_repeated"},
+		PersistedRecords: []PersistedContextRecord{{Position: 2, PrimaryText: "event text"}},
+	}
+
+	raw, err := SerializePersistedActiveEventRaw(payload, 2)
+	requireContextNoError(t, err)
+	requireContextContains(t, raw, `"source": "persisted_gen_metadata_field_1.2_repeated"`)
 }
 
 func TestContext_Neg_NilHistoryDoesNotFabricateSessionData(t *testing.T) {
@@ -133,7 +141,7 @@ func TestContext_Neg_EmptyToolsListValidEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SerializeContextEvidence on empty tools failed: %v", err)
 	}
-	if !strings.Contains(wireJSON, `"persisted_tool_entries": []`) && !strings.Contains(wireJSON, `"persisted_tool_entries":[]`) {
+	if !strings.Contains(wireJSON, `"tool_entries": []`) && !strings.Contains(wireJSON, `"tool_entries":[]`) {
 		t.Errorf("Expected valid empty tools array in JSON, got %s", wireJSON)
 	}
 }
@@ -228,7 +236,21 @@ func TestSerializeSubcategoryRaw_RuntimeMetadataUsesStableKeyOrder(t *testing.T)
 
 func buildContextPayloadForTest(history []UnifiedAgentEvent, sessionID, targetModel string) AgentContextPayload {
 	return BuildContextPayloadFromHistory(ContextBuildInput{
-		History: history, SessionID: sessionID, AgentType: AgentTypeAntigravity, TargetModel: targetModel,
+		History: history, SessionID: sessionID, TargetModel: targetModel,
 		NativeTools: GetNativeToolsDefinitions(history),
 	})
+}
+
+func requireContextNoError(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func requireContextContains(t *testing.T, actual, expected string) {
+	t.Helper()
+	if !strings.Contains(actual, expected) {
+		t.Fatalf("expected %q in %q", expected, actual)
+	}
 }

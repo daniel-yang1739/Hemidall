@@ -1,210 +1,89 @@
 package core
 
-import (
-	"strings"
+import "strings"
+
+const (
+	gemini37FlashModelID                    = "gemini-3.7-flash"
+	gemini37FlashStandardInputUSDPerMillion = 0.75
+	gemini37FlashCachedInputUSDPerMillion   = 0.075
 )
 
-// PricingSpec represents official API pricing per million tokens in USD.
-type PricingSpec struct {
-	CachedPerMillionUSD   float64
-	UncachedPerMillionUSD float64
+// ModelPricingSpec is a verified, provider-specific input-pricing profile.
+// It supports an input-price-equivalent projection only; it does not prove the
+// account, endpoint tier, storage fees, output fees, or invoice used by a host.
+type ModelPricingSpec struct {
+	ModelID                    string
+	StandardInputUSDPerMillion float64
+	CachedInputUSDPerMillion   float64
+	SourceLabel                string
+	SourceURL                  string
 }
 
-// ModelSpec defines the authoritative physical hardware limits, agent default windows,
-// GPU prefix cache discount rates, and pricing specifications for an AI model.
-type ModelSpec struct {
-	ModelID            string
-	DisplayName        string
-	PhysicalMaxTokens  int
-	DefaultAgentWindow int
-	CacheDiscountRate  float64
-	Pricing            PricingSpec
-}
-
-// OfficialModelSpecs defines the built-in registry of verified official model specifications.
-var OfficialModelSpecs = map[string]ModelSpec{
-	"gemini-3.7-flash": {
-		ModelID:            "gemini-3.7-flash",
-		DisplayName:        "Gemini 3.7 Flash",
-		PhysicalMaxTokens:  1048576,
-		DefaultAgentWindow: 256000,
-		CacheDiscountRate:  0.90,
-		Pricing: PricingSpec{
-			CachedPerMillionUSD:   0.075,
-			UncachedPerMillionUSD: 0.75,
-		},
-	},
-	"gemini-3-flash-preview": {
-		ModelID:            "gemini-3-flash-preview",
-		DisplayName:        "Gemini 3.0 Flash Preview",
-		PhysicalMaxTokens:  1048576,
-		DefaultAgentWindow: 256000,
-		CacheDiscountRate:  0.90,
-		Pricing: PricingSpec{
-			CachedPerMillionUSD:   0.075,
-			UncachedPerMillionUSD: 0.75,
-		},
-	},
-	"gemini-2.5-flash": {
-		ModelID:            "gemini-2.5-flash",
-		DisplayName:        "Gemini 2.5 Flash",
-		PhysicalMaxTokens:  1048576,
-		DefaultAgentWindow: 256000,
-		CacheDiscountRate:  0.90,
-		Pricing: PricingSpec{
-			CachedPerMillionUSD:   0.075,
-			UncachedPerMillionUSD: 0.75,
-		},
-	},
-	"gemini-2.5-pro": {
-		ModelID:            "gemini-2.5-pro",
-		DisplayName:        "Gemini 2.5 Pro",
-		PhysicalMaxTokens:  2097152,
-		DefaultAgentWindow: 1048576,
-		CacheDiscountRate:  0.90,
-		Pricing: PricingSpec{
-			CachedPerMillionUSD:   0.125,
-			UncachedPerMillionUSD: 1.25,
-		},
-	},
-	"gemini-3-pro-preview": {
-		ModelID:            "gemini-3-pro-preview",
-		DisplayName:        "Gemini 3.0 Pro Preview",
-		PhysicalMaxTokens:  2097152,
-		DefaultAgentWindow: 1048576,
-		CacheDiscountRate:  0.90,
-		Pricing: PricingSpec{
-			CachedPerMillionUSD:   0.125,
-			UncachedPerMillionUSD: 1.25,
-		},
-	},
-	"gemini-3.1-pro-preview": {
-		ModelID:            "gemini-3.1-pro-preview",
-		DisplayName:        "Gemini 3.1 Pro Preview",
-		PhysicalMaxTokens:  2097152,
-		DefaultAgentWindow: 1048576,
-		CacheDiscountRate:  0.90,
-		Pricing: PricingSpec{
-			CachedPerMillionUSD:   0.125,
-			UncachedPerMillionUSD: 1.25,
-		},
-	},
-	"gemini-3.1-flash-lite": {
-		ModelID:            "gemini-3.1-flash-lite",
-		DisplayName:        "Gemini 3.1 Flash Lite",
-		PhysicalMaxTokens:  1048576,
-		DefaultAgentWindow: 128000,
-		CacheDiscountRate:  0.90,
-		Pricing: PricingSpec{
-			CachedPerMillionUSD:   0.01875,
-			UncachedPerMillionUSD: 0.075,
-		},
-	},
-	"claude-3-7-sonnet": {
-		ModelID:            "claude-3-7-sonnet",
-		DisplayName:        "Claude 3.7 Sonnet",
-		PhysicalMaxTokens:  200000,
-		DefaultAgentWindow: 200000,
-		CacheDiscountRate:  0.90,
-		Pricing: PricingSpec{
-			CachedPerMillionUSD:   0.30,
-			UncachedPerMillionUSD: 3.00,
-		},
-	},
-	"deepseek-r1": {
-		ModelID:            "deepseek-r1",
-		DisplayName:        "DeepSeek R1",
-		PhysicalMaxTokens:  128000,
-		DefaultAgentWindow: 64000,
-		CacheDiscountRate:  0.75,
-		Pricing: PricingSpec{
-			CachedPerMillionUSD:   0.07,
-			UncachedPerMillionUSD: 0.27,
-		},
-	},
-	"ollama-local": {
-		ModelID:            "ollama-local",
-		DisplayName:        "Ollama Local",
-		PhysicalMaxTokens:  32768,
-		DefaultAgentWindow: 32768,
-		CacheDiscountRate:  0.0,
-		Pricing: PricingSpec{
-			CachedPerMillionUSD:   0.0,
-			UncachedPerMillionUSD: 0.0,
-		},
-	},
-}
-
-// DefaultFallbackModelSpec provides a safe fallback specification when a model is unrecognized.
-var DefaultFallbackModelSpec = ModelSpec{
-	ModelID:            "unknown-model",
-	DisplayName:        "Standard LLM Agent",
-	PhysicalMaxTokens:  1048576,
-	DefaultAgentWindow: DefaultFallbackAgentWindow,
-	CacheDiscountRate:  0.75,
-	Pricing: PricingSpec{
-		CachedPerMillionUSD:   0.0375,
-		UncachedPerMillionUSD: 0.15,
-	},
-}
-
-// ResolveModelSpec matches a raw model string against the official registry and applies
-// any active user or host configuration overrides (By-Model -> Global -> Official Registry -> Fallback).
-func ResolveModelSpec(modelName string, hostConfig *HostConfig) ModelSpec {
-	normalized := strings.ToLower(strings.TrimSpace(modelName))
-	
-	// 1. Identify base official model specification
-	matchedSpec := DefaultFallbackModelSpec
-	if normalized != "" {
-		for key, spec := range OfficialModelSpecs {
-			if strings.EqualFold(key, normalized) || strings.Contains(normalized, key) {
-				matchedSpec = spec
-				break
-			}
-		}
-		// Additional heuristic aliases
-		if matchedSpec.ModelID == "unknown-model" {
-			if strings.Contains(normalized, "flash-lite") {
-				matchedSpec = OfficialModelSpecs["gemini-3.1-flash-lite"]
-			} else if strings.Contains(normalized, "flash") {
-				matchedSpec = OfficialModelSpecs["gemini-3.7-flash"]
-			} else if strings.Contains(normalized, "pro") {
-				matchedSpec = OfficialModelSpecs["gemini-2.5-pro"]
-			} else if strings.Contains(normalized, "claude") || strings.Contains(normalized, "sonnet") {
-				matchedSpec = OfficialModelSpecs["claude-3-7-sonnet"]
-			} else if strings.Contains(normalized, "deepseek") {
-				matchedSpec = OfficialModelSpecs["deepseek-r1"]
-			} else if strings.Contains(normalized, "ollama") || strings.Contains(normalized, "llama") {
-				matchedSpec = OfficialModelSpecs["ollama-local"]
-			}
-		}
+// CacheInputMultiplier returns the cached-input price as a fraction of the
+// standard input price. A ratio is available only for a complete positive spec.
+func (spec ModelPricingSpec) CacheInputMultiplier() (float64, bool) {
+	if spec.StandardInputUSDPerMillion <= 0 || spec.CachedInputUSDPerMillion < 0 {
+		return 0, false
 	}
+	return spec.CachedInputUSDPerMillion / spec.StandardInputUSDPerMillion, true
+}
 
-	// 2. Apply Host & User Configuration Overrides
-	if hostConfig != nil {
-		// Tier 1: By-Model Specific Override
-		if len(hostConfig.ModelOverrides) > 0 {
-			for pattern, override := range hostConfig.ModelOverrides {
-				if strings.Contains(normalized, strings.ToLower(pattern)) || strings.Contains(strings.ToLower(matchedSpec.ModelID), strings.ToLower(pattern)) {
-					if override.ContextWindow > 0 {
-						matchedSpec.DefaultAgentWindow = override.ContextWindow
-					}
-					if override.CacheDiscountRate > 0 {
-						matchedSpec.CacheDiscountRate = override.CacheDiscountRate
-					}
-					if override.Pricing != nil {
-						matchedSpec.Pricing = *override.Pricing
-					}
-					return matchedSpec
-				}
-			}
-		}
-
-		// Tier 2: Global Host Context Limit Override
-		if hostConfig.GlobalContextWindow > 0 {
-			matchedSpec.DefaultAgentWindow = hostConfig.GlobalContextWindow
-		}
+// ResolveModelPricing returns a profile only for an exact, verified model ID.
+// It intentionally does not use fuzzy family matching because cache prices can
+// differ across model revisions, endpoint tiers, and providers.
+func ResolveModelPricing(modelID string) (ModelPricingSpec, bool) {
+	switch strings.ToLower(strings.TrimSpace(modelID)) {
+	case gemini37FlashModelID:
+		return ModelPricingSpec{
+			ModelID:                    gemini37FlashModelID,
+			StandardInputUSDPerMillion: gemini37FlashStandardInputUSDPerMillion,
+			CachedInputUSDPerMillion:   gemini37FlashCachedInputUSDPerMillion,
+			SourceLabel:                "Google Gemini Developer API paid standard pricing",
+			SourceURL:                  "https://ai.google.dev/gemini-api/docs/pricing",
+		}, true
+	default:
+		return ModelPricingSpec{}, false
 	}
+}
 
-	return matchedSpec
+// CacheAdjustedInputProjection is the standard-input-price equivalent for the
+// comparable cache subset of one model. It is not a provider invoice.
+type CacheAdjustedInputProjection struct {
+	ModelID              string
+	ComparableTurns      int
+	ComparableTokens     int
+	CachedTokens         int
+	UncachedTokens       int
+	CacheInputMultiplier float64
+	EffectiveInputTokens float64
+	SourceLabel          string
+	SourceURL            string
+}
+
+// ProjectCacheAdjustedInput computes uncached + cached * cache-price-ratio.
+// The caller must keep different model profiles separate because a cross-model
+// sum of price-equivalent tokens has no common token-price baseline.
+func ProjectCacheAdjustedInput(stats ModelTokenStats) (CacheAdjustedInputProjection, bool) {
+	if stats.CachedTurnCount == 0 || stats.ComparableTokens <= 0 {
+		return CacheAdjustedInputProjection{}, false
+	}
+	spec, found := ResolveModelPricing(stats.ModelName)
+	if !found {
+		return CacheAdjustedInputProjection{}, false
+	}
+	multiplier, valid := spec.CacheInputMultiplier()
+	if !valid {
+		return CacheAdjustedInputProjection{}, false
+	}
+	return CacheAdjustedInputProjection{
+		ModelID:              spec.ModelID,
+		ComparableTurns:      stats.CachedTurnCount,
+		ComparableTokens:     stats.ComparableTokens,
+		CachedTokens:         stats.TotalCached,
+		UncachedTokens:       stats.TotalNew,
+		CacheInputMultiplier: multiplier,
+		EffectiveInputTokens: float64(stats.TotalNew) + float64(stats.TotalCached)*multiplier,
+		SourceLabel:          spec.SourceLabel,
+		SourceURL:            spec.SourceURL,
+	}, true
 }

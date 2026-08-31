@@ -319,9 +319,9 @@ func (m Model) renderContextInspector(payload core.AgentContextPayload, width, h
 
 	modeBadge := "[MODE: REFINED [r]]"
 	if m.isContextRawMode {
-		modeBadge = "[MODE: TRANSCRIPT FALLBACK [r]]"
+		modeBadge = "[MODE: EVIDENCE JSON [r]]"
 		if payload.SnapshotAvailable {
-			modeBadge = "[MODE: DECODED SNAPSHOT [r]]"
+			modeBadge = "[MODE: SNAPSHOT + TRANSCRIPT [r]]"
 		}
 	}
 	modeStyled := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(modeBadge)
@@ -467,21 +467,20 @@ func (m Model) buildRefinedInspectorLines(payload core.AgentContextPayload, widt
 		if payload.SnapshotAvailable {
 			lines = append(lines, fmt.Sprintf("  • Source database: %s", payload.SourcePath))
 			lines = append(lines, fmt.Sprintf("  • Snapshot record: gen_metadata.idx=%d (%s bytes)", payload.SnapshotGenIndex, formatNumber(payload.SnapshotBytes)))
+			lines = append(lines, "  • This page combines snapshot sections with transcript observations and Heimdall runtime metadata.")
 		} else {
 			lines = append(lines, "  • Persisted context snapshot: unavailable; using transcript observations.")
 		}
-		lines = append(lines, fmt.Sprintf("  • Observed model: %s (configured window: %s Tok)", targetModelLabel(payload.TargetModel), formatNumber(payload.ContextLimit)))
-		usagePercent := 0.0
-		if payload.ContextLimit > 0 {
-			usagePercent = float64(payload.TotalTokens) / float64(payload.ContextLimit) * 100.0
-		}
-		lines = append(lines, fmt.Sprintf("  • Latest available context tokens: %s Tok (%.1f%% of limit)", formatNumber(payload.TotalTokens), usagePercent))
-		if payload.ProjectedCached > 0 || payload.ProjectedNew > 0 || payload.ProjectedCostUSD > 0 || payload.ProjectedCostTWD > 0 {
-			lines = append(lines, fmt.Sprintf("  • Projected KV Cache Hit: %.1f%% (~%s cached, ~%s new)", payload.ProjectedHitRate, formatNumber(payload.ProjectedCached), formatNumber(payload.ProjectedNew)))
-			lines = append(lines, fmt.Sprintf("  • Estimated Cloud Turn Cost: $%.4f USD (~NT$ %.2f TWD)", payload.ProjectedCostUSD, payload.ProjectedCostTWD))
+		lines = append(lines, fmt.Sprintf("  • Observed model: %s", targetModelLabel(payload.TargetModel)))
+		if payload.TotalTokens > 0 && payload.ContextLimit > 0 {
+			usagePercent := float64(payload.TotalTokens) / float64(payload.ContextLimit) * 100.0
+			lines = append(lines, fmt.Sprintf("  • Latest persisted context: %s Tok (%.1f%% of observed %s Tok limit)", formatNumber(payload.TotalTokens), usagePercent, formatNumber(payload.ContextLimit)))
+		} else if payload.TotalTokens > 0 {
+			lines = append(lines, fmt.Sprintf("  • Latest persisted context: %s Tok (limit unavailable)", formatNumber(payload.TotalTokens)))
 		} else {
-			lines = append(lines, "  • Next-turn cache and cost projection: not calculated.")
+			lines = append(lines, "  • Latest persisted context: unavailable")
 		}
+		lines = append(lines, "  • Cache and cost projection: unavailable without a captured provider response.")
 		lines = append(lines, "")
 		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render("📦 Persisted Snapshot Segments:"))
 		lines = append(lines, fmt.Sprintf("  1. SYSTEM PROMPT   : %s Tok [contains identity, rules, skills and host instructions]", formatNumber(core.CountTokens(payload.SystemPrompt))))
@@ -490,7 +489,7 @@ func (m Model) buildRefinedInspectorLines(payload core.AgentContextPayload, widt
 		lines = append(lines, "  4. MCP ATTRIBUTION  : unknown without the official protobuf schema")
 		lines = append(lines, "")
 		lines = append(lines, lipgloss.NewStyle().Foreground(ColorHighlight).Render("💡 Action Hints:"))
-		lines = append(lines, "  • Press [r] to view Heimdall's decoded evidence representation.")
+		lines = append(lines, "  • Press [r] to view Heimdall's evidence JSON with per-field source labels.")
 		lines = append(lines, "  • This is not an HTTP body capture or an official GenerateContentRequest serialization.")
 		lines = append(lines, "  • Press [y] or [c] to copy the displayed payload directly to clipboard.")
 		lines = append(lines, "  • Use [j/k] to navigate to specific subcategories for isolated inspection.")
@@ -650,7 +649,7 @@ func (m Model) buildRawWireLines(payload core.AgentContextPayload, width int) []
 
 	subcatName := m.getSubcategoryName(m.contextSubItemIndex)
 	var formattedLines []string
-	formattedLines = append(formattedLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(fmt.Sprintf("// Heimdall decoded context view [%s]: %s", payload.SourceKind, subcatName)))
+	formattedLines = append(formattedLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(fmt.Sprintf("// Heimdall evidence view [%s]: %s", payload.SourceKind, subcatName)))
 	formattedLines = append(formattedLines, "")
 
 	for _, line := range strings.Split(wireJSON, "\n") {

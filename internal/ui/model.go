@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -11,7 +12,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 
-	"heimdall/internal/adapters/antigravity"
 	"heimdall/internal/core"
 )
 
@@ -50,68 +50,121 @@ const (
 // AgentEventMsg wraps core.UnifiedAgentEvent as a bubbletea message
 type AgentEventMsg core.UnifiedAgentEvent
 
+// HistoryBatchMsg applies a coherent background hydration batch in one UI
+// update. It prevents one redraw and one Context invalidation per transcript row.
+type HistoryBatchMsg struct {
+	Events []core.UnifiedAgentEvent
+}
+
+// SessionCatalogMsg replaces the lightweight startup session with the complete
+// asynchronously discovered catalog. It keeps catalog I/O outside the TUI loop.
+type SessionCatalogMsg struct {
+	Sessions []core.SessionInfo
+}
+
+// ContextEstimateMsg delivers snapshot-derived text measurements prepared in a
+// background goroutine. Rendering the Dashboard must not open SQLite or decode
+// a large protobuf blob on the UI thread.
+type ContextEstimateMsg struct {
+	SessionID    string
+	HistoryCount int
+	Refresh      bool
+	Estimate     core.VisibleContextEvidenceEstimate
+}
+
+// PlaybackContextEstimatesMsg delivers the transcript-only playback cache.
+// Its work is pure local tokenization and runs off the TUI update path.
+type PlaybackContextEstimatesMsg struct {
+	SessionID    string
+	HistoryCount int
+	Revision     int
+	Estimates    []core.VisibleContextEvidenceEstimate
+}
+
+// ContextPayloadBuilder is injected by the application boundary. Keeping this
+// dependency out of Model prevents redraws and unit tests from touching the
+// host filesystem or session database.
+type ContextPayloadBuilder func([]core.UnifiedAgentEvent, string) core.AgentContextPayload
+
+// ModelData is the non-blocking initial data available before the TUI starts.
+// History is normally empty at startup and populated by background batches.
+type ModelData struct {
+	Sessions              []core.SessionInfo
+	InitialHistory        []core.UnifiedAgentEvent
+	ContextPayloadBuilder ContextPayloadBuilder
+}
+
 // Model represents the bubbletea application state
 type Model struct {
-	sessionID                  string
-	activeView                 ActiveView
-	focusPane                  FocusPane
-	dashboardIdx               int
-	detailScroll               int
-	isVisualMode               bool
-	visualStart                int
-	visualCursor               int
-	clipboardStatus            string
-	clipboardStatusTime        time.Time
-	latestEvent                core.UnifiedAgentEvent
-	history                    []core.UnifiedAgentEvent
-	selectedIdx                int
-	historyOffset              int
-	width                      int
-	height                     int
-	eventCount                 int
-	lastActivity               time.Time
-	isSessionSwitcherOpen      bool
-	isShortcutsModalOpen       bool
-	sessionSearchQuery         string
-	selectedAgentTab           core.AgentType
-	availableSessions          []core.SessionInfo
-	filteredSessions           []core.SessionInfo
-	switcherSelectedIdx        int
-	docsSearchQuery            string
-	isDocsSearching            bool
-	docsScroll                 int
-	docsLang                   string
-	historyTypeFilter          TypeFilter
-	historyCacheFilter         CacheFilter
-	historyStepQuery           string
-	isHistorySearching         bool
-	historySearchErr           string
-	contextSubItemIndex        int
-	isContextRawMode           bool
-	contextFocusPane           FocusPane
-	contextDetailScroll        int
-	contextHistoryList         bool
-	contextHistoryIndex        int
-	contextHistoryItemCount    int
-	contextHistoryScrollOffset int
-	contextTargetAgent         string
-	contextPayload             core.AgentContextPayload
-	contextPayloadReady        bool
-	contextPayloadHistoryCount int
-	contextPayloadLastStep     int
-	contextInspectorLines      []string
-	contextInspectorMax        int
-	contextInspectorSubcat     int
-	contextInspectorRaw        bool
-	contextInspectorHistory    bool
-	contextInspectorEventIndex int
-	contextInspectorWidth      int
-	contextInspectorHeight     int
-	isCommandMode              bool
-	commandInput               string
-	statusMessage              string
-	statusMessageTime          time.Time
-	switcher                   SessionSwitcher
+	sessionID                      string
+	activeView                     ActiveView
+	focusPane                      FocusPane
+	dashboardIdx                   int
+	detailScroll                   int
+	isVisualMode                   bool
+	visualStart                    int
+	visualCursor                   int
+	clipboardStatus                string
+	clipboardStatusTime            time.Time
+	latestEvent                    core.UnifiedAgentEvent
+	history                        []core.UnifiedAgentEvent
+	historyIndex                   map[string]int
+	selectedIdx                    int
+	historyOffset                  int
+	width                          int
+	height                         int
+	lastActivity                   time.Time
+	isSessionSwitcherOpen          bool
+	isShortcutsModalOpen           bool
+	sessionSearchQuery             string
+	availableSessions              []core.SessionInfo
+	filteredSessions               []core.SessionInfo
+	switcherSelectedIdx            int
+	docsSearchQuery                string
+	isDocsSearching                bool
+	docsScroll                     int
+	docsLang                       string
+	historyTypeFilter              TypeFilter
+	historyCacheFilter             CacheFilter
+	historyStepQuery               string
+	isHistorySearching             bool
+	historySearchErr               string
+	contextSubItemIndex            int
+	isContextRawMode               bool
+	contextFocusPane               FocusPane
+	contextDetailScroll            int
+	contextHistoryList             bool
+	contextHistoryIndex            int
+	contextHistoryItemCount        int
+	contextHistoryScrollOffset     int
+	contextPayload                 core.AgentContextPayload
+	contextPayloadBuilder          ContextPayloadBuilder
+	contextEstimate                core.VisibleContextEvidenceEstimate
+	contextEstimateHistoryCount    int
+	contextEstimateRefreshPending  bool
+	contextEstimateRefreshDirty    bool
+	playbackContextEstimates       []core.VisibleContextEvidenceEstimate
+	playbackEstimateHistoryCount   int
+	playbackEstimateRevision       int
+	playbackEstimateCachedRevision int
+	playbackEstimateRefreshPending bool
+	playbackEstimateRefreshDirty   bool
+	contextPayloadReady            bool
+	contextPayloadHistoryCount     int
+	contextPayloadLastStep         int
+	contextInspectorLines          []string
+	contextInspectorMax            int
+	contextInspectorSubcat         int
+	contextInspectorRaw            bool
+	contextInspectorHistory        bool
+	contextInspectorEventIndex     int
+	contextInspectorWidth          int
+	contextInspectorHeight         int
+	isCommandMode                  bool
+	commandInput                   string
+	statusMessage                  string
+	statusMessageTime              time.Time
+	switcher                       SessionSwitcher
 }
 
 // TypeFilter defines step category filter in History Explorer
@@ -137,34 +190,6 @@ const (
 	CacheFilterExpired CacheFilter = "Expired"
 	CacheFilterMiss    CacheFilter = "Miss"
 )
-
-// nextAgentTab cycles agent filter tab: Antigravity -> ClaudeCode -> OpenCode -> Antigravity
-func (m *Model) nextAgentTab() {
-	switch m.selectedAgentTab {
-	case core.AgentTypeClaudeCode:
-		m.selectedAgentTab = core.AgentTypeOpenCode
-	case core.AgentTypeOpenCode:
-		m.selectedAgentTab = core.AgentTypeAntigravity
-	default:
-		m.selectedAgentTab = core.AgentTypeClaudeCode
-	}
-	m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery, m.selectedAgentTab)
-	m.switcherSelectedIdx = 0
-}
-
-// prevAgentTab cycles agent filter tab: Antigravity -> OpenCode -> ClaudeCode -> Antigravity
-func (m *Model) prevAgentTab() {
-	switch m.selectedAgentTab {
-	case core.AgentTypeClaudeCode:
-		m.selectedAgentTab = core.AgentTypeAntigravity
-	case core.AgentTypeOpenCode:
-		m.selectedAgentTab = core.AgentTypeClaudeCode
-	default:
-		m.selectedAgentTab = core.AgentTypeOpenCode
-	}
-	m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery, m.selectedAgentTab)
-	m.switcherSelectedIdx = 0
-}
 
 func (m *Model) cycleTypeFilter() {
 	switch m.historyTypeFilter {
@@ -246,13 +271,17 @@ func matchCacheFilter(e core.UnifiedAgentEvent, filter CacheFilter) bool {
 	if filter == CacheFilterAll {
 		return true
 	}
-	// Only cloud inference steps have GPU KV-Cache telemetry and participate in cache filtering!
-	if !e.IsCloudStep() {
+	// Cache filters apply only to persisted usage observations with decoded cache fields.
+	if !e.IsCloudStep() || !e.Usage.Available {
 		return false
 	}
 	status := e.CacheStatus
 	if status == "" {
-		status = core.ClassifyCacheStatus(e.Tokens.CacheHitRate, e.Tokens.CachedTokens, e.Tokens.TotalTokens, false)
+		hitRate, ok := e.Usage.CacheHitRate()
+		if !ok {
+			return false
+		}
+		status = core.ClassifyCacheStatus(hitRate, e.Usage.CachedTokens, e.Usage.TotalTokens)
 	}
 	switch filter {
 	case CacheFilterHit:
@@ -260,9 +289,9 @@ func matchCacheFilter(e core.UnifiedAgentEvent, filter CacheFilter) bool {
 	case CacheFilterPartial:
 		return status == "PARTIAL"
 	case CacheFilterWrite:
-		return status == "WRITE" || (e.StepIndex == 0 && e.Tokens.CachedTokens == 0)
+		return false
 	case CacheFilterExpired:
-		return status == "EXPIRED" || status == "TTL_EXPIRED"
+		return false
 	case CacheFilterMiss:
 		return status == "MISS"
 	}
@@ -305,24 +334,22 @@ func (m *Model) prevView() {
 	}
 }
 
-// NewModel creates an initial TUI model
+// NewModel creates an empty, dependency-free TUI model. Production callers use
+// NewModelWithData to inject the session catalog and cached context builder.
 func NewModel(sessionID string, openSwitcherOnStart bool, switcher ...SessionSwitcher) Model {
-	sessions, _ := antigravity.DiscoverAllSessions()
-	initialTab := core.AgentTypeAntigravity
+	return NewModelWithData(sessionID, openSwitcherOnStart, ModelData{}, switcher...)
+}
 
+// NewModelWithData creates an initial TUI model without performing discovery,
+// history I/O, SQLite access, or tokenization on the UI thread.
+func NewModelWithData(sessionID string, openSwitcherOnStart bool, data ModelData, switcher ...SessionSwitcher) Model {
+	sessions := data.Sessions
 	var sw SessionSwitcher
 	if len(switcher) > 0 {
 		sw = switcher[0]
 	}
 
-	var initialHistory []core.UnifiedAgentEvent
-	if sessionID != "" {
-		hostCfg := antigravity.LoadAntigravityHostConfig()
-		analyzer := core.NewPayloadAnalyzer(hostCfg)
-		if hist, err := antigravity.LoadSessionHistory(sessionID, analyzer); err == nil {
-			initialHistory = hist
-		}
-	}
+	initialHistory := data.InitialHistory
 	if initialHistory == nil {
 		initialHistory = make([]core.UnifiedAgentEvent, 0, defaultHistoryCapacity)
 	}
@@ -341,13 +368,12 @@ func NewModel(sessionID string, openSwitcherOnStart bool, switcher ...SessionSwi
 		dashboardIdx:          dashboardIdx,
 		detailScroll:          0,
 		history:               initialHistory,
+		historyIndex:          buildHistoryIndex(initialHistory),
 		latestEvent:           latestEvent,
-		eventCount:            len(initialHistory),
 		selectedIdx:           0,
 		lastActivity:          time.Now(),
-		selectedAgentTab:      initialTab,
 		availableSessions:     sessions,
-		filteredSessions:      filterSessions(sessions, "", initialTab),
+		filteredSessions:      filterSessions(sessions, ""),
 		switcherSelectedIdx:   0,
 		isSessionSwitcherOpen: openSwitcherOnStart,
 		isShortcutsModalOpen:  false,
@@ -359,6 +385,7 @@ func NewModel(sessionID string, openSwitcherOnStart bool, switcher ...SessionSwi
 		historyCacheFilter:    CacheFilterAll,
 		historyStepQuery:      "",
 		isHistorySearching:    false,
+		contextPayloadBuilder: data.ContextPayloadBuilder,
 		switcher:              sw,
 	}
 
@@ -369,17 +396,247 @@ func NewModel(sessionID string, openSwitcherOnStart bool, switcher ...SessionSwi
 			break
 		}
 	}
-	m.refreshContextPayload()
-
 	return m
 }
 
+func buildHistoryIndex(history []core.UnifiedAgentEvent) map[string]int {
+	index := make(map[string]int, len(history))
+	for position, event := range history {
+		index[historyEventKey(event)] = position
+	}
+	return index
+}
+
+func historyEventKey(event core.UnifiedAgentEvent) string {
+	return event.SessionID + ":" + strconv.Itoa(event.StepIndex)
+}
+
+func (m *Model) ensureHistoryIndex() {
+	if len(m.historyIndex) == len(m.history) {
+		return
+	}
+	m.historyIndex = buildHistoryIndex(m.history)
+}
+
+// applyHistoryEvents incorporates one live event or a chronological hydration
+// batch without repeatedly rebuilding the Context inspector. The selected
+// history item is identified by its stable session/step key so background
+// hydration cannot make an operator lose the item they are inspecting.
+func (m *Model) applyHistoryEvents(events []core.UnifiedAgentEvent) {
+	if len(events) == 0 {
+		return
+	}
+
+	m.ensureHistoryIndex()
+	wasAtLatestDashboard := m.dashboardIdx == len(m.history)-1 || len(m.history) == 0
+	lockInspection := m.activeView == ViewHistory && (m.selectedIdx > 0 || m.focusPane == FocusDetail)
+	inspectedKey := ""
+	if lockInspection {
+		if selected, ok := m.getSelectedEvent(); ok {
+			inspectedKey = historyEventKey(selected)
+		}
+	}
+
+	processed := false
+	historyNeedsSort := false
+	for _, event := range events {
+		if event.SessionID != m.sessionID && m.sessionID != "" && event.SessionID != "" {
+			continue
+		}
+
+		processed = true
+		key := historyEventKey(event)
+		if existingIndex, exists := m.historyIndex[key]; exists {
+			m.history[existingIndex] = mergeHistoryEventUpdate(m.history[existingIndex], event)
+		} else {
+			if len(m.history) > 0 && event.StepIndex < m.history[len(m.history)-1].StepIndex {
+				historyNeedsSort = true
+			}
+			m.history = append(m.history, event)
+			m.historyIndex[key] = len(m.history) - 1
+		}
+
+		if len(event.ConsumedStepIndices) > 0 {
+			for _, childStepIndex := range event.ConsumedStepIndices {
+				childKey := event.SessionID + ":" + strconv.Itoa(childStepIndex)
+				if childIndex, exists := m.historyIndex[childKey]; exists {
+					m.history[childIndex].PackagedInStepIdx = event.StepIndex
+				}
+			}
+		}
+
+	}
+
+	if !processed {
+		return
+	}
+
+	if historyNeedsSort {
+		m.sortHistoryByStep()
+		m.reconcileHistoryPackaging()
+	}
+
+	if len(m.history) > 0 {
+		m.latestEvent = m.history[len(m.history)-1]
+	}
+	m.lastActivity = time.Now()
+	if wasAtLatestDashboard {
+		m.dashboardIdx = len(m.history) - 1
+	}
+	if lockInspection && inspectedKey != "" {
+		filtered := m.getFilteredHistory()
+		for index := len(filtered) - 1; index >= 0; index-- {
+			if historyEventKey(filtered[index]) == inspectedKey {
+				m.selectedIdx = len(filtered) - 1 - index
+				break
+			}
+		}
+	}
+	m.refreshContextPayload()
+	m.playbackEstimateRevision++
+}
+
+// mergeHistoryEventUpdate keeps enrichment that belongs to a prior observation
+// of the same transcript step. Antigravity may write RUNNING and DONE records
+// with the same step index; the newer record owns display content and status,
+// while absent linkage, local estimates, and persisted usage must not regress.
+func mergeHistoryEventUpdate(existing, update core.UnifiedAgentEvent) core.UnifiedAgentEvent {
+	if update.Scope == "" {
+		update.Scope = existing.Scope
+	}
+	if update.ParentStepIdx == 0 {
+		update.ParentStepIdx = existing.ParentStepIdx
+	}
+	if update.PackagedInStepIdx == 0 {
+		update.PackagedInStepIdx = existing.PackagedInStepIdx
+	}
+	if len(update.ConsumedStepIndices) == 0 {
+		update.ConsumedStepIndices = existing.ConsumedStepIndices
+	}
+	if update.Tokens.StepDelta == 0 && existing.Tokens.StepDelta > 0 {
+		update.Tokens = existing.Tokens
+	}
+	if !update.Usage.Available && existing.Usage.Available {
+		update.Usage = existing.Usage
+	}
+	if update.CacheStatus == "" || update.CacheStatus == "UNKNOWN" {
+		update.CacheStatus = existing.CacheStatus
+	}
+	return update
+}
+
+// sortHistoryByStep restores the transcript's chronological order after a
+// latest-event preview is followed by older background hydration. Live events
+// are already append-only, so they avoid this work entirely.
+func (m *Model) sortHistoryByStep() {
+	sort.SliceStable(m.history, func(left, right int) bool {
+		return m.history[left].StepIndex < m.history[right].StepIndex
+	})
+	m.historyIndex = buildHistoryIndex(m.history)
+}
+
+// reconcileHistoryPackaging repairs child-to-cloud links after an out-of-order
+// backfill. The source cloud event remains authoritative for its listed child
+// steps, so no relationship is invented when a parent does not list a child.
+func (m *Model) reconcileHistoryPackaging() {
+	packagedByStep := make(map[int]int)
+	for _, event := range m.history {
+		for _, childStep := range event.ConsumedStepIndices {
+			packagedByStep[childStep] = event.StepIndex
+		}
+	}
+	for index := range m.history {
+		m.history[index].PackagedInStepIdx = packagedByStep[m.history[index].StepIndex]
+	}
+}
+
+// refreshContextPayload invalidates derived Context UI state. The next Context
+// render rebuilds it lazily; AgentEventMsg handling therefore performs no DB or
+// filesystem work while background history is hydrating.
 func (m *Model) refreshContextPayload() {
-	m.contextPayload = antigravity.ExtractAgentContextPayload(m.history, m.sessionID, "")
-	m.contextPayloadReady = true
-	m.contextPayloadHistoryCount = len(m.history)
-	m.contextPayloadLastStep = m.latestContextHistoryStep()
-	m.refreshContextInspectorCache()
+	m.contextPayloadReady = false
+	m.contextInspectorLines = nil
+	m.contextInspectorMax = 0
+}
+
+// requestContextEstimateRefresh rebuilds snapshot-derived visible-text counts
+// outside the UI update path. Repeated hydration batches coalesce into one
+// follow-up refresh so a long replay cannot schedule one payload build per row.
+func (m *Model) requestContextEstimateRefresh() tea.Cmd {
+	if m.contextPayloadBuilder == nil {
+		return nil
+	}
+	if m.contextEstimateRefreshPending {
+		m.contextEstimateRefreshDirty = true
+		return nil
+	}
+	m.contextEstimateRefreshPending = true
+	m.contextEstimateRefreshDirty = false
+	history := make([]core.UnifiedAgentEvent, len(m.history))
+	copy(history, m.history)
+	sessionID := m.sessionID
+	builder := m.contextPayloadBuilder
+	return func() tea.Msg {
+		payload := builder(history, sessionID)
+		return ContextEstimateMsg{
+			SessionID:    sessionID,
+			HistoryCount: len(history),
+			Refresh:      true,
+			Estimate:     core.EstimateVisibleContextEvidence(payload),
+		}
+	}
+}
+
+// requestPlaybackContextEstimateRefresh builds all per-step estimates once
+// after history changes. Dashboard navigation reads this cache only, so j/k
+// never performs SQLite I/O or scans the transcript.
+func (m *Model) requestPlaybackContextEstimateRefresh() tea.Cmd {
+	if m.playbackEstimateRefreshPending {
+		m.playbackEstimateRefreshDirty = true
+		return nil
+	}
+	m.playbackEstimateRefreshPending = true
+	m.playbackEstimateRefreshDirty = false
+	history := make([]core.UnifiedAgentEvent, len(m.history))
+	copy(history, m.history)
+	sessionID := m.sessionID
+	revision := m.playbackEstimateRevision
+	return func() tea.Msg {
+		return PlaybackContextEstimatesMsg{
+			SessionID:    sessionID,
+			HistoryCount: len(history),
+			Revision:     revision,
+			Estimates:    core.BuildPlaybackContextEvidence(history),
+		}
+	}
+}
+
+// playbackContextEstimateFor returns the cached estimate for the selected
+// timeline event. An exact persisted snapshot can replace only the dimensions
+// it truly contains; selected-step inbound and buffer evidence remain tied to
+// the playback timeline.
+func (m Model) playbackContextEstimateFor(historyIndex int, event core.UnifiedAgentEvent) core.VisibleContextEvidenceEstimate {
+	if m.playbackEstimateHistoryCount != len(m.history) || m.playbackEstimateCachedRevision != m.playbackEstimateRevision {
+		return core.VisibleContextEvidenceEstimate{}
+	}
+	if historyIndex < 0 || historyIndex >= len(m.playbackContextEstimates) {
+		return core.VisibleContextEvidenceEstimate{}
+	}
+
+	estimate := m.playbackContextEstimates[historyIndex]
+	if m.contextEstimate.SourceKind != core.ContextEvidencePersistedSnapshot || !m.contextEstimate.HasSnapshotGeneratedStep || m.contextEstimate.SnapshotGeneratedStepIndex != event.StepIndex {
+		return estimate
+	}
+
+	estimate.SourceKind = core.ContextEvidencePersistedSnapshot
+	estimate.SnapshotGenIndex = m.contextEstimate.SnapshotGenIndex
+	estimate.SnapshotGeneratedStepIndex = m.contextEstimate.SnapshotGeneratedStepIndex
+	estimate.HasSnapshotGeneratedStep = true
+	estimate.SystemTokens = m.contextEstimate.SystemTokens
+	estimate.ToolsTokens = m.contextEstimate.ToolsTokens
+	estimate.HistoryTokens = m.contextEstimate.HistoryTokens
+	estimate.TotalTokens = estimate.SystemTokens + estimate.ToolsTokens + estimate.ToolBufferTokens + estimate.HistoryTokens + estimate.InboundTokens
+	return estimate
 }
 
 func (m *Model) refreshContextInspectorCache() {
@@ -387,6 +644,10 @@ func (m *Model) refreshContextInspectorCache() {
 		return
 	}
 	payload := m.cachedContextPayload()
+	m.contextPayload = payload
+	m.contextPayloadReady = true
+	m.contextPayloadHistoryCount = len(m.history)
+	m.contextPayloadLastStep = m.latestContextHistoryStep()
 	innerWidth, innerHeight := m.contextInspectorDimensions()
 	payload.IsRawMode = m.isContextRawMode
 	m.contextInspectorLines = m.buildRefinedInspectorLines(payload, innerWidth)
@@ -419,7 +680,10 @@ func (m Model) cachedContextPayload() core.AgentContextPayload {
 	if m.contextPayloadReady && m.contextPayloadHistoryCount == len(m.history) && m.contextPayloadLastStep == m.latestContextHistoryStep() {
 		return m.contextPayload
 	}
-	return core.BuildContextPayloadFromHistory(core.ContextBuildInput{History: m.history, SessionID: m.sessionID, AgentType: core.AgentTypeAntigravity, NativeTools: core.GetNativeToolsDefinitions(m.history)})
+	if m.contextPayloadBuilder != nil {
+		return m.contextPayloadBuilder(m.history, m.sessionID)
+	}
+	return core.BuildContextPayloadFromHistory(core.ContextBuildInput{History: m.history, SessionID: m.sessionID, NativeTools: core.GetNativeToolsDefinitions(m.history)})
 }
 
 func (m Model) latestContextHistoryStep() int {
@@ -527,7 +791,7 @@ func (m Model) getSessionModelName() string {
 			return s.ModelName
 		}
 	}
-	return "gemini-3.7-flash"
+	return ""
 }
 
 func (m *Model) jumpToStep(targetStepIdx int) bool {
@@ -597,6 +861,17 @@ func formatCompactNumber(n int) string {
 	return fmt.Sprintf("%d", n)
 }
 
+func formatObservedUsageLine(usage core.PersistedUsageObservation) string {
+	if !usage.Available || !usage.HasTotalTokens {
+		return "• Persisted usage: unavailable"
+	}
+	if uncached, ok := usage.UncachedTokens(); ok {
+		hitRate, _ := usage.CacheHitRate()
+		return fmt.Sprintf("• Persisted: %s total | %s cached (%.1f%% hit) | %s uncached", formatCompactNumber(usage.TotalTokens), formatCompactNumber(usage.CachedTokens), hitRate, formatCompactNumber(uncached))
+	}
+	return fmt.Sprintf("• Persisted: %s total | cache field unavailable", formatCompactNumber(usage.TotalTokens))
+}
+
 func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, isCompact bool) []string {
 	if maxWidth <= 10 {
 		maxWidth = 40
@@ -614,33 +889,30 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 				toolName = string(e.Type)
 			}
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Action: Tool Output (%s)", toolName), maxWidth))
-			lines = append(lines, truncateVisualWidth("• Status: Offline Process (0 tok)", maxWidth))
+			lines = append(lines, truncateVisualWidth("• Status: Local process", maxWidth))
 			if e.PackagedInStepIdx > 0 {
-				lines = append(lines, truncateVisualWidth(fmt.Sprintf("  └ Billed: Packaged in #%04d", e.PackagedInStepIdx), maxWidth))
+				lines = append(lines, truncateVisualWidth(fmt.Sprintf("  └ Link: Cloud step #%04d", e.PackagedInStepIdx), maxWidth))
 			} else {
 				estTok := t.ActiveTurnTokens + t.ToolResultTokens
 				if estTok == 0 {
 					estTok = core.CountTokens(e.RawContent)
 				}
-				lines = append(lines, truncateVisualWidth(fmt.Sprintf("  └ Staged: ~%s tok (Pending)", formatCompactNumber(estTok)), maxWidth))
+				lines = append(lines, truncateVisualWidth(fmt.Sprintf("  └ Local text: ~%s tok", formatCompactNumber(estTok)), maxWidth))
 			}
 			if e.ParentStepIdx > 0 {
 				lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Parent: Triggered by #%04d", e.ParentStepIdx), maxWidth))
 			}
-			lines = append(lines, truncateVisualWidth("• Origin: Local Machine Subprocess", maxWidth))
+			lines = append(lines, truncateVisualWidth("• Origin: Local machine process", maxWidth))
 		} else if e.IsCloudStep() || e.Scope == core.ScopeCloudInference {
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
 			modelName := m.getStepModelName(e)
 			if modelName == "" {
-				modelName = "Gemini 3.7 Flash"
+				modelName = "unknown"
 			}
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Model : %s", modelName), maxWidth))
-			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Tokens: %s Total Context", formatCompactNumber(t.TotalTokens)), maxWidth))
-			lines = append(lines, truncateVisualWidth(fmt.Sprintf("  ├ Cached: %s (%.1f%% HIT)", formatCompactNumber(t.CachedTokens), t.CacheHitRate), maxWidth))
-			lines = append(lines, truncateVisualWidth(fmt.Sprintf("  └ New   : %s new tokens", formatCompactNumber(t.NewTokens)), maxWidth))
-			lines = append(lines, truncateVisualWidth("• 5-Dims:", maxWidth))
-			lines = append(lines, truncateVisualWidth(fmt.Sprintf("  ├ Sys: %s | Tools: %s", formatCompactNumber(t.SystemTokens), formatCompactNumber(t.ToolsDefTokens)), maxWidth))
-			lines = append(lines, truncateVisualWidth(fmt.Sprintf("  └ Hist: %s | Act: %s", formatCompactNumber(t.HistoryTokens), formatCompactNumber(t.ActiveTurnTokens)), maxWidth))
+			lines = append(lines, truncateVisualWidth(formatObservedUsageLine(e.Usage), maxWidth))
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Local text (cl100k_base): +%s this event", formatCompactNumber(t.StepDelta)), maxWidth))
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("  └ Transcript accumulated: %s", formatCompactNumber(t.RawLocalAccumulated)), maxWidth))
 			if e.ParentStepIdx > 0 {
 				lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Parent: Step #%04d (User Prompt)", e.ParentStepIdx), maxWidth))
 			}
@@ -656,17 +928,17 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 			}
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Payload: ~%d Prompt Tokens", promptTok), maxWidth))
 			if e.PackagedInStepIdx > 0 {
-				lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Status : Staged ➔ Settled in Step #%04d", e.PackagedInStepIdx), maxWidth))
+				lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Link   : Cloud step #%04d", e.PackagedInStepIdx), maxWidth))
 			} else {
-				lines = append(lines, truncateVisualWidth("• Status : Inbound (Awaiting Cloud Turn)", maxWidth))
+				lines = append(lines, truncateVisualWidth("• Link   : No cloud step linked", maxWidth))
 			}
 		} else if e.IsCompactionStep() || e.Scope == core.ScopeSystemCompaction {
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
 			lines = append(lines, truncateVisualWidth("• Event : Context Compaction (Checkpoint)", maxWidth))
-			lines = append(lines, truncateVisualWidth("• Scope : Harness Middleware (Sidecar GC)", maxWidth))
+			lines = append(lines, truncateVisualWidth("• Scope : Transcript compaction record", maxWidth))
 			summaryTok := core.CountTokens(e.RawContent)
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Summary: ~%s Tok (Prunes Old Turns)", formatCompactNumber(summaryTok)), maxWidth))
-			lines = append(lines, truncateVisualWidth("• Status: Active Context Re-anchored", maxWidth))
+			lines = append(lines, truncateVisualWidth("• Status: Previous history was compacted", maxWidth))
 		} else {
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Type  : %s", e.Type), maxWidth))
@@ -683,21 +955,21 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Parent : Triggered by Tool Call in Step #%04d", e.ParentStepIdx), maxWidth))
 		}
 		if e.PackagedInStepIdx > 0 {
-			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Billing: Offline (0 tok) ➔ Packaged in Step #%04d", e.PackagedInStepIdx), maxWidth))
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Link   : Associated with cloud step #%04d", e.PackagedInStepIdx), maxWidth))
 		} else {
 			estTok := t.ActiveTurnTokens + t.ToolResultTokens
 			if estTok == 0 {
 				estTok = core.CountTokens(e.RawContent)
 			}
-			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Billing: Offline (0 tok) ➔ Staged (~%d tok, Pending Next Turn ⏳)", estTok), maxWidth))
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Local text estimate: ~%d tok", estTok), maxWidth))
 		}
 	} else if e.IsCloudStep() || e.Scope == core.ScopeCloudInference {
-		modelName := t.OfficialModel
+		modelName := e.Usage.ModelName
 		if modelName == "" {
-			modelName = m.getSessionModelName()
+			modelName = "unknown"
 		}
 		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step #%04d (%s) at %s | ☁️ CLOUD INFERENCE TURN", e.StepIndex, e.Status, timeStr), maxWidth))
-		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Model  : %s (Official Telemetry)", modelName), maxWidth))
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Model  : %s (persisted metadata)", modelName), maxWidth))
 		if e.ParentStepIdx > 0 {
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Parent : User Request in Step #%04d", e.ParentStepIdx), maxWidth))
 		}
@@ -708,28 +980,28 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 			}
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Input  : Consumed Local Step %s", strings.Join(childStrs, ", ")), maxWidth))
 		}
-		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Tokens : Total: %d | Cached: %d (%.1f%% HIT) | New: %d", t.TotalTokens, t.CachedTokens, t.CacheHitRate, t.NewTokens), maxWidth))
-		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• 5-Dims : Sys=%d | Tools=%d | Res=%d | Hist=%d | Act=%d", t.SystemTokens, t.ToolsDefTokens, t.ToolResultTokens, t.HistoryTokens, t.ActiveTurnTokens), maxWidth))
+		lines = append(lines, truncateVisualWidth(formatObservedUsageLine(e.Usage), maxWidth))
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Local text (cl100k_base): +%d this event | %d accumulated transcript", t.StepDelta, t.RawLocalAccumulated), maxWidth))
 	} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
 		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step #%04d (%s) at %s | 👤 USER INPUT", e.StepIndex, e.Status, timeStr), maxWidth))
-		lines = append(lines, truncateVisualWidth("• Origin : Human Client Prompt (Inbound to Remote GPU Cluster)", maxWidth))
+		lines = append(lines, truncateVisualWidth("• Origin : Human client prompt", maxWidth))
 		promptTok := core.CountTokens(e.RawContent)
 		if promptTok == 0 {
 			promptTok = 1
 		}
 		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Payload: ~%d Prompt Tokens (Local Inbound Intent)", promptTok), maxWidth))
 		if e.PackagedInStepIdx > 0 {
-			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Billing: Staged ➔ Official Cache & Tokens settled in Step #%04d ☁️", e.PackagedInStepIdx), maxWidth))
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Link   : Associated with cloud step #%04d", e.PackagedInStepIdx), maxWidth))
 		} else {
-			lines = append(lines, truncateVisualWidth("• Billing: Staged ➔ Awaiting next Cloud Inference Step for official cache settlement ⏳", maxWidth))
+			lines = append(lines, truncateVisualWidth("• Link   : No cloud step linked", maxWidth))
 		}
 	} else if e.IsCompactionStep() || e.Scope == core.ScopeSystemCompaction {
 		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step #%04d (%s) at %s | ⚙️ CONTEXT COMPACTION (CHECKPOINT)", e.StepIndex, e.Status, timeStr), maxWidth))
-		lines = append(lines, truncateVisualWidth("• Event  : Background AI Compaction & Truncation Injection", maxWidth))
-		lines = append(lines, truncateVisualWidth("• Scope  : Harness Middleware (Sidecar Context GC)", maxWidth))
+		lines = append(lines, truncateVisualWidth("• Event  : Observed compaction checkpoint", maxWidth))
+		lines = append(lines, truncateVisualWidth("• Scope  : Transcript record", maxWidth))
 		summaryTok := core.CountTokens(e.RawContent)
-		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Payload: ~%d Summary Tokens (Replaces ~200k+ historical context)", summaryTok), maxWidth))
-		lines = append(lines, truncateVisualWidth("• Action : Prepend [System + Tools + Checkpoint Summary] ➔ Re-anchor Window Base", maxWidth))
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Payload: ~%d locally estimated summary tokens", summaryTok), maxWidth))
+		lines = append(lines, truncateVisualWidth("• Scope  : The exact retained and omitted context is unavailable", maxWidth))
 	} else {
 		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step #%04d (%s) at %s | 📜 SYSTEM BOOTSTRAP", e.StepIndex, e.Status, timeStr), maxWidth))
 		lines = append(lines, truncateVisualWidth("• Scope  : Static Rules, Identity & Environment Configuration", maxWidth))
@@ -794,64 +1066,53 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case AgentEventMsg:
-		event := core.UnifiedAgentEvent(msg)
+		m.applyHistoryEvents([]core.UnifiedAgentEvent{core.UnifiedAgentEvent(msg)})
+		return m, m.requestPlaybackContextEstimateRefresh()
 
-		// 🛡️ Drop stale events that do not belong to the currently active session
-		if event.SessionID != m.sessionID && m.sessionID != "" && event.SessionID != "" {
+	case HistoryBatchMsg:
+		m.applyHistoryEvents(msg.Events)
+		return m, tea.Batch(m.requestContextEstimateRefresh(), m.requestPlaybackContextEstimateRefresh())
+
+	case SessionCatalogMsg:
+		m.availableSessions = msg.Sessions
+		m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery)
+		if m.switcherSelectedIdx >= len(m.filteredSessions) {
+			m.switcherSelectedIdx = 0
+		}
+		return m, nil
+
+	case ContextEstimateMsg:
+		if msg.SessionID == m.sessionID && msg.HistoryCount >= m.contextEstimateHistoryCount {
+			m.contextEstimate = msg.Estimate
+			m.contextEstimateHistoryCount = msg.HistoryCount
+		}
+		if msg.Refresh && msg.SessionID == m.sessionID {
+			m.contextEstimateRefreshPending = false
+			if m.contextEstimateRefreshDirty {
+				return m, m.requestContextEstimateRefresh()
+			}
+		}
+		return m, nil
+
+	case PlaybackContextEstimatesMsg:
+		if msg.SessionID != m.sessionID {
 			return m, nil
 		}
-
-		m.latestEvent = event
-		m.eventCount++
-		m.lastActivity = time.Now()
-		wasAtLatestDashboard := (m.dashboardIdx == len(m.history)-1 || len(m.history) == 0)
-		isInspectingPastStep := (m.activeView == ViewHistory && (m.selectedIdx > 0 || m.focusPane == FocusDetail))
-
-		// If this is a cloud step consuming previous local steps, update their PackagedInStepIdx in m.history!
-		if len(event.ConsumedStepIndices) > 0 {
-			for _, childIdx := range event.ConsumedStepIndices {
-				for hIdx := len(m.history) - 1; hIdx >= 0; hIdx-- {
-					if m.history[hIdx].StepIndex == childIdx {
-						m.history[hIdx].PackagedInStepIdx = event.StepIndex
-						break
-					}
-				}
-			}
+		m.playbackEstimateRefreshPending = false
+		if msg.HistoryCount == len(m.history) && msg.Revision == m.playbackEstimateRevision {
+			m.playbackContextEstimates = msg.Estimates
+			m.playbackEstimateHistoryCount = msg.HistoryCount
+			m.playbackEstimateCachedRevision = msg.Revision
 		}
-
-		// Update in-place if this step index already exists in history (e.g. streaming update or status transition), otherwise append
-		existingIdx := -1
-		for i := len(m.history) - 1; i >= 0; i-- {
-			if m.history[i].StepIndex == event.StepIndex && m.history[i].SessionID == event.SessionID {
-				existingIdx = i
-				break
-			}
+		if m.playbackEstimateRefreshDirty {
+			return m, m.requestPlaybackContextEstimateRefresh()
 		}
-
-		if existingIdx >= 0 {
-			m.history[existingIdx] = event
-		} else {
-			m.history = append(m.history, event)
-		}
-
-		if wasAtLatestDashboard {
-			m.dashboardIdx = len(m.history) - 1
-		}
-
-		// If inspecting a past step or focused on the Inspector, lock the current inspection step in place
-		if isInspectingPastStep {
-			m.selectedIdx++
-			if m.historyOffset > 0 {
-				m.historyOffset++
-			}
-		}
-		m.refreshContextPayload()
 		return m, nil
 
 	case SessionResetMsg:
 		m.sessionID = msg.SessionID
 		m.history = make([]core.UnifiedAgentEvent, 0, 1000)
-		m.eventCount = 0
+		m.historyIndex = buildHistoryIndex(m.history)
 		m.latestEvent = core.UnifiedAgentEvent{}
 		m.dashboardIdx = 0
 		m.selectedIdx = 0
@@ -861,27 +1122,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.isShortcutsModalOpen = false
 		m.activeView = ViewDashboard
 		m.refreshContextPayload()
+		m.contextEstimate = core.VisibleContextEvidenceEstimate{}
+		m.contextEstimateHistoryCount = 0
+		m.contextEstimateRefreshPending = false
+		m.contextEstimateRefreshDirty = false
+		m.playbackContextEstimates = nil
+		m.playbackEstimateHistoryCount = 0
+		m.playbackEstimateRevision = 0
+		m.playbackEstimateCachedRevision = 0
+		m.playbackEstimateRefreshPending = false
+		m.playbackEstimateRefreshDirty = false
 		m.clipboardStatus = fmt.Sprintf("Live attached to %s", truncateStr(msg.SessionID, 8))
 		m.clipboardStatusTime = time.Now()
 		return m, nil
 
 	case SwitchSessionReqMsg:
-		analyzer := core.NewPayloadAnalyzer()
-		events, _ := antigravity.LoadSessionHistory(msg.SessionID, analyzer)
-
 		if m.switcher != nil {
-			_ = m.switcher.SwitchSession(msg.SessionID, msg.AgentType)
+			_ = m.switcher.SwitchSession(msg.SessionID)
 		}
 		m.sessionID = msg.SessionID
-		m.history = events
-		m.eventCount = len(events)
-		if len(events) > 0 {
-			m.latestEvent = events[len(events)-1]
-			m.dashboardIdx = len(events) - 1
-		} else {
-			m.latestEvent = core.UnifiedAgentEvent{}
-			m.dashboardIdx = 0
-		}
+		m.history = make([]core.UnifiedAgentEvent, 0, defaultHistoryCapacity)
+		m.historyIndex = buildHistoryIndex(m.history)
+		m.latestEvent = core.UnifiedAgentEvent{}
+		m.dashboardIdx = 0
 		m.selectedIdx = 0
 		m.detailScroll = 0
 		m.historyOffset = 0
@@ -889,14 +1152,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.isShortcutsModalOpen = false
 		m.activeView = ViewDashboard
 		m.refreshContextPayload()
-		m.clipboardStatus = fmt.Sprintf("Attached session %s (%d steps, live)", truncateStr(msg.SessionID, 8), len(events))
+		m.contextEstimate = core.VisibleContextEvidenceEstimate{}
+		m.contextEstimateHistoryCount = 0
+		m.contextEstimateRefreshPending = false
+		m.contextEstimateRefreshDirty = false
+		m.playbackContextEstimates = nil
+		m.playbackEstimateHistoryCount = 0
+		m.playbackEstimateRevision = 0
+		m.playbackEstimateCachedRevision = 0
+		m.playbackEstimateRefreshPending = false
+		m.playbackEstimateRefreshDirty = false
+		m.clipboardStatus = fmt.Sprintf("Attached session %s (loading history)", truncateStr(msg.SessionID, 8))
 		m.clipboardStatusTime = time.Now()
 		return m, nil
 
 	case SessionSwitchedMsg:
 		m.sessionID = msg.SessionID
 		m.history = msg.Events
-		m.eventCount = len(msg.Events)
+		m.historyIndex = buildHistoryIndex(m.history)
 		if len(msg.Events) > 0 {
 			m.latestEvent = msg.Events[len(msg.Events)-1]
 			m.dashboardIdx = len(msg.Events) - 1
@@ -911,9 +1184,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.isShortcutsModalOpen = false
 		m.activeView = ViewDashboard
 		m.refreshContextPayload()
+		m.contextEstimate = core.VisibleContextEvidenceEstimate{}
+		m.contextEstimateHistoryCount = 0
+		m.contextEstimateRefreshPending = false
+		m.contextEstimateRefreshDirty = false
+		m.playbackContextEstimates = nil
+		m.playbackEstimateHistoryCount = 0
+		m.playbackEstimateRevision = 0
+		m.playbackEstimateCachedRevision = 0
+		m.playbackEstimateRefreshPending = false
+		m.playbackEstimateRefreshDirty = false
 		m.clipboardStatus = fmt.Sprintf("Switched to session %s (%d steps)", truncateStr(msg.SessionID, 8), len(msg.Events))
 		m.clipboardStatusTime = time.Now()
-		return m, nil
+		return m, tea.Batch(m.requestContextEstimateRefresh(), m.requestPlaybackContextEstimateRefresh())
 
 	case tea.KeyMsg:
 		key := msg.String()
@@ -986,8 +1269,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.isSessionSwitcherOpen = !m.isSessionSwitcherOpen
 			if m.isSessionSwitcherOpen {
 				m.isShortcutsModalOpen = false
-				m.availableSessions, _ = antigravity.DiscoverAllSessions()
-				m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery, m.selectedAgentTab)
+				m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery)
 				m.switcherSelectedIdx = 0
 				for i, s := range m.filteredSessions {
 					if s.SessionID == m.sessionID {
@@ -1005,12 +1287,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc":
 				m.isSessionSwitcherOpen = false
 				return m, nil
-			case "tab", "]":
-				m.nextAgentTab()
-				return m, nil
-			case "shift+tab", "backtab", "[":
-				m.prevAgentTab()
-				return m, nil
 			case "up", "ctrl+k":
 				if m.switcherSelectedIdx > 0 {
 					m.switcherSelectedIdx--
@@ -1024,15 +1300,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				if len(m.filteredSessions) > 0 && m.switcherSelectedIdx < len(m.filteredSessions) {
 					targetSession := m.filteredSessions[m.switcherSelectedIdx].SessionID
-					targetAgent := m.filteredSessions[m.switcherSelectedIdx].AgentType
 					m.isSessionSwitcherOpen = false
-					return m.Update(SwitchSessionReqMsg{SessionID: targetSession, AgentType: targetAgent})
+					return m.Update(SwitchSessionReqMsg{SessionID: targetSession})
 				}
 				return m, nil
 			case "backspace":
 				if len(m.sessionSearchQuery) > 0 {
 					m.sessionSearchQuery = m.sessionSearchQuery[:len(m.sessionSearchQuery)-1]
-					m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery, m.selectedAgentTab)
+					m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery)
 					m.switcherSelectedIdx = 0
 				}
 				return m, nil
@@ -1049,19 +1324,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							m.switcherSelectedIdx--
 						}
 						return m, nil
-					} else if key == "h" {
-						m.prevAgentTab()
-						return m, nil
-					} else if key == "l" {
-						m.nextAgentTab()
-						return m, nil
 					}
 				}
 
 				// Type characters to filter sessions
 				if len(msg.Runes) > 0 {
 					m.sessionSearchQuery += string(msg.Runes)
-					m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery, m.selectedAgentTab)
+					m.filteredSessions = filterSessions(m.availableSessions, m.sessionSearchQuery)
 					m.switcherSelectedIdx = 0
 					return m, nil
 				}
@@ -1222,13 +1491,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "r", "R":
 				m.isContextRawMode = !m.isContextRawMode
 				m.refreshContextInspectorCache()
-				return m, nil
-			case "m", "M":
-				if m.contextTargetAgent == "" || m.contextTargetAgent == "MAIN" {
-					m.contextTargetAgent = "SUBAGENT"
-				} else {
-					m.contextTargetAgent = "MAIN"
-				}
 				return m, nil
 			case "j", "down":
 				if m.contextHistoryList && m.contextFocusPane == FocusList {

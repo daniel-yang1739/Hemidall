@@ -2,27 +2,18 @@ package core
 
 import "time"
 
-// AgentType defines the type of AI Agent
-type AgentType string
-
-const (
-	AgentTypeAntigravity AgentType = "antigravity"
-	AgentTypeClaudeCode  AgentType = "claudecode"
-	AgentTypeOpenCode    AgentType = "opencode"
-)
-
-// SessionInfo encapsulates universal session metadata across different agent engines
+// SessionInfo contains Antigravity session metadata for the switcher catalog.
 type SessionInfo struct {
-	AgentType    AgentType
-	SessionID    string
-	WorkspaceDir string
-	ShortPath    string
-	InitialGoal  string
-	LastPrompt   string
-	StepCount    int
-	LastModified time.Time
-	SizeMB       float64
-	ModelName    string
-	DBPath       string
-	LogPath      string
+	SessionID          string
+	WorkspaceDir       string
+	ShortPath          string
+	InitialGoal        string
+	LastPrompt         string
+	StepCount          int
+	StepCountAvailable bool
+	LastModified       time.Time
+	SizeMB             float64
+	ModelName          string
+	DBPath             string
+	LogPath            string
 }

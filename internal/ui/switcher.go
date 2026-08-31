@@ -11,19 +11,17 @@ import (
 
 // SessionSwitcher defines the interface for dynamic backend watcher hot-reloading
 type SessionSwitcher interface {
-	SwitchSession(sessionID string, agentType core.AgentType) error
+	SwitchSession(sessionID string) error
 }
 
 // SwitchSessionReqMsg is sent when the user selects a new session in the switcher
 type SwitchSessionReqMsg struct {
 	SessionID string
-	AgentType core.AgentType
 }
 
 // SessionResetMsg is sent to clear history when hot-reloading to a new session
 type SessionResetMsg struct {
 	SessionID string
-	AgentType core.AgentType
 }
 
 // SessionSwitchedMsg is sent to update the UI model with the new session's state
@@ -53,40 +51,10 @@ func (m Model) renderSessionSwitcherModal() string {
 
 	var contentLines []string
 
-	// 1. Real Visual Tabs for AI Agent Types (Identical to Main Header Tabs)
-	var agyCount, claudeCount, opencodeCount int
-	for _, s := range m.availableSessions {
-		switch s.AgentType {
-		case core.AgentTypeClaudeCode:
-			claudeCount++
-		case core.AgentTypeOpenCode:
-			opencodeCount++
-		default:
-			agyCount++
-		}
-	}
-
-	tab1 := lipgloss.NewStyle().Foreground(ColorMuted).Render(fmt.Sprintf(" [1] Antigravity (%d) ", agyCount))
-	tab2 := lipgloss.NewStyle().Foreground(ColorMuted).Render(fmt.Sprintf(" [2] Claude Code (%d) ", claudeCount))
-	tab3 := lipgloss.NewStyle().Foreground(ColorMuted).Render(fmt.Sprintf(" [3] OpenCode (%d) ", opencodeCount))
-
-	switch m.selectedAgentTab {
-	case core.AgentTypeClaudeCode:
-		tab2 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(fmt.Sprintf(" [2] Claude Code (%d) ", claudeCount))
-	case core.AgentTypeOpenCode:
-		tab3 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(fmt.Sprintf(" [3] OpenCode (%d) ", opencodeCount))
-	default:
-		tab1 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(fmt.Sprintf(" [1] Antigravity (%d) ", agyCount))
-	}
-
-	leftTabs := tab1 + " " + tab2 + " " + tab3
-	tabHint := lipgloss.NewStyle().Foreground(ColorHighlight).Render("[Tab] Switch Tab")
-	gapW := contentWidth - lipgloss.Width(leftTabs) - lipgloss.Width(tabHint)
-	if gapW < 1 {
-		gapW = 1
-	}
-	tabsLine := leftTabs + strings.Repeat(" ", gapW) + tabHint
-	contentLines = append(contentLines, lipgloss.NewStyle().MaxWidth(contentWidth).Render(tabsLine))
+	// Antigravity is the only supported session source. Do not display empty
+	// product tabs for adapters that Heimdall cannot discover or watch.
+	sessionTitle := lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(fmt.Sprintf(" ANTIGRAVITY SESSIONS (%d) ", len(m.filteredSessions)))
+	contentLines = append(contentLines, lipgloss.NewStyle().MaxWidth(contentWidth).Render(sessionTitle))
 
 	// 2. Search Filter Input Box
 	queryDisplay := m.sessionSearchQuery
@@ -124,7 +92,7 @@ func (m Model) renderSessionSwitcherModal() string {
 
 		if len(sessions) == 0 {
 			leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  No matching sessions."))
-			leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  Press [Tab] for other tabs."))
+			leftLines = append(leftLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  The catalog is still loading or no session matches the filter."))
 		} else {
 			startIdx := m.switcherSelectedIdx - (maxCards / 2)
 			if startIdx < 0 {
@@ -156,12 +124,6 @@ func (m Model) renderSessionSwitcherModal() string {
 				}
 
 				agentBadge := "[AGY]"
-				switch s.AgentType {
-				case core.AgentTypeClaudeCode:
-					agentBadge = "[CLAUDE]"
-				case core.AgentTypeOpenCode:
-					agentBadge = "[OPEN]"
-				}
 
 				cardStyle1 := lipgloss.NewStyle().Foreground(ColorLightText)
 				cardStyle2 := lipgloss.NewStyle().Foreground(ColorMuted)
@@ -183,7 +145,7 @@ func (m Model) renderSessionSwitcherModal() string {
 				line1 := fmt.Sprintf("%s%s %s (#%s)", prefix, agentBadge, s.ShortPath, shortHash)
 				leftLines = append(leftLines, cardStyle1.Render(truncateVisualWidth(line1, leftWidth)))
 
-				line2 := fmt.Sprintf("    %d steps | %.1fMB | %s%s", s.StepCount, s.SizeMB, relTime, statusTag)
+				line2 := fmt.Sprintf("    %s | %.1fMB | %s%s", formatSessionStepCount(s), s.SizeMB, relTime, statusTag)
 				leftLines = append(leftLines, cardStyle2.Render(truncateVisualWidth(line2, leftWidth)))
 			}
 
@@ -266,7 +228,7 @@ func (m Model) renderSessionSwitcherModal() string {
 		// ==================== VERTICAL-STACKED LAYOUT (Narrow / Half Screen) ====================
 		if len(sessions) == 0 {
 			contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  No matching sessions."))
-			contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  Press [Tab] for other tabs."))
+			contentLines = append(contentLines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  The catalog is still loading or no session matches the filter."))
 		} else {
 			maxCards := 3
 			startIdx := m.switcherSelectedIdx - 1
@@ -299,12 +261,6 @@ func (m Model) renderSessionSwitcherModal() string {
 				}
 
 				agentBadge := "[AGY]"
-				switch s.AgentType {
-				case core.AgentTypeClaudeCode:
-					agentBadge = "[CLAUDE]"
-				case core.AgentTypeOpenCode:
-					agentBadge = "[OPEN]"
-				}
 
 				cardStyle1 := lipgloss.NewStyle().Foreground(ColorLightText)
 				cardStyle2 := lipgloss.NewStyle().Foreground(ColorMuted)
@@ -324,7 +280,7 @@ func (m Model) renderSessionSwitcherModal() string {
 				}
 
 				line1 := fmt.Sprintf("%s%s %s (#%s)", prefix, agentBadge, s.ShortPath, shortHash)
-				line2 := fmt.Sprintf("    %d steps | %.1fMB | %s%s", s.StepCount, s.SizeMB, relTime, statusTag)
+				line2 := fmt.Sprintf("    %s | %.1fMB | %s%s", formatSessionStepCount(s), s.SizeMB, relTime, statusTag)
 				contentLines = append(contentLines, cardStyle1.Render(truncateVisualWidth(line1, contentWidth)))
 				contentLines = append(contentLines, cardStyle2.Render(truncateVisualWidth(line2, contentWidth)))
 			}
@@ -407,16 +363,18 @@ func formatRelativeTime(t time.Time) string {
 	return fmt.Sprintf("%dd ago", int(diff.Hours()/24))
 }
 
-func filterSessions(sessions []core.SessionInfo, query string, agentTab core.AgentType) []core.SessionInfo {
+func formatSessionStepCount(session core.SessionInfo) string {
+	if !session.StepCountAvailable {
+		return "steps unavailable"
+	}
+	return fmt.Sprintf("%d steps", session.StepCount)
+}
+
+func filterSessions(sessions []core.SessionInfo, query string) []core.SessionInfo {
 	var matched []core.SessionInfo
 	q := strings.ToLower(strings.TrimSpace(query))
 
 	for _, s := range sessions {
-		// Filter by Agent Type
-		if agentTab != "" && s.AgentType != agentTab {
-			continue
-		}
-
 		// Filter by Query
 		if q == "" {
 			matched = append(matched, s)

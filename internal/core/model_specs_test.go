@@ -1,90 +1,59 @@
-package core_test
+package core
 
-import (
-	"testing"
+import "testing"
 
-	"heimdall/internal/core"
+const (
+	modelSpecComparableTurns      = 2
+	modelSpecComparableTokens     = 1_000
+	modelSpecCachedTokens         = 900
+	modelSpecUncachedTokens       = 100
+	modelSpecCacheMultiplier      = 0.10
+	modelSpecEffectiveInputTokens = 190.0
 )
 
-func TestResolveModelSpec_GeminiFlash_Default(t *testing.T) {
-	spec := core.ResolveModelSpec("gemini-3.7-flash", nil)
-	if spec.ModelID != "gemini-3.7-flash" {
-		t.Errorf("ModelID = %s, want gemini-3.7-flash", spec.ModelID)
+func TestModelPricing_Pos_ProjectsExactVerifiedModel(t *testing.T) {
+	stats := ModelTokenStats{
+		ModelName:        gemini37FlashModelID,
+		CachedTurnCount:  modelSpecComparableTurns,
+		ComparableTokens: modelSpecComparableTokens,
+		TotalCached:      modelSpecCachedTokens,
+		TotalNew:         modelSpecUncachedTokens,
 	}
-	if spec.DefaultAgentWindow != 256000 {
-		t.Errorf("DefaultAgentWindow = %d, want 256000", spec.DefaultAgentWindow)
+
+	projection, available := ProjectCacheAdjustedInput(stats)
+
+	requireModelSpecEqual(t, true, available)
+	requireModelSpecEqual(t, gemini37FlashModelID, projection.ModelID)
+	requireModelSpecFloatEqual(t, modelSpecCacheMultiplier, projection.CacheInputMultiplier)
+	requireModelSpecFloatEqual(t, modelSpecEffectiveInputTokens, projection.EffectiveInputTokens)
+}
+
+func TestModelPricing_Neg_DoesNotProjectUnknownModel(t *testing.T) {
+	stats := ModelTokenStats{
+		ModelName:        "unknown",
+		CachedTurnCount:  modelSpecComparableTurns,
+		ComparableTokens: modelSpecComparableTokens,
+		TotalCached:      modelSpecCachedTokens,
+		TotalNew:         modelSpecUncachedTokens,
 	}
-	if spec.PhysicalMaxTokens != 1048576 {
-		t.Errorf("PhysicalMaxTokens = %d, want 1048576", spec.PhysicalMaxTokens)
-	}
-	if spec.CacheDiscountRate != 0.90 {
-		t.Errorf("CacheDiscountRate = %f, want 0.90", spec.CacheDiscountRate)
-	}
-	if spec.Pricing.CachedPerMillionUSD != 0.075 {
-		t.Errorf("Pricing.CachedPerMillionUSD = %f, want 0.075", spec.Pricing.CachedPerMillionUSD)
+
+	_, available := ProjectCacheAdjustedInput(stats)
+
+	requireModelSpecEqual(t, false, available)
+}
+
+func requireModelSpecEqual[T comparable](t *testing.T, want, got T) {
+	t.Helper()
+	if want != got {
+		t.Fatalf("want %v, got %v", want, got)
 	}
 }
 
-func TestResolveModelSpec_GeminiPro_Default(t *testing.T) {
-	spec := core.ResolveModelSpec("gemini-2.5-pro", nil)
-	if spec.ModelID != "gemini-2.5-pro" {
-		t.Errorf("ModelID = %s, want gemini-2.5-pro", spec.ModelID)
-	}
-	if spec.DefaultAgentWindow != 1048576 {
-		t.Errorf("DefaultAgentWindow = %d, want 1048576", spec.DefaultAgentWindow)
-	}
-	if spec.PhysicalMaxTokens != 2097152 {
-		t.Errorf("PhysicalMaxTokens = %d, want 2097152", spec.PhysicalMaxTokens)
+func requireModelSpecFloatEqual(t *testing.T, want, got float64) {
+	t.Helper()
+	if difference := want - got; difference > modelSpecFloatTolerance || difference < -modelSpecFloatTolerance {
+		t.Fatalf("want %v, got %v", want, got)
 	}
 }
 
-func TestResolveModelSpec_ClaudeSonnet_Default(t *testing.T) {
-	spec := core.ResolveModelSpec("claude-3-7-sonnet", nil)
-	if spec.ModelID != "claude-3-7-sonnet" {
-		t.Errorf("ModelID = %s, want claude-3-7-sonnet", spec.ModelID)
-	}
-	if spec.DefaultAgentWindow != 200000 {
-		t.Errorf("DefaultAgentWindow = %d, want 200000", spec.DefaultAgentWindow)
-	}
-}
-
-func TestResolveModelSpec_UnknownModel_Fallback(t *testing.T) {
-	spec := core.ResolveModelSpec("some-custom-local-model", nil)
-	if spec.ModelID != "unknown-model" {
-		t.Errorf("ModelID = %s, want unknown-model", spec.ModelID)
-	}
-	if spec.DefaultAgentWindow != core.DefaultFallbackAgentWindow {
-		t.Errorf("DefaultAgentWindow = %d, want %d", spec.DefaultAgentWindow, core.DefaultFallbackAgentWindow)
-	}
-}
-
-func TestResolveModelSpec_GlobalHostConfigOverride(t *testing.T) {
-	hostCfg := &core.HostConfig{
-		GlobalContextWindow: 150000,
-	}
-	spec := core.ResolveModelSpec("gemini-3.7-flash", hostCfg)
-	if spec.DefaultAgentWindow != 150000 {
-		t.Errorf("DefaultAgentWindow = %d, want 150000 (Global override)", spec.DefaultAgentWindow)
-	}
-}
-
-func TestResolveModelSpec_ByModelOverride_PrecedenceOverGlobal(t *testing.T) {
-	hostCfg := &core.HostConfig{
-		GlobalContextWindow: 150000,
-		ModelOverrides: map[string]core.ModelOverrideConfig{
-			"gemini-2.5-pro": {
-				ContextWindow: 500000,
-			},
-		},
-	}
-
-	specPro := core.ResolveModelSpec("gemini-2.5-pro", hostCfg)
-	if specPro.DefaultAgentWindow != 500000 {
-		t.Errorf("DefaultAgentWindow = %d, want 500000 (By-model override)", specPro.DefaultAgentWindow)
-	}
-
-	specFlash := core.ResolveModelSpec("gemini-3.7-flash", hostCfg)
-	if specFlash.DefaultAgentWindow != 150000 {
-		t.Errorf("DefaultAgentWindow = %d, want 150000 (Global fallback)", specFlash.DefaultAgentWindow)
-	}
-}
+const modelSpecFloatTolerance = 0.000001

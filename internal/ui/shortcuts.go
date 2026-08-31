@@ -59,7 +59,6 @@ var allShortcutItems = []ShortcutItem{
 	{Category: "Docs View", Key: "Esc", Desc: "Clear search query or return to Dashboard"},
 
 	// 5. Session Switcher Modal
-	{Category: "Session Switcher", Key: "Tab / Shift+Tab", Desc: "Switch Agent tab (Antigravity / Claude Code / OpenCode)"},
 	{Category: "Session Switcher", Key: "Type text", Desc: "Filter by directory, hash, or prompt keywords"},
 	{Category: "Session Switcher", Key: "Ctrl+j/k / ↑/↓", Desc: "Navigate session selection (Vim-first)"},
 	{Category: "Session Switcher", Key: "Enter", Desc: "Attach and dynamically load session history"},

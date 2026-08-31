@@ -2,11 +2,16 @@ package antigravity
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/binary"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"heimdall/internal/core"
+
+	_ "modernc.org/sqlite"
 )
 
 func TestParseContextSnapshot_Positive_PreservesPersistedSectionsAndRepeatedFields(t *testing.T) {
@@ -22,7 +27,11 @@ func TestParseContextSnapshot_Positive_PreservesPersistedSectionsAndRepeatedFiel
 		protoBytes(2, protoMessage(protoVarint(2, 2), protoString(3, "model output"), protoString(11, "private"), protoVarint(18, 42))),
 		protoBytes(8, tool),
 	)
-	raw := protoBytes(1, context)
+	inputBoundary := 42
+	raw := protoMessage(
+		protoBytes(1, context),
+		protoBytes(9, []byte("last_step_index\x12\x0242")),
+	)
 
 	snapshot, err := ParseContextSnapshot(7, raw)
 	if err != nil {
@@ -30,6 +39,9 @@ func TestParseContextSnapshot_Positive_PreservesPersistedSectionsAndRepeatedFiel
 	}
 	if snapshot.GenIndex != 7 || snapshot.BlobBytes != len(raw) {
 		t.Errorf("unexpected snapshot identity: index=%d bytes=%d", snapshot.GenIndex, snapshot.BlobBytes)
+	}
+	if !snapshot.HasInputBoundary || snapshot.InputBoundaryStepIndex != inputBoundary {
+		t.Errorf("snapshot input boundary: got (%d, %t), want (%d, true)", snapshot.InputBoundaryStepIndex, snapshot.HasInputBoundary, inputBoundary)
 	}
 	if snapshot.Identity != "Pair programmer" || snapshot.UserRules != "English code" {
 		t.Errorf("persisted system sections were not preserved: identity=%q rules=%q", snapshot.Identity, snapshot.UserRules)
@@ -106,7 +118,7 @@ func TestExtractAgentContextPayload_Fallback_LabelsObservedToolSource(t *testing
 	if payload.Provenance["latest_prompt"] != "observed_from_antigravity_session_history" {
 		t.Errorf("unexpected fallback prompt provenance: %q", payload.Provenance["latest_prompt"])
 	}
-	if payload.Provenance["tokens"] != "latest_positive_history_token_breakdown; may be telemetry or Heimdall-derived" {
+	if payload.Provenance["tokens"] != "persisted_usage_observation_when_available; otherwise unavailable" {
 		t.Errorf("unexpected fallback token provenance: %q", payload.Provenance["tokens"])
 	}
 
@@ -117,6 +129,59 @@ func TestExtractAgentContextPayload_Fallback_LabelsObservedToolSource(t *testing
 	if !strings.Contains(raw, `"source": "inferred_from_observed_tool_arguments"`) {
 		t.Errorf("raw fallback tool evidence omitted provenance: %s", raw)
 	}
+}
+
+func TestOverlaySnapshotProvenance_Pos_PreservesTranscriptAndRuntimeSources(t *testing.T) {
+	provenance := overlaySnapshotProvenance(transcriptProvenance())
+
+	requireAntigravityProvenance(t, provenance, "system_prompt", provenancePersistedSystemPrompt)
+	requireAntigravityProvenance(t, provenance, "identity", provenancePersistedIdentity)
+	requireAntigravityProvenance(t, provenance, "user_rules", provenancePersistedUserRules)
+	requireAntigravityProvenance(t, provenance, "skills", provenancePersistedSkills)
+	requireAntigravityProvenance(t, provenance, "tools", provenancePersistedTools)
+	requireAntigravityProvenance(t, provenance, "persisted_records", provenancePersistedRecords)
+	requireAntigravityProvenance(t, provenance, "checkpoint", "observed_from_antigravity_session_history")
+	requireAntigravityProvenance(t, provenance, "active_turns", "observed_from_antigravity_session_history")
+	requireAntigravityProvenance(t, provenance, "latest_prompt", "observed_from_antigravity_session_history")
+	requireAntigravityProvenance(t, provenance, "staged_buffers", "inferred_from_local_steps_after_last_cloud_step")
+	requireAntigravityProvenance(t, provenance, "runtime", "observed_from_heimdall_process_environment")
+}
+
+func TestContextSnapshotEntry_Boundary_InvalidatesWhenSQLiteStateChanges(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "conversation.db")
+	requireAntigravityNoError(t, os.WriteFile(databasePath, []byte("database"), fixtureFilePermissions))
+	initialState, initialErr := readContextSnapshotFileState(databasePath)
+	requireAntigravityNoError(t, initialErr)
+	entry := contextSnapshotEntry{loaded: true, state: initialState}
+
+	requireAntigravityEqual(t, true, entry.matches(initialState))
+	requireAntigravityNoError(t, os.WriteFile(databasePath+"-wal", []byte("wal"), fixtureFilePermissions))
+	updatedState, updatedErr := readContextSnapshotFileState(databasePath)
+	requireAntigravityNoError(t, updatedErr)
+	requireAntigravityEqual(t, false, entry.matches(updatedState))
+}
+
+func TestLoadContextSnapshotAtPathSelectsNewestValidGeneration(t *testing.T) {
+	databasePath := filepath.Join(t.TempDir(), "conversation.db")
+	database, openErr := sql.Open("sqlite", databasePath)
+	requireAntigravityNoError(t, openErr)
+	defer database.Close()
+	requireAntigravityExec(t, database, "CREATE TABLE gen_metadata (idx INTEGER PRIMARY KEY, data BLOB, size INTEGER)")
+
+	olderSystemPrompt := "<identity>older</identity>" + strings.Repeat("x", minimumContextSnapshotBytes)
+	newerSystemPrompt := "<identity>newer</identity>" + strings.Repeat("y", minimumContextSnapshotBytes)
+	olderSnapshot := protoBytes(1, protoMessage(protoString(1, olderSystemPrompt)))
+	newerSnapshot := protoBytes(1, protoMessage(protoString(1, newerSystemPrompt)))
+	requireAntigravityExec(t, database, "INSERT INTO gen_metadata (idx, data, size) VALUES (1, ?, ?)", olderSnapshot, len(olderSnapshot))
+	requireAntigravityExec(t, database, "INSERT INTO gen_metadata (idx, data, size) VALUES (2, ?, ?)", []byte(strings.Repeat("z", minimumContextSnapshotBytes)), minimumContextSnapshotBytes)
+	requireAntigravityExec(t, database, "INSERT INTO gen_metadata (idx, data, size) VALUES (3, ?, ?)", newerSnapshot, len(newerSnapshot))
+	requireAntigravityNoError(t, database.Close())
+
+	snapshot, loadErr := LoadContextSnapshotAtPath(databasePath)
+
+	requireAntigravityNoError(t, loadErr)
+	requireAntigravityEqual(t, 3, snapshot.GenIndex)
+	requireAntigravityEqual(t, "newer", snapshot.Identity)
 }
 
 func protoMessage(fields ...[]byte) []byte {

@@ -38,53 +38,70 @@ type ToolResultInfo struct {
 	IsError  bool   `json:"is_error,omitempty"`
 }
 
-// TokenBreakdown defines the 5-dimension token distribution and cache metrics
+// TokenBreakdown is Heimdall's local content estimate.
 type TokenBreakdown struct {
-	SystemTokens     int `json:"system_tokens"`      // System prompt, identity, rules, and environment
-	ToolsDefTokens   int `json:"tools_def_tokens"`   // MCP / Tool JSON Schema definitions
-	ToolResultTokens int `json:"tool_result_tokens"` // Code reads, terminal outputs, diffs
-	HistoryTokens    int `json:"history_tokens"`     // Prior conversation turns
-	ActiveTurnTokens int `json:"active_turn_tokens"` // Latest user prompt or active assistant output
-	ThinkingTokens   int `json:"thinking_tokens"`    // Chain-of-Thought (CoT) tokens
-	TotalTokens      int `json:"total_tokens"`       // Total context tokens (Active Window)
+	SystemTokens        int `json:"system_tokens"`         // System prompt, identity, rules, and environment
+	ToolsDefTokens      int `json:"tools_def_tokens"`      // MCP / Tool JSON Schema definitions
+	ToolResultTokens    int `json:"tool_result_tokens"`    // Code reads, terminal outputs, diffs
+	HistoryTokens       int `json:"history_tokens"`        // Prior conversation turns
+	ActiveTurnTokens    int `json:"active_turn_tokens"`    // Latest user prompt or active assistant output
+	ThinkingTokens      int `json:"thinking_tokens"`       // Chain-of-Thought (CoT) tokens
+	TotalTokens         int `json:"total_tokens"`          // Locally estimated content total
+	RawLocalAccumulated int `json:"raw_local_accumulated"` // Locally estimated append-only total
+	StepDelta           int `json:"step_delta"`            // Locally estimated current event contribution
 
-	// Prefix Caching analytical metrics
-	CachedTokens int     `json:"cached_tokens"`  // Prefix cache hit tokens
-	NewTokens    int     `json:"new_tokens"`     // New uncached tokens in this step
-	CacheHitRate float64 `json:"cache_hit_rate"` // Cache hit rate percentage (%)
-
-	// Official Google API telemetry fields
-	IsOfficialData       bool   `json:"is_official_data"`       // True if fetched directly from SQLite gen_metadata
-	OfficialModel        string `json:"official_model"`         // Actual backend model (e.g. gemini-3.7-flash-high)
-	OfficialContextLimit int    `json:"official_context_limit"` // e.g. 256,000
-	RawLocalAccumulated  int    `json:"raw_local_accumulated"`  // Raw uncompressed log tokens (e.g. ~400k)
-	StepDelta            int    `json:"step_delta"`             // Local token delta generated in this single step
-
-	// Dynamic financial & capacity metrics (resolved via ModelSpec & HostConfig)
-	ContextLimit       int     `json:"context_limit"`        // Effective active agent window limit
-	PricingCachedUSD   float64 `json:"pricing_cached_usd"`   // Per million cached rate
-	PricingUncachedUSD float64 `json:"pricing_uncached_usd"` // Per million uncached rate
-	CacheDiscount      float64 `json:"cache_discount"`       // e.g. 0.90 (90%)
-	ExchangeRate       float64 `json:"exchange_rate"`        // e.g. 32.0
 }
 
-// StepScope defines the universal computing origin and billing nature of an agent event
+// PersistedUsageObservation is a decoded observation from a local Antigravity
+// generation record. Its schema is inferred from the persisted wire format, so
+// it is not an HTTP request capture or vendor billing guarantee.
+type PersistedUsageObservation struct {
+	Available       bool   `json:"available"`
+	Source          string `json:"source"`
+	GenerationIndex int    `json:"generation_index"`
+	StepIndex       int    `json:"step_index"`
+	ModelName       string `json:"model_name"`
+
+	HasTotalTokens  bool `json:"has_total_tokens"`
+	TotalTokens     int  `json:"total_tokens"`
+	HasCachedTokens bool `json:"has_cached_tokens"`
+	CachedTokens    int  `json:"cached_tokens"`
+	HasContextLimit bool `json:"has_context_limit"`
+	ContextLimit    int  `json:"context_limit"`
+}
+
+// UncachedTokens returns a derived value only when both persisted operands were
+// decoded. It never manufactures a cache value from earlier turns or TTL rules.
+func (o PersistedUsageObservation) UncachedTokens() (int, bool) {
+	if !o.HasTotalTokens || !o.HasCachedTokens || o.CachedTokens > o.TotalTokens {
+		return 0, false
+	}
+	return o.TotalTokens - o.CachedTokens, true
+}
+
+// CacheHitRate returns a derived ratio only when both persisted operands were
+// decoded and the observed total is positive.
+func (o PersistedUsageObservation) CacheHitRate() (float64, bool) {
+	if !o.HasTotalTokens || !o.HasCachedTokens || o.TotalTokens <= 0 || o.CachedTokens > o.TotalTokens {
+		return 0, false
+	}
+	return float64(o.CachedTokens) / float64(o.TotalTokens) * 100.0, true
+}
+
+// StepScope defines the observed origin category of an agent event.
 type StepScope string
 
 const (
-	ScopeUserInteraction  StepScope = "USER"       // 👤 User Intent / Prompts (Network billed)
-	ScopeCloudInference   StepScope = "CLOUD"      // ☁️ Cloud LLM Inference / Tool Calls (GPU billed)
-	ScopeLocalExecution   StepScope = "LOCAL"      // 💻 Local Machine Process (Offline, 0 tokens)
-	ScopeSubagent         StepScope = "SUBAGENT"   // 👥 Subagent Worker Execution / Parallel Inference
-	ScopeSystemCompaction StepScope = "COMPACTION" // ⚙️ Out-of-band context compaction & truncation injection
-	ScopeSystemBootstrap  StepScope = "SYSTEM"     // 📜 System Init / Rules / Static configurations
+	ScopeUserInteraction  StepScope = "USER"
+	ScopeCloudInference   StepScope = "CLOUD"
+	ScopeLocalExecution   StepScope = "LOCAL"
+	ScopeSubagent         StepScope = "SUBAGENT"
+	ScopeSystemCompaction StepScope = "COMPACTION"
+	ScopeSystemBootstrap  StepScope = "SYSTEM"
 )
 
 // ClassifyCacheStatus provides the single source of truth for cache classification across the entire codebase
-func ClassifyCacheStatus(hitRate float64, cachedTokens, totalTokens int, isExpired bool) string {
-	if isExpired && cachedTokens == 0 {
-		return "EXPIRED"
-	}
+func ClassifyCacheStatus(hitRate float64, cachedTokens, totalTokens int) string {
 	if totalTokens == 0 {
 		return ""
 	}
@@ -124,9 +141,11 @@ type UnifiedAgentEvent struct {
 	ToolCalls   []ToolCallInfo   `json:"tool_calls,omitempty"`
 	ToolResults []ToolResultInfo `json:"tool_results,omitempty"`
 
-	// 5-dimension breakdown (injected by Analyzer)
-	Tokens      TokenBreakdown `json:"tokens"`
-	CacheStatus string         `json:"cache_status"` // HIT, PARTIAL, WRITE, EXPIRED, MISS, UNKNOWN
+	// Tokens is a local cl100k_base estimate injected by Analyzer. Usage is the
+	// separately persisted generation metadata observation, when available.
+	Tokens      TokenBreakdown            `json:"tokens"`
+	Usage       PersistedUsageObservation `json:"usage"`
+	CacheStatus string                    `json:"cache_status"` // HIT, PARTIAL, MISS, UNKNOWN
 }
 
 // GetAgentRole returns the authoritative role of the agent executing this step (MAIN, SUBAGENT, or INTERNAL)
@@ -168,20 +187,17 @@ func (e UnifiedAgentEvent) IsCloudStep() bool {
 		(e.Scope == ScopeCloudInference || e.Type == StepTypeModelResponse || e.Type == StepTypeToolCall)
 }
 
-// ModelTokenStats holds aggregate token metrics and effective pricing for a specific model
+// ModelTokenStats holds only aggregates derived from persisted usage observations.
 type ModelTokenStats struct {
-	ModelName         string  `json:"model_name"`
-	TurnCount         int     `json:"turn_count"`
-	TotalProcessed    int     `json:"total_processed"`
-	TotalCached       int     `json:"total_cached"`
-	TotalNew          int     `json:"total_new"`
-	CacheHitRate      float64 `json:"cache_hit_rate"`
-	DiscountRate      float64 `json:"discount_rate"`  // e.g. 0.75 for 75% OFF
-	PriceFactor       float64 `json:"price_factor"`   // e.g. 0.25
-	DiscountLabel     string  `json:"discount_label"` // e.g. "0.25x (75% OFF)"
-	EffectiveTokens   int     `json:"effective_tokens"`
-	TokensSaved       int     `json:"tokens_saved"`
-	SavingsPercentage float64 `json:"savings_percentage"`
+	ModelName        string  `json:"model_name"`
+	TurnCount        int     `json:"turn_count"`
+	CachedTurnCount  int     `json:"cached_turn_count"`
+	TotalProcessed   int     `json:"total_processed"`
+	TotalCached      int     `json:"total_cached"`
+	TotalNew         int     `json:"total_new"`
+	ComparableTokens int     `json:"comparable_tokens"`
+	CacheHitRate     float64 `json:"cache_hit_rate"`
+	CompleteUsage    bool    `json:"complete_usage"`
 }
 
 // SessionAggregateMetrics holds session-wide aggregate stats across all models and per-model

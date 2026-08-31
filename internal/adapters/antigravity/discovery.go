@@ -2,7 +2,6 @@ package antigravity
 
 import (
 	"bufio"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,8 +10,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-
-	_ "modernc.org/sqlite"
 
 	"heimdall/internal/core"
 )
@@ -23,6 +20,13 @@ const (
 
 	// bytesPerMegabyte is the conversion factor from raw bytes to megabytes
 	bytesPerMegabyte = 1024.0 * 1024.0
+
+	// sessionMetadataHeadLines is enough to locate bootstrap metadata without
+	// parsing an entire transcript during session-switcher discovery.
+	sessionMetadataHeadLines = 10
+
+	// sessionMetadataTailBytes bounds list-view metadata work for large sessions.
+	sessionMetadataTailBytes = 1_024 * 1_024
 )
 
 var (
@@ -32,32 +36,25 @@ var (
 	dirPathRegex     = regexp.MustCompile(`"DirectoryPath"\s*:\s*"\\?"?([^"\\]+)`)
 	absPathRegex     = regexp.MustCompile(`"AbsolutePath"\s*:\s*"\\?"?([^"\\]+)`)
 	userWorkspacesRe = regexp.MustCompile(`(?s)<user_information>.*?workspaces.*?(/[^ \n\r\t]+)`)
+	tagRe            = regexp.MustCompile(`<[^>]+>`)
 )
 
-// CleanModelName validates and normalizes raw model string to a clean, authoritative model name
+type transcriptMetadataLine struct {
+	Type    string `json:"type"`
+	Content string `json:"content"`
+}
+
+// CleanModelName returns an observed session-declaration model string only when
+// the extracted value is plausibly a model identifier. It never supplies a
+// fallback model name because that would mislabel unknown persisted usage.
 func CleanModelName(raw string) string {
 	raw = strings.TrimSpace(raw)
 	low := strings.ToLower(raw)
 	if len(raw) > 35 || strings.Contains(low, "comment") || strings.Contains(low, "need to") || strings.Contains(low, "user") {
-		return "Gemini 3.7 Flash"
-	}
-	if strings.Contains(low, "flash") {
-		if strings.Contains(low, "high") {
-			return "Gemini 3.7 Flash (High)"
-		}
-		return "Gemini 3.7 Flash"
-	}
-	if strings.Contains(low, "pro") {
-		return "Gemini 2.5 Pro"
-	}
-	if strings.Contains(low, "claude") {
-		if strings.Contains(low, "sonnet") {
-			return "Claude 3.7 Sonnet"
-		}
-		return "Claude 3.5 Sonnet"
+		return ""
 	}
 	if raw == "" || strings.EqualFold(raw, "none") {
-		return "Gemini 3.7 Flash"
+		return ""
 	}
 	return raw
 }
@@ -95,7 +92,6 @@ func CleanPromptText(raw string) string {
 		raw = m[1]
 	}
 	// Strip any remaining XML/HTML tags
-	tagRe := regexp.MustCompile(`<[^>]+>`)
 	raw = tagRe.ReplaceAllString(raw, " ")
 
 	// Replace newlines and tabs with single space
@@ -103,7 +99,9 @@ func CleanPromptText(raw string) string {
 	return strings.Join(fields, " ")
 }
 
-// ExtractSessionMetadata performs lightweight head and tail scanning of a session transcript
+// ExtractSessionMetadata reads only the bootstrap head and a bounded tail of a
+// session transcript. It must stay cheap because session switcher discovery
+// calls it for every locally available session.
 func ExtractSessionMetadata(transcriptPath string) (initialGoal string, lastPrompt string, workspaceDir string, modelName string) {
 	file, err := os.Open(transcriptPath)
 	if err != nil {
@@ -112,39 +110,24 @@ func ExtractSessionMetadata(transcriptPath string) (initialGoal string, lastProm
 	defer file.Close()
 
 	var headLines []string
-	var allUserInputs []string
 
 	scanner := bufio.NewScanner(file)
 	// Buffer size up to 1MB per line for transcripts
 	buf := make([]byte, maxScanBufferSize)
 	scanner.Buffer(buf, maxScanBufferSize)
 
-	lineCount := 0
-	for scanner.Scan() {
+	for lineCount := 0; lineCount < sessionMetadataHeadLines && scanner.Scan(); lineCount++ {
 		line := scanner.Text()
-		if lineCount < 10 {
-			headLines = append(headLines, line)
-		}
-		lineCount++
-
-		var rawMap map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &rawMap); err == nil {
-			stepType, _ := rawMap["type"].(string)
-			if stepType == "USER_INPUT" {
-				if content, ok := rawMap["content"].(string); ok && content != "" {
-					cleaned := CleanPromptText(content)
-					if cleaned != "" {
-						allUserInputs = append(allUserInputs, cleaned)
-					}
-				}
-			}
+		headLines = append(headLines, line)
+		var metadata transcriptMetadataLine
+		if initialGoal == "" && json.Unmarshal([]byte(line), &metadata) == nil && metadata.Type == "USER_INPUT" {
+			initialGoal = CleanPromptText(metadata.Content)
 		}
 	}
 
-	// 1. Initial Goal
-	if len(allUserInputs) > 0 {
-		initialGoal = allUserInputs[0]
-		lastPrompt = allUserInputs[len(allUserInputs)-1]
+	lastPrompt = readLatestUserPrompt(file)
+	if lastPrompt == "" {
+		lastPrompt = initialGoal
 	}
 
 	// 2. Workspace & Model from Head Lines
@@ -165,14 +148,40 @@ func ExtractSessionMetadata(transcriptPath string) (initialGoal string, lastProm
 		}
 	}
 
-	if modelName == "" {
-		modelName = "Gemini 3.7 Flash"
-	}
 	if workspaceDir == "" {
 		workspaceDir = "workspace"
 	}
 
 	return initialGoal, lastPrompt, workspaceDir, modelName
+}
+
+func readLatestUserPrompt(file *os.File) string {
+	info, err := file.Stat()
+	if err != nil || info.Size() == 0 {
+		return ""
+	}
+	start := info.Size() - sessionMetadataTailBytes
+	if start < 0 {
+		start = 0
+	}
+	if _, err := file.Seek(start, io.SeekStart); err != nil {
+		return ""
+	}
+	tail, err := io.ReadAll(file)
+	if err != nil {
+		return ""
+	}
+	lines := strings.Split(string(tail), "\n")
+	for index := len(lines) - 1; index >= 0; index-- {
+		var metadata transcriptMetadataLine
+		if json.Unmarshal([]byte(lines[index]), &metadata) != nil || metadata.Type != "USER_INPUT" {
+			continue
+		}
+		if prompt := CleanPromptText(metadata.Content); prompt != "" {
+			return prompt
+		}
+	}
+	return ""
 }
 
 // DiscoverAllSessions scans ~/.gemini/antigravity-cli/conversations and discovers all active/past sessions
@@ -181,7 +190,13 @@ func DiscoverAllSessions() ([]core.SessionInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	return discoverAllSessionsAtHome(home)
+}
 
+// discoverAllSessionsAtHome creates a lightweight session-switcher catalog.
+// It deliberately avoids opening every conversation database or counting every
+// step, because those values are not needed before a user selects a session.
+func discoverAllSessionsAtHome(home string) ([]core.SessionInfo, error) {
 	installationPath := InstallationPath(home)
 	dbDir := filepath.Join(installationPath, "conversations")
 
@@ -212,23 +227,14 @@ func DiscoverAllSessions() ([]core.SessionInfo, error) {
 			scanPath = fullLogPath
 		}
 
-		count := 0
-		db, err := sql.Open("sqlite", "file:"+fullDBPath+"?mode=ro")
-		if err == nil {
-			_ = db.QueryRow("SELECT count(*) FROM steps").Scan(&count)
-			_ = db.Close()
-		}
-
 		initialGoal, lastPrompt, workspaceDir, modelName := ExtractSessionMetadata(scanPath)
 
 		sessions = append(sessions, core.SessionInfo{
-			AgentType:    core.AgentTypeAntigravity,
 			SessionID:    sid,
 			WorkspaceDir: workspaceDir,
 			ShortPath:    FormatShortPath(workspaceDir),
 			InitialGoal:  initialGoal,
 			LastPrompt:   lastPrompt,
-			StepCount:    count,
 			LastModified: info.ModTime(),
 			SizeMB:       float64(info.Size()) / bytesPerMegabyte,
 			ModelName:    modelName,
@@ -244,177 +250,60 @@ func DiscoverAllSessions() ([]core.SessionInfo, error) {
 	return sessions, nil
 }
 
-// GetLatestActiveSession returns the most recently modified Antigravity session
+// GetLatestActiveSession resolves just the most recently modified conversation
+// database. It intentionally avoids full catalog discovery, transcript scans,
+// and per-session SQLite count queries on the application startup path.
 func GetLatestActiveSession() (*core.SessionInfo, error) {
-	sessions, err := DiscoverAllSessions()
-	if err != nil {
-		return nil, err
-	}
-	if len(sessions) == 0 {
-		return nil, fmt.Errorf("no active or historical antigravity sessions found")
-	}
-	return &sessions[0], nil
-}
-
-// LoadSessionHistory loads all historical events for a specific session ID
-func LoadSessionHistory(sessionID string, analyzer *core.PayloadAnalyzer) ([]core.UnifiedAgentEvent, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
 	}
-
-	dbPath := ConversationDatabasePath(home, sessionID)
-	logPath, _ := TranscriptPaths(home, sessionID)
-
-	sqliteReader := NewSQLiteTelemetryReader(dbPath)
-	_ = sqliteReader.PollLatest()
-
-	file, err := os.Open(logPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open session log %s: %w", logPath, err)
-	}
-	defer file.Close()
-
-	var events []core.UnifiedAgentEvent
-	reader := bufio.NewReader(file)
-
-	watcher := NewWatcher(logPath, sessionID, analyzer, dbPath)
-
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			if err == io.EOF {
-				if len(line) > 0 {
-					ev, parseErr := watcher.parseLine(line)
-					if parseErr == nil {
-						analyzer.AnalyzeStep(&ev)
-						events = append(events, ev)
-					}
-				}
-				break
-			}
-			return events, err
-		}
-		ev, parseErr := watcher.parseLine(line)
-		if parseErr == nil {
-			analyzer.AnalyzeStep(&ev)
-			events = append(events, ev)
-		}
-	}
-
-	events = MergeMissingSQLiteSteps(events, dbPath, sessionID)
-	core.BackfillPackagedIn(events)
-
-	return events, nil
+	return discoverLatestSessionAtHome(home)
 }
 
-// MergeMissingSQLiteSteps reads SQLite steps table and inserts any internal/subagent steps missing from transcript
-func MergeMissingSQLiteSteps(events []core.UnifiedAgentEvent, dbPath string, sessionID string) []core.UnifiedAgentEvent {
-	if dbPath == "" {
-		return events
-	}
-	db, err := sql.Open("sqlite", "file:"+dbPath+"?mode=ro&_journal=WAL")
+func discoverLatestSessionAtHome(home string) (*core.SessionInfo, error) {
+	databaseDirectory := filepath.Join(InstallationPath(home), "conversations")
+	entries, err := os.ReadDir(databaseDirectory)
 	if err != nil {
-		return events
-	}
-	defer db.Close()
-
-	existingIndices := make(map[int]bool, len(events))
-	for _, e := range events {
-		existingIndices[e.StepIndex] = true
+		return nil, err
 	}
 
-	rows, err := db.Query("SELECT idx, step_type, status, metadata FROM steps ORDER BY idx ASC")
-	if err != nil {
-		return events
-	}
-	defer rows.Close()
-
-	toolRegex := regexp.MustCompile(`(write_to_file|view_file|run_command|list_directory|read_url_content|ask_question)`)
-	summaryRegex := regexp.MustCompile(`"toolSummary"\s*:\s*"([^"]+)"`)
-
-	var merged []core.UnifiedAgentEvent
-	merged = append(merged, events...)
-
-	uuidRegex := regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
-
-	for rows.Next() {
-		var idx, stepType, status int
-		var metadata []byte
-		if err := rows.Scan(&idx, &stepType, &status, &metadata); err != nil {
+	var latestEntry os.DirEntry
+	var latestInfo os.FileInfo
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".db") || entry.Name() == "conversation_summaries.db" {
 			continue
 		}
-		if existingIndices[idx] {
+		info, infoErr := entry.Info()
+		if infoErr != nil {
 			continue
 		}
-
-		toolName := "internal"
-		summary := fmt.Sprintf("Internal background execution #%d", idx)
-		isSub := false
-		agentRole := "INTERNAL"
-
-		if len(metadata) > 0 {
-			metaStr := string(metadata)
-			uuids := uuidRegex.FindAllString(metaStr, -1)
-			for _, u := range uuids {
-				if u != sessionID {
-					isSub = true
-					agentRole = "SUBAGENT"
-					break
-				}
-			}
-			if m := toolRegex.FindStringSubmatch(metaStr); len(m) > 1 {
-				toolName = m[1]
-			}
-			if m := summaryRegex.FindStringSubmatch(metaStr); len(m) > 1 {
-				summary = m[1]
-			} else if toolName != "internal" {
-				summary = fmt.Sprintf("Execute %s", toolName)
-			}
+		if latestInfo == nil || info.ModTime().After(latestInfo.ModTime()) {
+			latestEntry = entry
+			latestInfo = info
 		}
-
-		statusLabel := "DONE"
-		stepScope := core.ScopeLocalExecution
-		if isSub {
-			stepScope = core.ScopeSubagent
-		}
-		stType := core.StepTypeRunCommand
-		if status == 7 {
-			statusLabel = "BLOCKED"
-			summary = fmt.Sprintf("[BLOCKED] %s", summary)
-		}
-		if toolName == "view_file" {
-			stType = core.StepTypeViewFile
-		} else if toolName == "write_to_file" {
-			stType = core.StepTypeCodeAction
-		} else if toolName == "list_directory" {
-			stType = core.StepTypeListDirectory
-		}
-
-		internalEvent := core.UnifiedAgentEvent{
-			SessionID:  sessionID,
-			StepIndex:  idx,
-			Source:     "SYSTEM",
-			Type:       stType,
-			Status:     statusLabel,
-			Scope:      stepScope,
-			AgentRole:  agentRole,
-			IsSubagent: isSub,
-			Summary:    summary,
-			Tokens: core.TokenBreakdown{
-				TotalTokens:      0,
-				CachedTokens:     0,
-				NewTokens:        0,
-				IsOfficialData:   false,
-				ToolResultTokens: 0,
-			},
-		}
-		merged = append(merged, internalEvent)
+	}
+	if latestEntry == nil || latestInfo == nil {
+		return nil, fmt.Errorf("no active or historical antigravity sessions found")
 	}
 
-	sort.Slice(merged, func(i, j int) bool {
-		return merged[i].StepIndex < merged[j].StepIndex
-	})
-
-	return merged
+	sessionID := strings.TrimSuffix(latestEntry.Name(), ".db")
+	fullLogPath, compactLogPath := TranscriptPaths(home, sessionID)
+	logPath := fullLogPath
+	if _, statErr := os.Stat(logPath); statErr != nil {
+		logPath = compactLogPath
+	}
+	initialGoal, lastPrompt, workspaceDir, modelName := ExtractSessionMetadata(logPath)
+	return &core.SessionInfo{
+		SessionID:    sessionID,
+		WorkspaceDir: workspaceDir,
+		ShortPath:    FormatShortPath(workspaceDir),
+		InitialGoal:  initialGoal,
+		LastPrompt:   lastPrompt,
+		LastModified: latestInfo.ModTime(),
+		SizeMB:       float64(latestInfo.Size()) / bytesPerMegabyte,
+		ModelName:    modelName,
+		DBPath:       filepath.Join(databaseDirectory, latestEntry.Name()),
+		LogPath:      logPath,
+	}, nil
 }

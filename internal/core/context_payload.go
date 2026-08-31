@@ -4,9 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 )
@@ -41,7 +38,6 @@ const (
 
 // AgentContextPayload is the evidence-oriented domain model for the context view.
 type AgentContextPayload struct {
-	AgentType                  AgentType
 	TargetModel                string
 	TotalTokens                int
 	ContextLimit               int
@@ -52,6 +48,8 @@ type AgentContextPayload struct {
 	SnapshotGenIndex           int
 	SnapshotBytes              int
 	SnapshotAvailable          bool
+	SnapshotInputBoundaryStep  int
+	SnapshotHasInputBoundary   bool
 	SystemPrompt               string
 	SkillsSection              string
 	MCPSection                 string
@@ -74,13 +72,8 @@ type AgentContextPayload struct {
 	ActiveHistoryTurns  []UnifiedAgentEvent
 
 	// 4. ACTIVE INBOUND
-	LatestPrompt     string
-	StagedBuffers    string
-	ProjectedHitRate float64
-	ProjectedCached  int
-	ProjectedNew     int
-	ProjectedCostUSD float64
-	ProjectedCostTWD float64
+	LatestPrompt  string
+	StagedBuffers string
 }
 
 // PersistedContextRecord is a safely decoded, schema-agnostic snapshot entry.
@@ -99,7 +92,6 @@ type PersistedContextRecord struct {
 type ContextBuildInput struct {
 	History         []UnifiedAgentEvent
 	SessionID       string
-	AgentType       AgentType
 	TargetModel     string
 	NativeTools     []ToolSignature
 	ActiveSkills    []SkillInfo
@@ -108,50 +100,37 @@ type ContextBuildInput struct {
 	Provenance      map[string]string
 }
 
-// MeasureDynamicBaselineTokens estimates the locally discoverable baseline.
-// Unavailable harness instructions and schemas are represented by fallback estimates.
-func MeasureDynamicBaselineTokens() (systemTokens int, toolsDefTokens int) {
-	cwd, _ := os.Getwd()
-	constitution := readNearestFile(cwd, "AGENTS.md")
-	runtimeDescription := strings.Join([]string{runtime.GOOS, runtime.GOARCH, os.Getenv("SHELL")}, " ")
-
-	d1 := CountTokens(constitution) + CountTokens(runtimeDescription)
-	if d1 <= 0 {
-		d1 = DefaultFallbackSystemTokens
-	}
-
-	// Calculate Tools JSON Schema tokens
-	skills := DiscoverSkillDefinitions(FindNearestDirectory(cwd, filepath.Join(".agents", "skills")))
-	toolsText := ""
-	for _, s := range skills {
-		toolsText += s.RawMarkdown + "\n"
-	}
-	d2 := CountTokens(toolsText)
-	if d2 <= 0 {
-		d2 = DefaultFallbackToolsDefTokens
-	}
-
-	return d1, d2
-}
-
 // GetNativeToolsDefinitions derives tool names and argument keys observed in session history.
 // Antigravity does not persist the authoritative request schema in the JSONL transcript.
 func GetNativeToolsDefinitions(history []UnifiedAgentEvent) []ToolSignature {
 	observed := make(map[string]map[string]struct{})
 	for _, event := range history {
-		for _, call := range event.ToolCalls {
-			if call.ToolName == "" {
-				continue
-			}
-			if observed[call.ToolName] == nil {
-				observed[call.ToolName] = make(map[string]struct{})
-			}
-			for key := range call.Arguments {
+		observeToolDefinitions(observed, event.ToolCalls)
+	}
+	return toolSignaturesFromObservedArguments(observed)
+}
+
+func observeToolDefinitions(observed map[string]map[string]struct{}, calls []ToolCallInfo) bool {
+	changed := false
+	for _, call := range calls {
+		if call.ToolName == "" {
+			continue
+		}
+		if observed[call.ToolName] == nil {
+			observed[call.ToolName] = make(map[string]struct{})
+			changed = true
+		}
+		for key := range call.Arguments {
+			if _, exists := observed[call.ToolName][key]; !exists {
 				observed[call.ToolName][key] = struct{}{}
+				changed = true
 			}
 		}
 	}
+	return changed
+}
 
+func toolSignaturesFromObservedArguments(observed map[string]map[string]struct{}) []ToolSignature {
 	names := make([]string, 0, len(observed))
 	for name := range observed {
 		names = append(names, name)
@@ -192,12 +171,8 @@ func SortedRuntimeMetadataKeys(metadata map[string]string) []string {
 // BuildContextPayloadFromHistory assembles adapter-observed facts into the universal context model.
 func BuildContextPayloadFromHistory(input ContextBuildInput) AgentContextPayload {
 	history := input.History
-	spec := ResolveModelSpec(input.TargetModel, nil)
-
 	payload := AgentContextPayload{
-		AgentType:       input.AgentType,
 		TargetModel:     input.TargetModel,
-		ContextLimit:    spec.DefaultAgentWindow,
 		Provenance:      input.Provenance,
 		RuntimeMetadata: input.RuntimeMetadata,
 		NativeTools:     input.NativeTools,
@@ -209,20 +184,10 @@ func BuildContextPayloadFromHistory(input ContextBuildInput) AgentContextPayload
 	// Scan only system bootstrap events for system fields to prevent code-view contamination.
 	for i, e := range history {
 		if (e.Type == StepTypeSystemInit || e.StepIndex == 0) && strings.Contains(e.RawContent, "<identity>") {
-			if start := strings.Index(e.RawContent, "<identity>"); start >= 0 {
-				end := strings.Index(e.RawContent, "</identity>")
-				if end > start {
-					payload.IdentityPrompt = strings.TrimSpace(e.RawContent[start+10 : end])
-				}
-			}
+			payload.IdentityPrompt = extractTranscriptTaggedSection(e.RawContent, "identity")
 		}
 		if (e.Type == StepTypeSystemInit || e.StepIndex == 0) && strings.Contains(e.RawContent, "<user_rules>") {
-			if start := strings.Index(e.RawContent, "<user_rules>"); start >= 0 {
-				end := strings.Index(e.RawContent, "</user_rules>")
-				if end > start {
-					payload.ConstitutionDoc = strings.TrimSpace(e.RawContent[start+12 : end])
-				}
-			}
+			payload.ConstitutionDoc = extractTranscriptTaggedSection(e.RawContent, "user_rules")
 		}
 		if e.Type == StepTypeCheckpoint || strings.Contains(e.RawContent, "<CONTEXT_SUMMARY>") {
 			payload.CheckpointSummary = e.RawContent
@@ -239,12 +204,12 @@ func BuildContextPayloadFromHistory(input ContextBuildInput) AgentContextPayload
 	}
 	payload.StagedBuffers = extractStagedBuffers(history)
 	for i := len(history) - 1; i >= 0; i-- {
-		if history[i].Tokens.TotalTokens <= 0 {
+		if !history[i].Usage.HasTotalTokens {
 			continue
 		}
-		payload.TotalTokens = history[i].Tokens.TotalTokens
-		if history[i].Tokens.ContextLimit > 0 {
-			payload.ContextLimit = history[i].Tokens.ContextLimit
+		payload.TotalTokens = history[i].Usage.TotalTokens
+		if history[i].Usage.HasContextLimit {
+			payload.ContextLimit = history[i].Usage.ContextLimit
 		}
 		break
 	}
@@ -252,18 +217,19 @@ func BuildContextPayloadFromHistory(input ContextBuildInput) AgentContextPayload
 	return payload
 }
 
-func readNearestFile(startDir, name string) string {
-	for dir := startDir; dir != ""; dir = filepath.Dir(dir) {
-		content, err := os.ReadFile(filepath.Join(dir, name))
-		if err == nil {
-			return strings.TrimSpace(string(content))
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
+func extractTranscriptTaggedSection(text, tag string) string {
+	openingTag := "<" + tag + ">"
+	closingTag := "</" + tag + ">"
+	start := strings.Index(text, openingTag)
+	if start < 0 {
+		return ""
 	}
-	return ""
+	start += len(openingTag)
+	end := strings.Index(text[start:], closingTag)
+	if end < 0 {
+		return ""
+	}
+	return strings.TrimSpace(text[start : start+end])
 }
 
 func extractStagedBuffers(history []UnifiedAgentEvent) string {
@@ -299,19 +265,27 @@ func marshalJSONNoEscape(v interface{}) (string, error) {
 func SerializeContextEvidence(payload AgentContextPayload) (string, error) {
 	return marshalJSONNoEscape(map[string]interface{}{
 		"evidence": map[string]interface{}{
-			"kind":               payload.SourceKind,
-			"source_path":        payload.SourcePath,
-			"gen_metadata_index": payload.SnapshotGenIndex,
-			"snapshot_bytes":     payload.SnapshotBytes,
-			"warning":            "This is Heimdall's evidence view, not a captured HTTP request or an official GenerateContentRequest body.",
+			"kind":                          payload.SourceKind,
+			"source_path":                   payload.SourcePath,
+			"gen_metadata_index":            payload.SnapshotGenIndex,
+			"snapshot_bytes":                payload.SnapshotBytes,
+			"input_boundary_step_index":     payload.SnapshotInputBoundaryStep,
+			"has_input_boundary_step_index": payload.SnapshotHasInputBoundary,
+			"warning":                       "This is Heimdall's evidence view, not a captured HTTP request or an official GenerateContentRequest body.",
 		},
-		"provenance":                         payload.Provenance,
-		"persisted_system_prompt_text":       payload.SystemPrompt,
-		"persisted_tool_entries":             payload.NativeTools,
-		"persisted_field_2_occurrence_count": payload.PersistedContextEntryCount,
-		"heimdall_runtime_metadata":          payload.RuntimeMetadata,
-		"latest_available_context_tokens":    payload.TotalTokens,
-		"latest_available_context_limit":     payload.ContextLimit,
+		"provenance": payload.Provenance,
+		"context_snapshot": map[string]interface{}{
+			"available":                 payload.SnapshotAvailable,
+			"system_prompt_text":        payload.SystemPrompt,
+			"tool_entries":              payload.NativeTools,
+			"field_2_occurrence_count":  payload.PersistedContextEntryCount,
+			"persisted_context_records": payload.PersistedRecords,
+		},
+		"heimdall_runtime_metadata": payload.RuntimeMetadata,
+		"latest_persisted_usage_observation": map[string]interface{}{
+			"context_tokens": payload.TotalTokens,
+			"context_limit":  payload.ContextLimit,
+		},
 		"transcript_observations": map[string]interface{}{
 			"checkpoint_summary":    payload.CheckpointSummary,
 			"checkpoint_step_index": payload.CheckpointStepIndex,
@@ -412,7 +386,7 @@ func SerializeSubcategoryRaw(payload AgentContextPayload, subcatIndex int) (stri
 
 	case SubcatCurrentHistory:
 		rawObj = map[string]interface{}{
-			"source":        "persisted_gen_metadata_field_1.2_repeated",
+			"source":        payload.Provenance["persisted_records"],
 			"active_events": payload.PersistedRecords,
 		}
 
@@ -440,20 +414,20 @@ func SerializeSubcategoryRaw(payload AgentContextPayload, subcatIndex int) (stri
 func SerializePersistedActiveEventRaw(payload AgentContextPayload, position int) (string, error) {
 	if position == 0 {
 		return marshalJSONNoEscape(map[string]interface{}{
-			"source":        "persisted_gen_metadata_field_1.2_repeated",
+			"source":        payload.Provenance["persisted_records"],
 			"active_events": payload.PersistedRecords,
 		})
 	}
 	for _, record := range payload.PersistedRecords {
 		if record.Position == position {
 			return marshalJSONNoEscape(map[string]interface{}{
-				"source":       "persisted_gen_metadata_field_1.2_repeated",
+				"source":       payload.Provenance["persisted_records"],
 				"active_event": record,
 			})
 		}
 	}
 	return marshalJSONNoEscape(map[string]interface{}{
-		"source":       "persisted_gen_metadata_field_1.2_repeated",
+		"source":       payload.Provenance["persisted_records"],
 		"active_event": nil,
 	})
 }

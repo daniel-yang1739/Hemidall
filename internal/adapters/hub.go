@@ -39,63 +39,58 @@ func (h *WatcherHub) ActiveSessionID() string {
 }
 
 // StartSession initiates watching on a specific session, stopping any previously active session watcher
-func (h *WatcherHub) StartSession(sessionID string, agentType core.AgentType, customFile string, customDB string) error {
+func (h *WatcherHub) StartSession(sessionID string, customFile string, customDB string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if agentType != core.AgentTypeAntigravity && agentType != "" {
-		return fmt.Errorf("unsupported agent type for live watching: %s", agentType)
-	}
 
 	// If already watching this session, no need to restart
 	if h.currentSID == sessionID && h.currentCancel != nil {
 		return nil
 	}
 
-	// 1. Gracefully stop previous watcher if running
+	logPath := customFile
+	dbPath := customDB
+	home, _ := os.UserHomeDir()
+
+	if logPath == "" {
+		fullLog, compactLog := antigravity.TranscriptPaths(home, sessionID)
+		if _, err := os.Stat(fullLog); err == nil {
+			logPath = fullLog
+		} else {
+			logPath = compactLog
+		}
+	}
+
+	if dbPath == "" {
+		dbPath = antigravity.ConversationDatabasePath(home, sessionID)
+	}
+	if _, err := os.Stat(logPath); err != nil {
+		return fmt.Errorf("resolve session transcript %s: %w", sessionID, err)
+	}
+
+	// Stop the previous watcher only after the replacement transcript is valid.
 	if h.currentCancel != nil {
 		h.currentCancel()
 		h.currentCancel = nil
 	}
 
-	// 2. Create a dedicated child context for the new session watcher
 	childCtx, cancel := context.WithCancel(h.rootCtx)
 	h.currentCancel = cancel
 	h.currentSID = sessionID
 
-	// 3. Resolve paths based on agent type
-	switch agentType {
-	case core.AgentTypeAntigravity, "":
-		logPath := customFile
-		dbPath := customDB
-		home, _ := os.UserHomeDir()
+	watcher := antigravity.NewWatcher(logPath, sessionID, h.analyzer, dbPath)
 
-		if logPath == "" {
-			fullLog, compactLog := antigravity.TranscriptPaths(home, sessionID)
-			if _, err := os.Stat(fullLog); err == nil {
-				logPath = fullLog
-			} else {
-				logPath = compactLog
-			}
-		}
-
-		if dbPath == "" {
-			dbPath = antigravity.ConversationDatabasePath(home, sessionID)
-		}
-
-		watcher := antigravity.NewWatcher(logPath, sessionID, h.analyzer, dbPath)
-
-		// 4. Start watcher in a background goroutine
-		go func(ctx context.Context, w *antigravity.Watcher, sid string) {
-			_ = w.Start(ctx, h.eventChan)
-		}(childCtx, watcher, sessionID)
-	}
+	// 4. Start watcher in a background goroutine
+	go func(ctx context.Context, w *antigravity.Watcher) {
+		_ = w.Start(ctx, h.eventChan)
+	}(childCtx, watcher)
 
 	return nil
 }
 
 // SwitchSession dynamically hot-reloads watching to the target session ID
-func (h *WatcherHub) SwitchSession(sessionID string, agentType core.AgentType) error {
-	return h.StartSession(sessionID, agentType, "", "")
+func (h *WatcherHub) SwitchSession(sessionID string) error {
+	return h.StartSession(sessionID, "", "")
 }
 
 // Stop terminates the currently active watcher

@@ -1,140 +1,82 @@
-## 上下文 5 大維度解剖 (Track 2: Local 5-Dimension Anatomy)
-* **1. System Instruction (系統提示詞)** : 基礎系統規範、專案憲法（AGENTS.md）與操作限制。
-  - **物理邊界** : 位於 GPU 顯存 KV Cache 的最前端頂部（Prefix Offset 0），在對話生命週期中永久常駐。
-  - **容量佔比** : 約佔總視窗的 2% ~ 8%（約 5k ~ 20k Tokens），視載入的自訂 Skill 與 Agent Role 數量而定。
-  - **快取效益** : 穩定前綴可能有利於快取復用；實際命中率必須以每輪遙測為準，不能保證 100%。
+## Heimdall 目前到底知道什麼
 
-* **2. MCP Tools Schema (工具定義規格)** : 工具函式呼叫的結構化 JSON Schema 規格庫。
-  - **規格內容** : 包含所有可用 Tool（如 view_file, run_command, replace_file_content 等）的參數型別、欄位描述與呼叫限制。
-  - **物理機制** : 模型依靠這些 Schema 生成結構化的 Tool Call 請求；每次發起推論時都會作為系統提示詞的延伸完整傳入。
-  - **容量佔比** : 約佔總視窗的 3% ~ 10%（約 8k ~ 25k Tokens）。
+Heimdall 讀的是 Antigravity 留在本機的檔案。它沒有攔到真正送去雲端的 HTTP request，所以不能把畫面上的資料說成官方帳單、實際價格，或保證的 KV cache 行為。
 
-* **3. Tool Results / Diff (工具執行結果與差異)** : 本地工具執行後向模型回報的實體數據反饋。
-  - **內容來源** : 終端機 stdout/stderr 輸出、檔案讀取內容、目錄結構清單、代碼 Diff 變更塊。
-  - **增長特徵** : 隨使用者任務進行急劇膨脹，為整機上下文消耗最大宗來源（通常佔據 60% ~ 85% 總容量）。
-  - **快取特性** : 本地產生的字數在產生當步為 0 GPU Tokens，於下一輪雲端推論時一次性包裝送出並寫入 KV 快取。
+* **Transcript**：`transcript_full.jsonl` 是事件時間線。裡面有使用者輸入、模型回覆、tool call、本機 tool 輸出，以及 checkpoint 類型的內容。
+* **Generation metadata**：`conversations/<session>.db` 的 `gen_metadata` table 有 protobuf blob。Heimdall 會解出目前已觀察到的 `last_step_index`、context total、context limit，以及部分 cache 欄位。
+* **Persisted context snapshot**：Heimdall 由大於安全門檻、從最新 `idx` 往回找到，且能解出 wire path `1.1` 的 `gen_metadata` blob。它可能包含 system prompt、重複 context record 與 tool 定義；這是一份「當時被保存的 context 狀態」，不是官方 request body。
 
-* **4. Conversation Hist (過往對話歷史)** : 當前活躍滑動窗口內保留的過往輪次歷史對話。
-  - **內容組成** : 過去幾輪的 User Prompt 提問、Model 的回覆結論及歷史工具調用摘要。
-  - **滑動機制** : 透過 Reverse Sliding Window 倒推算法維持在 256k 上限內；超出預算的遠古輪次會被逐步淘汰或壓縮。
-  - **容量佔比** : 通常維持在 10% ~ 25% 總容量。
+## 一筆 generation metadata 對應哪個 step
 
-* **5. Active Turn / CoT (當前活躍輪次與思維鏈)** : 當前正在進行中的推論輪次暫存負載。
-  - **內容組成** : 使用者最新輸入的 Prompt + 雲端模型思維鏈推理 (Chain of Thought, CoT) + 當前發起的工具調用。
-  - **生命週期** : 在當前 Turn 結束並獲得所有工具結果後，自動沉澱並轉化為 Conversation Hist。
+`last_step_index` 的意思是這次 generation 開始前，最後吃到哪一個 transcript step。真正產生的 model event 是下一個 step。
 
-## Track 1 面板標題狀態與觸發情境 (Track 1 Panel Title Variations & Scenarios)
-* **☁️ TRACK 1: OFFICIAL CLOUD TELEMETRY** : 主控規劃代理發起雲端推論，且 SQLite 成功寫入官方真實帳單。
-  - **觸發情境** : 主控代理 (Main Planner) 執行推論思考，且世代元資料庫已解析到 Google Protobuf 官方 Token 計費。
-  - **核心指標** : Total Context Window (總視窗長度)、Step Delta (新輸入冷字)、Prefix Cache Savings (快取命中率與 75% 費用減免)、Turn Cost (單輪美金/台幣帳單)。
-  - **物理意義** : 唯一真正產生雲端 API 費用與 GPU 顯存吞吐的步驟，代表模型消化先前所有暫存資料並完成決策。
+`input boundary step N` → `generated transcript step N + 1`
 
-* **👥 TRACK 1: SUBAGENT CLOUD TELEMETRY** : 並行子代理 (Subagent Worker) 發起獨立雲端推論。
-  - **觸發情境** : 主控 Agent 透過 `invoke_subagent` 衍生之獨立並行 Worker 發起雲端推論。
-  - **核心指標** : 子代理獨立的 Context Window、獨立的前綴快取命中率與 API 計費，與主會話視窗完全隔離。
-  - **架構意義** : 子代理擁有獨立的 System Prompt 與工作區，其 Token 消耗與主 Agent 分流計費。
+這是目前 Antigravity 資料中觀察到的固定關係，不是拿前後 step 猜一個最像的。如果其中一邊找不到，Heimdall 會顯示 unavailable。
 
-* **👤 TRACK 1: USER INTERACTION (CLIENT PROMPT)** : 人類工程師在終端機輸入 Prompt 自然語言指令。
-  - **觸發情境** : 使用者在終端機下達新任務目標，或在多選 Clarification 互動視窗中點選回應。
-  - **核心指標** : Total Context 標記為 Nil (尚未發起推論)、Step Delta (本次使用者打字字數)、狀態為 `Staged locally ⏳`。
-  - **物理意義** : 使用者意圖剛進入本機暫存佇列，尚未被傳送至雲端 GPU，不具備 Context 視窗載荷。
+## Token 數字分成兩條完全不同的資料線
 
-* **💻 TRACK 1: LOCAL EXECUTION STEP (OFFLINE)** : Mac 本機執行工具產生的離線步驟。
-  - **觸發情境** : 本機執行工具（如 `run_command` 終端指令、`view_file` 讀檔、`replace_file_content` 編輯）。
-  - **核心指標** : Total Context 為 Nil (本機子程序運作，0 GPU Tokens)、Step Delta (本地輸出的 BPE 字數暫存緩衝區)、狀態標記為 `Staged for Next Cloud Turn`。
-  - **物理意義** : 這是離線的本機計算，不消耗雲端配額，產生的大量資料會在下一輪雲端推論時打包結算。
+### Persisted context observation
 
-* **🛡️ TRACK 1: PERMISSION BOUNDARY (BLOCKED)** : 安全守衛攔截敏感檔案或高危險操作。
-  - **觸發情境** : Agent 嘗試存取受保護系統檔、使用者拒絕高風險 Shell 指令，或在確認框按下 Cancel。
-  - **核心指標** : Total Context 為 Nil、0 GPU Tokens 消耗、`Blocked by System Permission Guard 🛡️`。
-  - **防禦機制** : 透過本地攔截機制確保敏感指令完全不會送往雲端，保障資安且零 Token 浪費。
+如果某個 model event 成功對應到 generation metadata，Heimdall 可以顯示：
 
-* **🦿 TRACK 1: INTERNAL HARNESS BACKGROUND TASK** : 宿主系統 (Antigravity) 自動產生的背景協調事件。
-  - **觸發情境** : 背景非同步任務執行完畢通知 `<SYSTEM_MESSAGE>`、定時排程 `schedule` 喚醒信號、Linter / IDE 自動診斷回饋。
-  - **核心指標** : Total Context 為 Nil、本機系統自動發起之事件，用於反應式喚醒 (Reactive Wakeup) 模型。
-  - **協調機制** : 確保背景非同步運作的輸出能以可持久化文字形式記錄，並在下個步驟精確餵給 LLM 大腦。
+* **Observed context tokens**：那筆保存資料裡解出的 total。
+* **Observed context limit**：只有 protobuf 裡真的有這個欄位時才顯示。
+* **Cache fields**：只有 total 和 cache 兩個欄位都有被解出、而且彼此合理時才計算。
 
-* **⚙️ TRACK 1: SYSTEM COMPACTION (CHECKPOINT)** : 上下文達到物理上限觸發之 Sidecar GC 壓縮檢查點。
-  - **觸發情境** : 對話歷史達到 256k 物理上限時，Antigravity 自動啟動背景壓縮，將 200k+ 歷史濃縮為 10k 摘要。
-  - **核心指標** : Summary Size (壓縮後摘要大小)、Step Delta (摘要長度)、`Re-anchors Active Window Base 🔄`。
-  - **記憶再生** : 將龐大的歷史背景摘要化，重置會話前綴基底，讓對話得以無上限持續進行。
+這些是根據本機 wire format 做出的觀察，不是官方 API response、帳單、價格或快取保證。Heimdall 不會再根據前一輪、閒置時間或 model 名稱去補一個 cache hit rate。
 
-## 多代理協同與角色分工 (Multi-Agent Architecture & Roles)
-* **👑 MAIN PLANNER (主控規劃代理)** : 負責直接與使用者對話、制定頂層執行計劃並調度工具。
-  - **獨立視窗** : 維持主會話獨立的 Context 滑動窗口，享有主會話前綴快取的持續命中。
-  - **決策邊界** : 負責頂層任務拆解、權限請求與向使用者回報最終成果。
+### Local transcript estimate
 
-* **👥 SUBAGENT WORKER (並行子代理)** : 由主控 Agent 透過 `invoke_subagent` 動態派發之背景工作程序。
-  - **隔離空間** : 擁有獨立的 Context 視窗、獨立的 System Prompt 與獨立的 API 配額計費。
-  - **成本效益** : 本地執行的 Tool 步驟為 0 GPU Tokens，執行成果匯總後回傳主 Agent。
+`cl100k_base` 只是在數某一筆 transcript text 大約有多少 token。Heimdall 用它顯示「這一個 event 的文字量」和「整個 session 目前累積讀過多少 transcript text」。
 
-* **⚙️ INTERNAL HARNESS (本機宿主載具)** : 包裹 LLM、提供終端環境與背景進程管理的 Antigravity 宿主系統。
-  - **協調職責** : 管理檔案讀寫權限、排程計時器、非同步 Task 監聽與事件日誌記錄。
+後者**不是**下一個 request 的 context。舊資料可能已被 compact、被排除，或在 snapshot 裡用不同形式保存，所以累積值很大是正常的，不能拿來當 context window。
 
-* **🛡️ BLOCKED / DENIED (安全守衛)** : 權限攔截防線。
-  - **防護範圍** : 阻止未授權的敏感檔案存取、危險 Shell 執行，確保 0 GPU Token 消耗。
+## 五維表是在估什麼
 
-## 步驟類型與生命週期 (Step Types & Agent Lifecycle)
-* **👤 USER_INPUT** : 人類工程師在終端機輸入之自然語言指令。
-  - **生命週期** : 標誌新 Turn 的起點。本機暫存狀態（Total Context 為 Nil），於下一輪雲端決策回傳時核算真實帳單。
-* **🤖 MODEL_RESPONSE** : 雲端 LLM 自然語言思考、思維鏈推理 (CoT) 與結構化回覆。
-  - **生命週期** : 產生真實 GPU 運算與帳單，享有前綴快取加速與 75% 費用折扣。
-* **🛠️ TOOL_CALL** : 模型向本地發出的工具呼叫請求（如 run_command, view_file）。
-  - **生命週期** : 包含工具名稱與 JSON 參數，可單發或平行多發調用。
-* **💻 TOOL_RESULT / OUTPUT** : 本地工具實體執行後回傳的文字數據。
-  - **生命週期** : 為本機離線運作（0 GPU Token），打包作為下一次推論之輸入。
-* **🦿 SYSTEM_MESSAGE** : 本機 Harness 產生的背景事件通知（如非同步子程序完成、定時喚醒信號）。
-  - **生命週期** : 用於反應式喚醒 (Reactive Wakeup) 模型進入下一輪推論。
-* **📜 SYSTEM_INIT** : 系統開局與環境初始化事件。
-  - **生命週期** : 注入 Agent Identity、專案憲法規範與工具定義。
-* **⚙️ CHECKPOINT** : 會話截斷與壓縮檢查點（Truncation Checkpoint）。
-  - **生命週期** : 當上下文達到 256k 上限時由 Antigravity 自動觸發摘要壓縮，重置會話前綴。
-* **⚠️ ERROR_MESSAGE** : 系統異常或執行錯誤事件（如網路逾時、程序崩潰）。
+Track 2 的五維表是**目前選中 playback step 的可見 context evidence**。history 更新時，Heimdall 會先替每一個 event 建立本機 transcript estimate，所以在 Dashboard 移動游標不會 query SQLite，也不會重新掃完整段 transcript。若選到的是 cloud generation event，estimate 使用該 generation 發生前的 evidence；其他 event 則使用到該 event 為止的 evidence。它不是 Heimdall 重組出的 provider request：
 
-## 快取狀態標籤與計費語意 (Cache Status Badges & Semantics)
-* **[CACHE HIT]** : 前綴快取命中率 >= 80.0%。
-  - **物理狀態** : 絕大部分上下文直接命中 GPU 顯存 (HBM)，享有 75% 費用折扣與極低延遲。
-* **[PARTIAL HIT]** : 前綴快取命中率介於 0.1% ~ 79.9%。
-  - **物理狀態** : 既有前綴成功命中，但本輪湧入了超大檔案或大量 Tool 輸出，使總體命中率被稀釋。
-* **[CACHE WRITE]** : 會話第 0 步首次開局（命中率 0.0%）。
-  - **物理狀態** : 系統提示詞與工具定義首次寫入 GPU KV Cache 顯存。
-* **[TTL EXPIRED]** : 閒置超時淘汰（超過 5 分鐘未操作）。
-  - **物理狀態** : GPU 顯存釋放先前快取，本輪全量歷史被迫重新計算計費（冷啟動）。
-* **[CACHE MISS]** : 快取未命中（0.0%）。
-  - **物理狀態** : 因前綴文字被修改、模型動態切換或跨模型路由導致快取鏈破壞。
+* system instruction；
+* tool definitions；
+* staged tool buffers；
+* history evidence；以及
+* transcript 裡觀察到的 latest inbound prompt。
 
-## 全局統計指標與計費演算法 (Aggregate Metrics & Pricing Algorithms)
-* **Total Processed (處理總量)** : 整個會話所有雲端輪次累計處理的總 Token 數（Σ TotalTokens）。
-  - **意義** : 衡量模型運算整體吞吐量。
-* **Cache Hit Volume (快取總量)** : 整個會話累計成功命中 GPU KV 快取的字數（Σ CachedTokens）。
-  - **意義** : 衡量會話整體節省的主要來源。
-* **Uncached Inbound (冷字總量)** : 整個會話累計未快取新傳入字數（Σ NewTokens）。
-  - **意義** : 需耗費 GPU 算力進行完整 Prefill 計算之冷字總量。
-* **Effective Tokens (等效字數)** : 經多模型快取折扣加權後的等效字數。
-  - **計算公式** : Effective = Σ [Cached × (1 - Discount) + New]，反映真實付費權重。
-* **Cached Saved % (節省比例)** : 透過 GPU 前綴快取所節省的 Token 比例。
-  - **計算公式** : Saved = Cached × Discount，代表快取帶來的成本減免效益。
-* **Multi-Model Discount Matrix** : 各大模型官方快取折扣矩陣。
-  - **折扣標準** : Gemini 3.7 Flash: 75% 折扣；Gemini 2.5 Pro: 75% 折扣；Claude 3.7 Sonnet: 90% 折扣。
-* **Google AI Pro Quota (5000 RPD)** : Google AI Pro 每日請求配額消耗追蹤。
-  - **計算公式** : 以 Turns / 5000 × 100% 計算當前配額消耗百分比。
+每一格都是本機 `cl100k_base` 的估算。如果選中的 step 剛好等於最新 persisted snapshot 對應的 generated step，Track 2 才會用 snapshot 的 system、tools、history 值；該 step 的 buffers 和 inbound 仍使用 transcript 觀察。若沒有這種精確對應，五個維度仍會顯示，但都會清楚標成 `transcript`。這五格讓人看得懂「可見資料來自哪一條資料線」，但它不是 Heimdall 重組出的 provider request，也不能拿數字直接和 Track 1 的 observed context total 比較。
 
-* **Context Compaction (雙水位線壓縮)** : 記憶體垃圾回收機制。
-  - **運作機制** : 於觸及 95% High Watermark (~245k) 時觸發遞迴摘要，並重置至 48% Low Watermark (~120k)。
-* **Reverse Sliding Window (倒推滑動窗口)** : 活躍窗口精準定位。
-  - **運作機制** : 由最新步驟往前倒推填滿 Google 官方活躍預算，精確排除已被淘汰的遠古步驟。
-* **Longest Common Prefix (最長公共前綴)** : GPU KV Cache 邊界鎖定。
-  - **運作機制** : 逐字元比對時序步驟，精確定位 GPU 顯存可復用的前綴邊界。
+## Dashboard 怎麼看
 
-## 配置載入與模型規格庫 (Configuration Hierarchy & Model Specs)
-* **Tier 1: By-Model Overrides (個別模型專屬覆蓋)** :
-  - **規格來源** : `settings.json` 的 `modelConfigs.customOverrides` 或 `opencode.json` 的 `models[model_id]`。
-  - **運作機制** : 針對特定模型優先覆蓋 Context 視窗或快取折扣。
-* **Tier 2: Global Host Settings (全域使用者設定)** :
-  - **規格來源** : `settings.json` 的 `contextManagement.historyWindow.maxTokens` (預設 150k)、`model.compressionThreshold` (預設 0.5)。
-  - **運作機制** : 提供會話全域通用之活躍視窗上限與匯率 (`exchange_rate`)。
-* **Tier 3: Official Model Specs (官方模型規格庫)** :
-  - **規格來源** : `internal/core/model_specs.go` 之原廠官方 API 物理規格與定價表。
-  - **支援模型** : Gemini 3.7 Flash (1M 物理 / 256k 預設 / 90% 快取折扣), Gemini 2.5 Pro (2M / 1M / 90%), Claude 3.7 Sonnet (200k / 90%), DeepSeek R1 (128k / 75%)。
-* **Dynamic BPE Token Measurement (動態 BPE 精算)** :
-  - **運作機制** : $D_1$ (System Instructions) 與 $D_2$ (MCP Tools Schema) 透過本地 BPE Tokenizer 即時計算真實 `AGENTS.md` 與 Tools JSON 內容，確保 Token 佔比 100% 精準。
+* **Track 1 — Persisted Cloud Usage Observation**：只看目前選中的 model event 有沒有對應到保存的 generation metadata。
+* **Track 2 — Playback Context Evidence**：會跟著選中的 event 改變。它使用該 step 已快取的本機 transcript estimate；只有 snapshot 剛好對應到這一個 generated step 時，才使用 snapshot 的維度。對應規則是有 `last_step_index` 時的 `last_step_index + 1`。其他 step 一律清楚標為 transcript estimate。移動 playback 時，Track 1 和 Track 2 都會變，但不會觸發 SQLite I/O。
+* **Session aggregates**：把每一輪觀察到的 context total 加總，適合看趨勢；它不是 API 帳單，也不是去重後的 token 數。
+
+## Context 頁面怎麼看
+
+Context 頁不是只選一個來源：它先用 transcript 建立「這場對話發生過什麼」的底稿；若有 snapshot，再覆寫其中確實由 snapshot 保存的 system、rules、skills、tools 和 persisted record。runtime metadata 仍由 Heimdall 本機程序取得。Raw mode 的 JSON 是 Heimdall 產生、每欄帶資料來源標籤的 evidence view，不是 Antigravity 原始 request JSON。
+
+Context 頁會把資料來源分開：
+
+* **System and rules**：有 snapshot 時，來自 snapshot 解出的文字。
+* **Tools**：有 snapshot 時是保存的重複 tool entry；沒有時才是 transcript 裡看過的 tool name 和 argument key。
+* **Compacted checkpoint**：保存資料裡解出的 `<CONTEXT_SUMMARY>`，有才會顯示。
+* **Active history**：snapshot 裡保存的 context record，依保存順序列出。選某一筆時只看那一筆；raw mode 不會偷偷把其他 record 一起塞進來。
+* **Latest inbound / staged buffers**：來自 transcript 的觀察，不代表已經證明它們就是 outbound HTTP payload。
+* **MCP**：目前只顯示 snapshot system prompt 裡可辨識的 MCP 相關文字；Context 頁不會讀取 `mcp_config.json`、`settings.json` 或 project config，也無法把 tool 歸屬給特定 MCP server。
+
+`field 2` 的數量是重複 wire field 出現的次數；Heimdall 會安全地顯示部分可讀文字與 wire observation，但沒有官方 protobuf schema，因此不能替每筆 record 判定官方 role 或完整語意。
+
+## Cache 狀態
+
+只有成功對應、而且 total/cache 欄位都合理的資料，才可能顯示 `HIT`、`PARTIAL` 或 `MISS`。`UNKNOWN` 代表沒有足夠資料，或欄位彼此不能比較。
+
+Heimdall 不會從本機證據推論 startup cache write、TTL expired、invoice、storage fee 或 output charge。
+
+## Cache-adjusted input projection
+
+* **Effective Input**：公式是 `uncached + cached × cache-input price ratio`。只有同時有可比較 total/cache 欄位的 rows，且 model ID 有 exact match 的官方 pricing profile 時才計算。
+* **Gemini 3.7 Flash profile**：Google Gemini Developer API 的 paid standard 表目前是 standard input `$0.75/M`、cached input `$0.075/M`，所以 cache-input price ratio 是 `0.10×`。
+* **範圍**：這是每個 model 各自的 standard-input-price equivalent，不是重組出的 request、跨 model 總計、Antigravity invoice、storage fee、output charge，也不能證明 Antigravity 使用 Google API Standard tier。
+
+## 目前支援的資料來源
+
+目前產品只會發現和監看 **Antigravity** session。Session switcher 列的是本機 `.gemini/antigravity-cli` 裡的 conversation；其他 agent 產品不會被顯示成已支援的來源。

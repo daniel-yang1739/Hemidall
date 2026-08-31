@@ -2,74 +2,80 @@ package adapters
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"heimdall/internal/core"
 )
 
-func TestWatcherHub_Pos_InitializeAndStartSession(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+const fixtureTranscriptContent = "{\"step_index\":0,\"type\":\"USER_INPUT\"}\n"
+
+func TestWatcherHub_Pos_StartSessionWithExplicitTranscript(t *testing.T) {
+	hub, cancel := newFixtureWatcherHub(t)
 	defer cancel()
 
-	eventChan := make(chan core.UnifiedAgentEvent, 100)
-	analyzer := core.NewPayloadAnalyzer()
-	hub := NewWatcherHub(ctx, eventChan, analyzer)
+	startErr := hub.StartSession("session-a", createFixtureTranscript(t, "session-a.jsonl"), "")
 
-	_ = hub.StartSession("test-session-1", core.AgentTypeAntigravity, "", "")
-	activeSID := hub.ActiveSessionID()
-	if activeSID != "test-session-1" {
-		t.Fatalf("Expected active session 'test-session-1', got '%s'", activeSID)
-	}
-}
-
-func TestWatcherHub_Pos_SwitchSessionHotReload(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	eventChan := make(chan core.UnifiedAgentEvent, 100)
-	analyzer := core.NewPayloadAnalyzer()
-	hub := NewWatcherHub(ctx, eventChan, analyzer)
-
-	_ = hub.StartSession("session-A", core.AgentTypeAntigravity, "", "")
-	_ = hub.SwitchSession("session-B", core.AgentTypeAntigravity)
-
-	activeSID := hub.ActiveSessionID()
-	if activeSID != "session-B" {
-		t.Fatalf("Expected active session after switch to be 'session-B', got '%s'", activeSID)
-	}
-
+	requireHubNoError(t, startErr)
+	requireHubEqual(t, "session-a", hub.ActiveSessionID())
 	hub.Stop()
-	activeAfterStop := hub.ActiveSessionID()
-	if activeAfterStop != "" {
-		t.Fatalf("Expected empty active session after Stop(), got '%s'", activeAfterStop)
+}
+
+func TestWatcherHub_Pos_ReplacesActiveSession(t *testing.T) {
+	hub, cancel := newFixtureWatcherHub(t)
+	defer cancel()
+	firstStartErr := hub.StartSession("session-a", createFixtureTranscript(t, "session-a.jsonl"), "")
+	secondStartErr := hub.StartSession("session-b", createFixtureTranscript(t, "session-b.jsonl"), "")
+
+	requireHubNoError(t, firstStartErr)
+	requireHubNoError(t, secondStartErr)
+	requireHubEqual(t, "session-b", hub.ActiveSessionID())
+	hub.Stop()
+}
+
+func TestWatcherHub_Neg_RejectsMissingTranscript(t *testing.T) {
+	hub, cancel := newFixtureWatcherHub(t)
+	defer cancel()
+
+	startErr := hub.StartSession("session-a", filepath.Join(t.TempDir(), "missing.jsonl"), "")
+
+	requireHubError(t, startErr)
+	requireHubEqual(t, "", hub.ActiveSessionID())
+}
+
+func newFixtureWatcherHub(t *testing.T) (*WatcherHub, context.CancelFunc) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	eventChan := make(chan core.UnifiedAgentEvent, 1)
+	return NewWatcherHub(ctx, eventChan, core.NewPayloadAnalyzer()), cancel
+}
+
+func createFixtureTranscript(t *testing.T, filename string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), filename)
+	writeErr := os.WriteFile(path, []byte(fixtureTranscriptContent), 0o600)
+	requireHubNoError(t, writeErr)
+	return path
+}
+
+func requireHubEqual[T comparable](t *testing.T, want, got T) {
+	t.Helper()
+	if want != got {
+		t.Fatalf("want %v, got %v", want, got)
 	}
 }
 
-func TestWatcherHub_Neg_UnsupportedAgentType(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	eventChan := make(chan core.UnifiedAgentEvent, 100)
-	analyzer := core.NewPayloadAnalyzer()
-	hub := NewWatcherHub(ctx, eventChan, analyzer)
-
-	err := hub.StartSession("session-unknown", core.AgentType("unknown_engine"), "", "")
-	if err == nil {
-		t.Fatalf("Expected error when starting unsupported agent type, got nil")
-	}
-}
-
-func TestWatcherHub_Pos_IdempotentStartSameSession(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	eventChan := make(chan core.UnifiedAgentEvent, 100)
-	analyzer := core.NewPayloadAnalyzer()
-	hub := NewWatcherHub(ctx, eventChan, analyzer)
-
-	_ = hub.StartSession("session-idempotent", core.AgentTypeAntigravity, "", "")
-	err := hub.StartSession("session-idempotent", core.AgentTypeAntigravity, "", "")
+func requireHubNoError(t *testing.T, err error) {
+	t.Helper()
 	if err != nil {
-		t.Fatalf("Expected idempotent start on same session to succeed with nil error, got: %v", err)
+		t.Fatal(err)
+	}
+}
+
+func requireHubError(t *testing.T, err error) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected error, got nil")
 	}
 }

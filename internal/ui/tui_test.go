@@ -114,39 +114,29 @@ func TestView3DocsPageRenderingAndSearch(t *testing.T) {
 		t.Errorf("Expected docsLang='en' after pressing 't' again, got '%s'", m.docsLang)
 	}
 
-	// 4. Press '/' to activate search mode and search for "cache"
+	// 4. Press '/' to activate search mode and search for persisted snapshots.
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
 	m = updated.(Model)
 	if !m.isDocsSearching {
 		t.Error("Expected isDocsSearching=true after pressing '/'")
 	}
 
-	for _, r := range "[cache" {
-		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
-		m = updated.(Model)
-	}
-	cacheFilteredView := m.View()
-	if !strings.Contains(cacheFilteredView, "[CACHE HIT]") {
-		t.Errorf("Expected cache status definitions in cacheFilteredView, got: %s", cacheFilteredView)
-	}
+	m = typeDocsQuery(m, "snapshot")
+	snapshotFilteredView := m.View()
+	requireViewContains(t, snapshotFilteredView, "Persisted context snapshot")
 
-	// 5. Press Esc to clear search, then search for "cot"
+	// 5. Press Esc to clear search, then search for the local transcript estimate.
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
 	m = updated.(Model)
-	for _, r := range "cot" {
-		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
-		m = updated.(Model)
-	}
-	if m.docsSearchQuery != "cot" {
-		t.Errorf("Expected docsSearchQuery='cot', got '%s'", m.docsSearchQuery)
+	m = typeDocsQuery(m, "local transcript")
+	if m.docsSearchQuery != "local transcript" {
+		t.Errorf("Expected docsSearchQuery='local transcript', got '%s'", m.docsSearchQuery)
 	}
 
 	filteredView := m.View()
-	if !strings.Contains(filteredView, "Active Turn / CoT") {
-		t.Errorf("Expected filtered view to contain 'Active Turn / CoT', got: %s", filteredView)
-	}
+	requireViewContains(t, filteredView, "Track 2 — Playback Context Evidence")
 
 	// 6. Press Esc to clear search
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
@@ -168,6 +158,21 @@ func TestView3DocsPageRenderingAndSearch(t *testing.T) {
 	m = updated.(Model)
 	if m.docsScroll != maxScroll-1 {
 		t.Errorf("Expected docsScroll to immediately decrement to %d on first 'k', got %d", maxScroll-1, m.docsScroll)
+	}
+}
+
+func typeDocsQuery(model Model, query string) Model {
+	for _, character := range query {
+		updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{character}})
+		model = updated.(Model)
+	}
+	return model
+}
+
+func requireViewContains(t *testing.T, view, expected string) {
+	t.Helper()
+	if !strings.Contains(view, expected) {
+		t.Fatalf("expected view to contain %q, got: %s", expected, view)
 	}
 }
 
@@ -207,8 +212,8 @@ func TestView2ContextPageRenderingAndDualModeToggle(t *testing.T) {
 	}
 
 	rawView := m.View()
-	if !strings.Contains(rawView, "[MODE: TRANSCRIPT FA") {
-		t.Errorf("Expected transcript fallback mode after 'r' toggle, got: %s", rawView)
+	if !strings.Contains(rawView, "[MODE: EVIDENCE JSON [r]]") {
+		t.Errorf("Expected evidence JSON mode after 'r' toggle, got: %s", rawView)
 	}
 	if !strings.Contains(rawView, "evidence") && !strings.Contains(rawView, "transcript_observations") {
 		t.Errorf("Expected evidence representation in rawView, got: %s", rawView)
@@ -540,10 +545,10 @@ func TestHistoryFilteringAndStepSearch(t *testing.T) {
 	// Seed with distinct types and cache statuses
 	m.history = []core.UnifiedAgentEvent{
 		{StepIndex: 1, Type: core.StepTypeUserInput, Summary: "User question"},
-		{StepIndex: 2, Type: core.StepTypeModelResponse, CacheStatus: "HIT", Tokens: core.TokenBreakdown{CacheHitRate: 85.0}, Summary: "Model plan"},
-		{StepIndex: 3, Type: core.StepTypeToolCall, CacheStatus: "HIT", Tokens: core.TokenBreakdown{CacheHitRate: 90.0}, Summary: "Run command"},
-		{StepIndex: 4, Type: core.StepTypeToolCall, CacheStatus: "PARTIAL", Tokens: core.TokenBreakdown{CacheHitRate: 40.0}, Summary: "Command result"},
-		{StepIndex: 14, Type: core.StepTypeToolCall, CacheStatus: "HIT", Tokens: core.TokenBreakdown{CacheHitRate: 95.0}, Summary: "Write file"},
+		{StepIndex: 2, Type: core.StepTypeModelResponse, CacheStatus: "HIT", Usage: core.PersistedUsageObservation{Available: true, HasTotalTokens: true, TotalTokens: 100, HasCachedTokens: true, CachedTokens: 85}, Summary: "Model plan"},
+		{StepIndex: 3, Type: core.StepTypeToolCall, CacheStatus: "HIT", Usage: core.PersistedUsageObservation{Available: true, HasTotalTokens: true, TotalTokens: 100, HasCachedTokens: true, CachedTokens: 90}, Summary: "Run command"},
+		{StepIndex: 4, Type: core.StepTypeToolCall, CacheStatus: "PARTIAL", Usage: core.PersistedUsageObservation{Available: true, HasTotalTokens: true, TotalTokens: 100, HasCachedTokens: true, CachedTokens: 40}, Summary: "Command result"},
+		{StepIndex: 14, Type: core.StepTypeToolCall, CacheStatus: "HIT", Usage: core.PersistedUsageObservation{Available: true, HasTotalTokens: true, TotalTokens: 100, HasCachedTokens: true, CachedTokens: 95}, Summary: "Write file"},
 	}
 
 	// 1. Initial State: All 5 events and [T:All] [C:All] rendered
@@ -678,8 +683,8 @@ func TestHistoryTreeAndDistinctiveLabels(t *testing.T) {
 	if !strings.Contains(rendered, "└") {
 		t.Fatalf("Expected '└' bracket bottom connector in rendered history view, got:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, "Model: ") {
-		t.Fatalf("Expected 'Model: ' prefix in rendered history view, got:\n%s", rendered)
+	if strings.Contains(rendered, "Model: gemini-3.7-flash") {
+		t.Fatalf("History must not invent an unobserved model name, got:\n%s", rendered)
 	}
 	if !strings.Contains(rendered, "Tool: run_cmd") {
 		t.Fatalf("Expected 'Tool: run_cmd' in rendered history view, got:\n%s", rendered)
@@ -709,12 +714,8 @@ func TestHistoryThreePanelSplitAndZeroTruncation(t *testing.T) {
 			Scope:      core.ScopeCloudInference,
 			Summary:    "Model response with tool call",
 			RawContent: "Let me check the tools.",
-			Tokens: core.TokenBreakdown{
-				OfficialModel: "gemini-3.7-flash",
-				TotalTokens:   151479,
-				CachedTokens:  150866,
-				NewTokens:     613,
-				CacheHitRate:  99.6,
+			Usage: core.PersistedUsageObservation{
+				Available: true, ModelName: "gemini-3.7-flash", HasTotalTokens: true, TotalTokens: 151479, HasCachedTokens: true, CachedTokens: 150866,
 			},
 		},
 	}
@@ -775,11 +776,11 @@ func TestSessionSwitcherModalRenderingAndFilter(t *testing.T) {
 	}
 
 	view := m.View()
-	if !strings.Contains(view, "Antigravity") {
-		t.Errorf("Expected tab 'Antigravity' in view, got: %s", view)
+	if !strings.Contains(view, "ANTIGRAVITY SESSIONS") {
+		t.Errorf("Expected Antigravity session title in view, got: %s", view)
 	}
-	if !strings.Contains(view, "[1] Antigravity") {
-		t.Errorf("Expected active tab '[1] Antigravity' in view, got: %s", view)
+	if strings.Contains(view, "Claude Code") || strings.Contains(view, "OpenCode") {
+		t.Errorf("Unsupported adapter tabs must not appear in view: %s", view)
 	}
 
 	// Test Ctrl+P toggle
@@ -813,7 +814,6 @@ func TestSessionSwitcherHalfScreenVerticalStacking(t *testing.T) {
 	var mockSessions []core.SessionInfo
 	for i := 0; i < 6; i++ {
 		mockSessions = append(mockSessions, core.SessionInfo{
-			AgentType:    core.AgentTypeAntigravity,
 			SessionID:    fmt.Sprintf("session-narrow-%d", i),
 			WorkspaceDir: fmt.Sprintf("/home/example/projects/proj-%d", i),
 			ShortPath:    fmt.Sprintf("projects/proj-%d", i),
@@ -824,8 +824,7 @@ func TestSessionSwitcherHalfScreenVerticalStacking(t *testing.T) {
 		})
 	}
 	m.availableSessions = mockSessions
-	m.selectedAgentTab = core.AgentTypeAntigravity
-	m.filteredSessions = filterSessions(m.availableSessions, "", m.selectedAgentTab)
+	m.filteredSessions = filterSessions(m.availableSessions, "")
 
 	// Case 1: At top (index 0) -> NO top '...', YES bottom '...'
 	m.switcherSelectedIdx = 0
@@ -896,7 +895,6 @@ func TestSessionSwitcherKeyboardNavigationAndActions(t *testing.T) {
 	// Mock available sessions
 	m.availableSessions = []core.SessionInfo{
 		{
-			AgentType:    core.AgentTypeAntigravity,
 			SessionID:    "session-alpha-12345678",
 			WorkspaceDir: "/home/example/projects/project-a",
 			ShortPath:    "projects/project-a",
@@ -906,7 +904,6 @@ func TestSessionSwitcherKeyboardNavigationAndActions(t *testing.T) {
 			LastModified: time.Now(),
 		},
 		{
-			AgentType:    core.AgentTypeAntigravity,
 			SessionID:    "session-beta-87654321",
 			WorkspaceDir: "/home/example/projects/project-b",
 			ShortPath:    "projects/project-b",
@@ -915,22 +912,11 @@ func TestSessionSwitcherKeyboardNavigationAndActions(t *testing.T) {
 			StepCount:    50,
 			LastModified: time.Now().Add(-1 * time.Hour),
 		},
-		{
-			AgentType:    core.AgentTypeClaudeCode,
-			SessionID:    "session-claude-999999",
-			WorkspaceDir: "/home/example/projects/claude-app",
-			ShortPath:    "projects/claude-app",
-			InitialGoal:  "Refactor React frontend",
-			LastPrompt:   "Update Tailwind styles",
-			StepCount:    10,
-			LastModified: time.Now().Add(-2 * time.Hour),
-		},
 	}
-	m.selectedAgentTab = core.AgentTypeAntigravity
-	m.filteredSessions = filterSessions(m.availableSessions, "", m.selectedAgentTab)
+	m.filteredSessions = filterSessions(m.availableSessions, "")
 	m.switcherSelectedIdx = 0
 
-	// Initial AGY tab should only match 2 sessions
+	// Initial catalog contains the two supported Antigravity sessions.
 	if len(m.filteredSessions) != 2 {
 		t.Fatalf("Expected 2 AGY sessions, got %d", len(m.filteredSessions))
 	}
@@ -949,31 +935,14 @@ func TestSessionSwitcherKeyboardNavigationAndActions(t *testing.T) {
 		t.Errorf("Expected switcherSelectedIdx=0 after Ctrl+k, got %d", m.switcherSelectedIdx)
 	}
 
-	// 3. Test Agent Tab Cycle with Tab key
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	m = updated.(Model)
-	if m.selectedAgentTab != core.AgentTypeClaudeCode {
-		t.Errorf("Expected selectedAgentTab=core.AgentTypeClaudeCode after Tab, got %s", m.selectedAgentTab)
-	}
-	if len(m.filteredSessions) != 1 || m.filteredSessions[0].SessionID != "session-claude-999999" {
-		t.Fatalf("Expected 1 Claude session, got %d", len(m.filteredSessions))
-	}
-
-	// 4. Test Agent Tab Cycle back with Shift+Tab
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	m = updated.(Model)
-	if m.selectedAgentTab != core.AgentTypeAntigravity {
-		t.Errorf("Expected selectedAgentTab=core.AgentTypeAntigravity after Shift+Tab, got %s", m.selectedAgentTab)
-	}
-
-	// 5. Test Typing Filter for path or prompt keywords
+	// 3. Test typing filter for path or prompt keywords.
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("deadlock")})
 	m = updated.(Model)
 	if len(m.filteredSessions) != 1 || m.filteredSessions[0].SessionID != "session-beta-87654321" {
 		t.Fatalf("Expected 1 filtered session matching 'deadlock', got %d", len(m.filteredSessions))
 	}
 
-	// 6. Test Backspace
+	// 4. Test backspace.
 	for i := 0; i < 8; i++ {
 		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
 		m = updated.(Model)
@@ -982,7 +951,7 @@ func TestSessionSwitcherKeyboardNavigationAndActions(t *testing.T) {
 		t.Errorf("Expected 2 sessions restored after backspace, got %d", len(m.filteredSessions))
 	}
 
-	// 7. Test Dual-Pane Rendering Output (Zero Emojis & Inspector content)
+	// 5. Test dual-pane rendering output (zero emojis and inspector content).
 	view := m.View()
 	if strings.Contains(view, "📂") || strings.Contains(view, "🏷️") || strings.Contains(view, "🎯") {
 		t.Errorf("Expected Zero Emojis in switcher view, but found emoji")
@@ -1041,10 +1010,8 @@ func TestDirectSessionSwitchMsgState(t *testing.T) {
 			Type:      core.StepTypeModelResponse,
 			Summary:   "Hello! How can I help you?",
 			Timestamp: time.Now(),
-			Tokens: core.TokenBreakdown{
-				TotalTokens:  1500,
-				CachedTokens: 1200,
-				CacheHitRate: 80.0,
+			Usage: core.PersistedUsageObservation{
+				Available: true, HasTotalTokens: true, TotalTokens: 1500, HasCachedTokens: true, CachedTokens: 1200,
 			},
 		},
 	}
@@ -1076,7 +1043,6 @@ func TestWidthMeasurement(t *testing.T) {
 	m := NewModel("session-test", false)
 	m.width = 120
 	m.height = 30
-	m.eventCount = 2200
 
 	header := m.renderHeader()
 	if lipgloss.Width(header) > m.width {
@@ -1112,24 +1078,16 @@ func TestDashboardKpiRendering(t *testing.T) {
 		StepIndex: 1,
 		Scope:     core.ScopeCloudInference,
 		Type:      core.StepTypeModelResponse,
-		Tokens: core.TokenBreakdown{
-			OfficialModel: "gemini-3.7-flash",
-			TotalTokens:   120000,
-			CachedTokens:  100000,
-			NewTokens:     20000,
-			CacheHitRate:  83.3,
+		Usage: core.PersistedUsageObservation{
+			Available: true, ModelName: "gemini-3.7-flash", HasTotalTokens: true, TotalTokens: 120000, HasCachedTokens: true, CachedTokens: 100000,
 		},
 	})
 	m.history = append(m.history, core.UnifiedAgentEvent{
 		StepIndex: 2,
 		Scope:     core.ScopeCloudInference,
 		Type:      core.StepTypeModelResponse,
-		Tokens: core.TokenBreakdown{
-			OfficialModel: "claude-3.7-sonnet",
-			TotalTokens:   80000,
-			CachedTokens:  70000,
-			NewTokens:     10000,
-			CacheHitRate:  87.5,
+		Usage: core.PersistedUsageObservation{
+			Available: true, ModelName: "claude-3.7-sonnet", HasTotalTokens: true, TotalTokens: 80000, HasCachedTokens: true, CachedTokens: 70000,
 		},
 	})
 	m.latestEvent = m.history[1]
@@ -1137,18 +1095,18 @@ func TestDashboardKpiRendering(t *testing.T) {
 	m.activeView = ViewDashboard
 	viewStr := m.View()
 
-	// 1. Verify Option A KPI Cards are present
-	if !strings.Contains(viewStr, "TOTAL PROCESSED") {
-		t.Error("Dashboard missing TOTAL PROCESSED card")
+	// 1. Verify persisted-observation KPI cards are present.
+	if !strings.Contains(viewStr, "OBSERVED CONTEXT SUM") {
+		t.Error("Dashboard missing OBSERVED CONTEXT SUM card")
 	}
 	if !strings.Contains(viewStr, "CACHE HIT VOLUME") {
 		t.Error("Dashboard missing CACHE HIT VOLUME card")
 	}
-	if !strings.Contains(viewStr, "EFFECTIVE TOKENS") {
-		t.Error("Dashboard missing EFFECTIVE TOKENS card")
+	if !strings.Contains(viewStr, "CACHE DATA") {
+		t.Error("Dashboard missing CACHE DATA card")
 	}
-	if !strings.Contains(viewStr, "CACHED SAVED (%)") {
-		t.Error("Dashboard missing CACHED SAVED card")
+	if !strings.Contains(viewStr, "OBSERVED TURNS") {
+		t.Error("Dashboard missing OBSERVED TURNS card")
 	}
 
 	// 2. Verify Multi-Model breakdown table shows both models
@@ -1173,12 +1131,8 @@ func TestDashboardHalfWidthResponsiveRendering(t *testing.T) {
 		StepIndex: 1,
 		Scope:     core.ScopeCloudInference,
 		Type:      core.StepTypeModelResponse,
-		Tokens: core.TokenBreakdown{
-			OfficialModel: "gemini-3.7-flash",
-			TotalTokens:   120000,
-			CachedTokens:  100000,
-			NewTokens:     20000,
-			CacheHitRate:  83.3,
+		Usage: core.PersistedUsageObservation{
+			Available: true, ModelName: "gemini-3.7-flash", HasTotalTokens: true, TotalTokens: 120000, HasCachedTokens: true, CachedTokens: 100000,
 		},
 	})
 	m.latestEvent = m.history[0]
@@ -1187,8 +1141,8 @@ func TestDashboardHalfWidthResponsiveRendering(t *testing.T) {
 	viewStr := m.View()
 
 	// In half-width (80 cols), ensure 2-column KPI labels are complete without truncation
-	if !strings.Contains(viewStr, "TOTAL PROCESSED") {
-		t.Error("Half-width dashboard missing complete TOTAL PROCESSED label")
+	if !strings.Contains(viewStr, "OBSERVED CONTEXT SUM") {
+		t.Error("Half-width dashboard missing complete OBSERVED CONTEXT SUM label")
 	}
 	if !strings.Contains(viewStr, "CACHE HIT VOLUME") {
 		t.Error("Half-width dashboard missing complete CACHE HIT VOLUME label")
@@ -1229,10 +1183,10 @@ func TestCacheFilterStrictCloudIsolation(t *testing.T) {
 
 	m.history = []core.UnifiedAgentEvent{
 		{StepIndex: 0, Type: core.StepTypeUserInput, Summary: "User prompt"},
-		{StepIndex: 1, Type: core.StepTypeModelResponse, CacheStatus: "HIT", Tokens: core.TokenBreakdown{TotalTokens: 1000, CachedTokens: 900, CacheHitRate: 90.0}, Summary: "Model Response 1"},
+		{StepIndex: 1, Type: core.StepTypeModelResponse, CacheStatus: "HIT", Usage: core.PersistedUsageObservation{Available: true, HasTotalTokens: true, TotalTokens: 1000, HasCachedTokens: true, CachedTokens: 900}, Summary: "Model Response 1"},
 		{StepIndex: 2, Type: core.StepTypeRunCommand, Summary: "cat file.go"},
 		{StepIndex: 3, Type: core.StepTypeCheckpoint, Summary: "Checkpoint 1"},
-		{StepIndex: 4, Type: core.StepTypeModelResponse, CacheStatus: "PARTIAL", Tokens: core.TokenBreakdown{TotalTokens: 1000, CachedTokens: 740, CacheHitRate: 74.0}, Summary: "Model Response 2"},
+		{StepIndex: 4, Type: core.StepTypeModelResponse, CacheStatus: "PARTIAL", Usage: core.PersistedUsageObservation{Available: true, HasTotalTokens: true, TotalTokens: 1000, HasCachedTokens: true, CachedTokens: 740}, Summary: "Model Response 2"},
 	}
 
 	// 1. Partial Filter: should only match Step 4 (Cloud Model Response with 74% hit rate)
@@ -1457,13 +1411,11 @@ func TestInboundPromptAntiOverflowMultiLine(t *testing.T) {
 type mockSessionSwitcher struct {
 	called        bool
 	lastSessionID string
-	lastAgentType core.AgentType
 }
 
-func (m *mockSessionSwitcher) SwitchSession(sessionID string, agentType core.AgentType) error {
+func (m *mockSessionSwitcher) SwitchSession(sessionID string) error {
 	m.called = true
 	m.lastSessionID = sessionID
-	m.lastAgentType = agentType
 	return nil
 }
 
@@ -1508,10 +1460,9 @@ func TestSessionSwitch_Pos_SessionResetMsgClearsHistory(t *testing.T) {
 		{SessionID: "session-old", StepIndex: 1, Summary: "Step 1"},
 		{SessionID: "session-old", StepIndex: 2, Summary: "Step 2"},
 	}
-	m.eventCount = 2
 	m.dashboardIdx = 1
 
-	updated, _ := m.Update(SessionResetMsg{SessionID: "session-new", AgentType: core.AgentTypeAntigravity})
+	updated, _ := m.Update(SessionResetMsg{SessionID: "session-new"})
 	m = updated.(Model)
 
 	if m.sessionID != "session-new" {
@@ -1519,9 +1470,6 @@ func TestSessionSwitch_Pos_SessionResetMsgClearsHistory(t *testing.T) {
 	}
 	if len(m.history) != 0 {
 		t.Fatalf("Expected history to be cleared (len 0), got %d", len(m.history))
-	}
-	if m.eventCount != 0 {
-		t.Fatalf("Expected eventCount to be reset to 0, got %d", m.eventCount)
 	}
 	if m.dashboardIdx != 0 {
 		t.Fatalf("Expected dashboardIdx to be reset to 0, got %d", m.dashboardIdx)
@@ -1535,7 +1483,7 @@ func TestSessionSwitch_Pos_SwitchSessionReqMsgDelegatesToSwitcher(t *testing.T) 
 		{SessionID: "session-A", StepIndex: 1, Summary: "Step 1"},
 	}
 
-	updated, _ := m.Update(SwitchSessionReqMsg{SessionID: "session-B", AgentType: core.AgentTypeAntigravity})
+	updated, _ := m.Update(SwitchSessionReqMsg{SessionID: "session-B"})
 	m = updated.(Model)
 
 	if !mock.called {

@@ -9,25 +9,26 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// SQLiteTelemetryReader polls and extracts official Gemini generation telemetry from the local SQLite DB
+// SQLiteTelemetryReader polls and extracts schema-inferred generation metadata
+// from the local Antigravity SQLite database.
 type SQLiteTelemetryReader struct {
 	dbPath     string
 	mu         sync.RWMutex
 	lastGenIdx int
-	records    map[int]*GeminiGenerationMetadata // keyed by LastStepIdx
+	records    map[int]*PersistedGenerationMetadata // keyed by the generated transcript step
 }
 
 // NewSQLiteTelemetryReader creates a new SQLite telemetry reader
 func NewSQLiteTelemetryReader(dbPath string) *SQLiteTelemetryReader {
 	return &SQLiteTelemetryReader{
 		dbPath:  dbPath,
-		records: make(map[int]*GeminiGenerationMetadata),
+		records: make(map[int]*PersistedGenerationMetadata),
 	}
 }
 
 // PollLatest reads all new records from gen_metadata table
 func (r *SQLiteTelemetryReader) PollLatest() error {
-	dsn := fmt.Sprintf("file:%s?mode=ro&_journal=WAL", r.dbPath)
+	dsn := fmt.Sprintf("file:%s?mode=ro", r.dbPath)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return fmt.Errorf("failed to open sqlite db: %w", err)
@@ -51,7 +52,7 @@ func (r *SQLiteTelemetryReader) PollLatest() error {
 			continue
 		}
 
-		meta, err := ParseGeminiGenMetadata(idx, data)
+		meta, err := ParsePersistedGenerationMetadata(idx, data)
 		if err != nil {
 			r.lastGenIdx = idx
 			continue
@@ -62,27 +63,27 @@ func (r *SQLiteTelemetryReader) PollLatest() error {
 			continue
 		}
 
-		if meta.LastStepIdx > 0 {
-			r.records[meta.LastStepIdx] = meta
+		if meta.HasInputBoundary {
+			generatedStepIndex := meta.InputBoundaryStepIndex + 1
+			r.records[generatedStepIndex] = meta
 		}
 	}
-
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate gen_metadata: %w", err)
+	}
 	return nil
 }
 
-// GetTelemetryForStep retrieves official telemetry for a specific step index (checking exact and adjacent input indices)
-func (r *SQLiteTelemetryReader) GetTelemetryForStep(stepIdx int) *GeminiGenerationMetadata {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
-	if meta, exists := r.records[stepIdx]; exists {
-		return meta
+// TakeTelemetryForGeneratedStep returns and removes a record after its
+// transcript event has consumed it. The event itself retains the copied usage,
+// so keeping every historical metadata blob in the reader is unnecessary.
+func (r *SQLiteTelemetryReader) TakeTelemetryForGeneratedStep(stepIdx int) *PersistedGenerationMetadata {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	metadata, exists := r.records[stepIdx]
+	if !exists {
+		return nil
 	}
-	if meta, exists := r.records[stepIdx-1]; exists {
-		return meta
-	}
-	if meta, exists := r.records[stepIdx+1]; exists {
-		return meta
-	}
-	return nil
+	delete(r.records, stepIdx)
+	return metadata
 }

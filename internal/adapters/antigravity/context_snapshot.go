@@ -3,7 +3,6 @@ package antigravity
 import (
 	"database/sql"
 	"fmt"
-	"os"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -28,6 +27,8 @@ type protoField struct {
 type ContextSnapshot struct {
 	GenIndex                   int
 	BlobBytes                  int
+	InputBoundaryStepIndex     int
+	HasInputBoundary           bool
 	SourcePath                 string
 	SystemPrompt               string
 	Identity                   string
@@ -39,39 +40,40 @@ type ContextSnapshot struct {
 	Tools                      []core.ToolSignature
 }
 
-// LoadContextSnapshot reads the largest parseable gen_metadata record for a session.
-// The large-record selection is an observed heuristic until an official schema is available.
-func LoadContextSnapshot(sessionID string) (*ContextSnapshot, error) {
-	if sessionID == "" {
-		return nil, fmt.Errorf("empty session ID")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("resolve user home: %w", err)
-	}
-	dbPath := ConversationDatabasePath(home, sessionID)
-	dsn := fmt.Sprintf("file:%s?mode=ro&_journal=WAL", dbPath)
+// LoadContextSnapshotAtPath reads newest-to-oldest generation records and returns
+// the first sufficiently large record that matches the observed snapshot shape.
+// Generation index is the only ordering evidence persisted in this table.
+func LoadContextSnapshotAtPath(dbPath string) (*ContextSnapshot, error) {
+	dsn := fmt.Sprintf("file:%s?mode=ro", dbPath)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open context database: %w", err)
 	}
 	defer db.Close()
 
-	var genIndex int
-	var data []byte
-	err = db.QueryRow("SELECT idx, data FROM gen_metadata ORDER BY length(data) DESC LIMIT 1").Scan(&genIndex, &data)
+	rows, err := db.Query("SELECT idx, data FROM gen_metadata WHERE length(data) >= ? ORDER BY idx DESC", minimumContextSnapshotBytes)
 	if err != nil {
-		return nil, fmt.Errorf("read context snapshot: %w", err)
+		return nil, fmt.Errorf("query context snapshots: %w", err)
 	}
-	if len(data) < minimumContextSnapshotBytes {
-		return nil, fmt.Errorf("no persisted context snapshot found")
+	defer rows.Close()
+
+	for rows.Next() {
+		var genIndex int
+		var data []byte
+		if scanErr := rows.Scan(&genIndex, &data); scanErr != nil {
+			continue
+		}
+		snapshot, parseErr := ParseContextSnapshot(genIndex, data)
+		if parseErr != nil {
+			continue
+		}
+		snapshot.SourcePath = dbPath
+		return snapshot, nil
 	}
-	snapshot, err := ParseContextSnapshot(genIndex, data)
-	if err != nil {
-		return nil, err
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate context snapshots: %w", err)
 	}
-	snapshot.SourcePath = dbPath
-	return snapshot, nil
+	return nil, fmt.Errorf("no parseable persisted context snapshot found")
 }
 
 // ParseContextSnapshot decodes the stable wire paths observed in Antigravity session databases.
@@ -99,6 +101,11 @@ func ParseContextSnapshot(genIndex int, data []byte) (*ContextSnapshot, error) {
 		SkillsSection:              extractTaggedSection(systemPrompt, "skills"),
 		MCPSection:                 extractTaggedSection(systemPrompt, "mcp"),
 		PersistedContextEntryCount: countFields(contextFields, 2),
+	}
+	metadata, metadataErr := ParsePersistedGenerationMetadata(genIndex, data)
+	if metadataErr == nil && metadata.HasInputBoundary {
+		snapshot.InputBoundaryStepIndex = metadata.InputBoundaryStepIndex
+		snapshot.HasInputBoundary = true
 	}
 	for _, field := range contextFields {
 		if field.number == 2 && field.wireType == 2 {

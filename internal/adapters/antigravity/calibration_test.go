@@ -2,52 +2,36 @@ package antigravity
 
 import (
 	"testing"
-	"time"
 
 	"heimdall/internal/core"
 )
 
-func TestOfficialCalibrationAndMathConsistency(t *testing.T) {
+func TestPersistedUsageSurvivesLocalAnalysis(t *testing.T) {
 	analyzer := core.NewPayloadAnalyzer()
-
-	// 1. Simulate an event with official Google API telemetry attached
-	officialTotal := 159043
-	officialCached := 138240
 	event := core.UnifiedAgentEvent{
-		SessionID:  "test-verify-session",
+		SessionID:  "calibration-session",
 		StepIndex:  100,
-		Timestamp:  time.Now(),
 		Type:       core.StepTypeModelResponse,
 		RawContent: "Hello from assistant",
-		Tokens: core.TokenBreakdown{
-			IsOfficialData: true,
-			TotalTokens:    officialTotal,
-			CachedTokens:   officialCached,
-			OfficialModel:  "gemini-3.7-flash-high",
+		Usage: core.PersistedUsageObservation{
+			Available:       true,
+			Source:          "fixture",
+			GenerationIndex: 22,
+			StepIndex:       100,
+			ModelName:       "gemini-3.7-flash-high",
+			HasTotalTokens:  true,
+			TotalTokens:     159_043,
+			HasCachedTokens: true,
+			CachedTokens:    138_240,
 		},
 	}
 
-	// 2. Process step through analyzer
 	analyzer.AnalyzeStep(&event)
+	uncached, hasUncached := event.Usage.UncachedTokens()
 
-	// 3. Verify Equality 1: D1 + D2 + D3 + D4 + D5 == TotalTokens
-	d := event.Tokens
-	sumDimensions := d.SystemTokens + d.ToolsDefTokens + d.ToolResultTokens + d.HistoryTokens + d.ActiveTurnTokens
-	if sumDimensions != officialTotal {
-		t.Fatalf("Dimension sum mismatch! D1..D5 sum=%d, officialTotal=%d (diff=%d)",
-			sumDimensions, officialTotal, sumDimensions-officialTotal)
-	}
-
-	// 4. Verify Equality 2: CachedTokens + NewTokens == TotalTokens
-	sumCache := d.CachedTokens + d.NewTokens
-	if sumCache != officialTotal {
-		t.Fatalf("Cache sum mismatch! Cached+New=%d, officialTotal=%d (diff=%d)",
-			sumCache, officialTotal, sumCache-officialTotal)
-	}
-
-	// 5. Verify Equality 3: HitRate formula
-	expectedHitRate := float64(officialCached) / float64(officialTotal) * 100.0
-	if d.CacheHitRate != expectedHitRate {
-		t.Fatalf("HitRate mismatch! got=%.4f, expected=%.4f", d.CacheHitRate, expectedHitRate)
-	}
+	requireAntigravityEqual(t, 159_043, event.Usage.TotalTokens)
+	requireAntigravityEqual(t, 138_240, event.Usage.CachedTokens)
+	requireAntigravityEqual(t, 20_803, uncached)
+	requireAntigravityEqual(t, true, hasUncached)
+	requireAntigravityGreater(t, event.Tokens.TotalTokens, 0)
 }
