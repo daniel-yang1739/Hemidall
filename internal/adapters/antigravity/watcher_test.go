@@ -68,4 +68,3 @@ func TestWatcher_Neg_DuplicateDoneNotificationsNoGrow(t *testing.T) {
 		t.Errorf("Final status should be DONE, got %s", ev2.Status)
 	}
 }
-

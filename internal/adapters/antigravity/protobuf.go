@@ -9,6 +9,11 @@ import (
 	"heimdall/internal/core"
 )
 
+var (
+	reStep  = regexp.MustCompile(`last_step_index\x12[\x01-\x08](\d+)`)
+	reModel = regexp.MustCompile(`(gemini-[a-zA-Z0-9\.\-]+)`)
+)
+
 // GeminiGenerationMetadata contains telemetry extracted from Google Gemini Protobuf
 type GeminiGenerationMetadata struct {
 	GenIndex     int
@@ -32,7 +37,6 @@ func ParseGeminiGenMetadata(genIndex int, data []byte) (*GeminiGenerationMetadat
 	}
 
 	// Extract LastStepIndex from raw byte patterns (supporting variable length step index strings)
-	reStep := regexp.MustCompile(`last_step_index\x12[\x01-\x08](\d+)`)
 	if match := reStep.FindSubmatch(data); len(match) > 1 {
 		if s, err := strconv.Atoi(string(match[1])); err == nil {
 			meta.LastStepIdx = s
@@ -40,7 +44,6 @@ func ParseGeminiGenMetadata(genIndex int, data []byte) (*GeminiGenerationMetadat
 	}
 
 	// Extract ModelName
-	reModel := regexp.MustCompile(`(gemini-[a-zA-Z0-9\.\-]+)`)
 	if match := reModel.FindSubmatch(data); len(match) > 1 {
 		meta.ModelName = string(match[1])
 	}

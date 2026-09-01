@@ -32,6 +32,10 @@ var (
 	dirPathRegex     = regexp.MustCompile(`"DirectoryPath"\s*:\s*"\\?"?([^"\\]+)`)
 	absPathRegex     = regexp.MustCompile(`"AbsolutePath"\s*:\s*"\\?"?([^"\\]+)`)
 	userWorkspacesRe = regexp.MustCompile(`(?s)<user_information>.*?workspaces.*?(/[^ \n\r\t]+)`)
+	tagRe            = regexp.MustCompile(`<[^>]+>`)
+	toolRegex        = regexp.MustCompile(`(write_to_file|view_file|run_command|list_directory|read_url_content|ask_question)`)
+	summaryRegex     = regexp.MustCompile(`"toolSummary"\s*:\s*"([^"]+)"`)
+	uuidRegex        = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
 )
 
 // CleanModelName validates and normalizes raw model string to a clean, authoritative model name
@@ -95,7 +99,6 @@ func CleanPromptText(raw string) string {
 		raw = m[1]
 	}
 	// Strip any remaining XML/HTML tags
-	tagRe := regexp.MustCompile(`<[^>]+>`)
 	raw = tagRe.ReplaceAllString(raw, " ")
 
 	// Replace newlines and tabs with single space
@@ -330,13 +333,8 @@ func MergeMissingSQLiteSteps(events []core.UnifiedAgentEvent, dbPath string, ses
 	}
 	defer rows.Close()
 
-	toolRegex := regexp.MustCompile(`(write_to_file|view_file|run_command|list_directory|read_url_content|ask_question)`)
-	summaryRegex := regexp.MustCompile(`"toolSummary"\s*:\s*"([^"]+)"`)
-
 	var merged []core.UnifiedAgentEvent
 	merged = append(merged, events...)
-
-	uuidRegex := regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
 
 	for rows.Next() {
 		var idx, stepType, status int

@@ -132,4 +132,3 @@ func TestProtobuf_Neg_CorruptedBlobGracefulSkip(t *testing.T) {
 		t.Errorf("Corrupted blob should have 0 TotalTokens, got %d", meta.TotalTokens)
 	}
 }
-

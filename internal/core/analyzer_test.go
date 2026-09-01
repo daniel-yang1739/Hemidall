@@ -695,8 +695,6 @@ func TestTokenizer_Neg_ExtremeUnicodeAndAnsiEscapeCodes(t *testing.T) {
 	}
 }
 
-
-
 func TestGetModelTTL(t *testing.T) {
 	tests := []struct {
 		name     string

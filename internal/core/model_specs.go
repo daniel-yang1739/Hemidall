@@ -152,7 +152,7 @@ var DefaultFallbackModelSpec = ModelSpec{
 // any active user or host configuration overrides (By-Model -> Global -> Official Registry -> Fallback).
 func ResolveModelSpec(modelName string, hostConfig *HostConfig) ModelSpec {
 	normalized := strings.ToLower(strings.TrimSpace(modelName))
-	
+
 	// 1. Identify base official model specification
 	matchedSpec := DefaultFallbackModelSpec
 	if normalized != "" {

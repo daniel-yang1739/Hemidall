@@ -37,12 +37,12 @@ func TestLinkage_Pos_ParallelToolCallsParent(t *testing.T) {
 
 	events := []UnifiedAgentEvent{
 		{StepIndex: 1, Type: StepTypeUserInput},
-		{StepIndex: 2, Type: StepTypeToolCall},    // Spawns 2 parallel tools
-		{StepIndex: 3, Type: StepTypeViewFile},     // Child 1
-		{StepIndex: 4, Type: StepTypeViewFile},     // Child 2
-		{StepIndex: 5, Type: StepTypeToolCall},     // Next Cloud Turn (consumes 3, 4, spawns tool 6)
-		{StepIndex: 6, Type: StepTypeRunCommand},   // Child 3
-		{StepIndex: 7, Type: StepTypeModelResponse},// Final Model Response (consumes 6)
+		{StepIndex: 2, Type: StepTypeToolCall},      // Spawns 2 parallel tools
+		{StepIndex: 3, Type: StepTypeViewFile},      // Child 1
+		{StepIndex: 4, Type: StepTypeViewFile},      // Child 2
+		{StepIndex: 5, Type: StepTypeToolCall},      // Next Cloud Turn (consumes 3, 4, spawns tool 6)
+		{StepIndex: 6, Type: StepTypeRunCommand},    // Child 3
+		{StepIndex: 7, Type: StepTypeModelResponse}, // Final Model Response (consumes 6)
 	}
 
 	for i := range events {
@@ -163,4 +163,3 @@ func TestLinkage_Neg_UnpackagedLocalStepGracefulZero(t *testing.T) {
 		t.Errorf("Unpackaged step PackagedInStepIdx should be 0, got %d", events[2].PackagedInStepIdx)
 	}
 }
-

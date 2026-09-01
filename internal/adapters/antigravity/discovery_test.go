@@ -1,8 +1,8 @@
 package antigravity
 
 import (
-	"testing"
 	"heimdall/internal/core"
+	"testing"
 )
 
 func TestDiscoverAllSessions(t *testing.T) {
@@ -50,4 +50,3 @@ func TestGetLatestActiveSession(t *testing.T) {
 		t.Fatalf("Expected non-empty LogPath from GetLatestActiveSession, got empty")
 	}
 }
-
