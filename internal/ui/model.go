@@ -179,16 +179,13 @@ const (
 	TypeFilterGeneric TypeFilter = "Generic"
 )
 
-// CacheFilter defines cache status filter in History Explorer (aligned with Docs)
+// CacheFilter filters direct cache-content field observations in History Explorer.
 type CacheFilter string
 
 const (
-	CacheFilterAll     CacheFilter = "All"
-	CacheFilterHit     CacheFilter = "Hit"
-	CacheFilterPartial CacheFilter = "Partial"
-	CacheFilterWrite   CacheFilter = "Write"
-	CacheFilterExpired CacheFilter = "Expired"
-	CacheFilterMiss    CacheFilter = "Miss"
+	CacheFilterAll      CacheFilter = "All"
+	CacheFilterObserved CacheFilter = "Observed"
+	CacheFilterOmitted  CacheFilter = "Omitted"
 )
 
 func (m *Model) cycleTypeFilter() {
@@ -214,15 +211,9 @@ func (m *Model) cycleTypeFilter() {
 func (m *Model) cycleCacheFilter() {
 	switch m.historyCacheFilter {
 	case CacheFilterAll:
-		m.historyCacheFilter = CacheFilterHit
-	case CacheFilterHit:
-		m.historyCacheFilter = CacheFilterPartial
-	case CacheFilterPartial:
-		m.historyCacheFilter = CacheFilterWrite
-	case CacheFilterWrite:
-		m.historyCacheFilter = CacheFilterExpired
-	case CacheFilterExpired:
-		m.historyCacheFilter = CacheFilterMiss
+		m.historyCacheFilter = CacheFilterObserved
+	case CacheFilterObserved:
+		m.historyCacheFilter = CacheFilterOmitted
 	default:
 		m.historyCacheFilter = CacheFilterAll
 	}
@@ -271,29 +262,16 @@ func matchCacheFilter(e core.UnifiedAgentEvent, filter CacheFilter) bool {
 	if filter == CacheFilterAll {
 		return true
 	}
-	// Cache filters apply only to persisted usage observations with decoded cache fields.
+	// Cache filters only report field presence. They do not infer a cache hit,
+	// cache miss, TTL, or server-side cache write.
 	if !e.IsCloudStep() || !e.Usage.Available {
 		return false
 	}
-	status := e.CacheStatus
-	if status == "" {
-		hitRate, ok := e.Usage.CacheHitRate()
-		if !ok {
-			return false
-		}
-		status = core.ClassifyCacheStatus(hitRate, e.Usage.CachedTokens, e.Usage.TotalTokens)
-	}
 	switch filter {
-	case CacheFilterHit:
-		return status == "HIT"
-	case CacheFilterPartial:
-		return status == "PARTIAL"
-	case CacheFilterWrite:
-		return false
-	case CacheFilterExpired:
-		return false
-	case CacheFilterMiss:
-		return status == "MISS"
+	case CacheFilterObserved:
+		return e.Usage.HasCachedContentTokens
+	case CacheFilterOmitted:
+		return !e.Usage.HasCachedContentTokens
 	}
 	return true
 }
@@ -518,9 +496,6 @@ func mergeHistoryEventUpdate(existing, update core.UnifiedAgentEvent) core.Unifi
 	}
 	if !update.Usage.Available && existing.Usage.Available {
 		update.Usage = existing.Usage
-	}
-	if update.CacheStatus == "" || update.CacheStatus == "UNKNOWN" {
-		update.CacheStatus = existing.CacheStatus
 	}
 	return update
 }
@@ -785,15 +760,6 @@ func (m Model) getSelectedEvent() (core.UnifiedAgentEvent, bool) {
 	return filtered[realIdx], true
 }
 
-func (m Model) getSessionModelName() string {
-	for _, s := range m.availableSessions {
-		if s.SessionID == m.sessionID && s.ModelName != "" {
-			return s.ModelName
-		}
-	}
-	return ""
-}
-
 func (m *Model) jumpToStep(targetStepIdx int) bool {
 	filtered := m.getFilteredHistory()
 	for i, e := range filtered {
@@ -862,14 +828,22 @@ func formatCompactNumber(n int) string {
 }
 
 func formatObservedUsageLine(usage core.PersistedUsageObservation) string {
-	if !usage.Available || !usage.HasTotalTokens {
+	if !usage.Available {
 		return "• Persisted usage: unavailable"
 	}
-	if uncached, ok := usage.UncachedTokens(); ok {
-		hitRate, _ := usage.CacheHitRate()
-		return fmt.Sprintf("• Persisted: %s total | %s cached (%.1f%% hit) | %s uncached", formatCompactNumber(usage.TotalTokens), formatCompactNumber(usage.CachedTokens), hitRate, formatCompactNumber(uncached))
+	if usage.HasMeteredInputTokens && usage.HasCachedContentTokens {
+		return fmt.Sprintf("• Persisted: %s metered input | %s cached-content", formatCompactNumber(usage.MeteredInputTokens), formatCompactNumber(usage.CachedContentTokens))
 	}
-	return fmt.Sprintf("• Persisted: %s total | cache field unavailable", formatCompactNumber(usage.TotalTokens))
+	if usage.HasMeteredInputTokens {
+		return fmt.Sprintf("• Persisted: %s metered input | 0 cached-content (proto3 default)", formatCompactNumber(usage.MeteredInputTokens))
+	}
+	if !usage.HasObservedContextTokens {
+		return "• Persisted usage: unavailable"
+	}
+	if usage.HasCachedContentTokens {
+		return fmt.Sprintf("• Persisted: %s context | %s cached-content observed", formatCompactNumber(usage.ObservedContextTokens), formatCompactNumber(usage.CachedContentTokens))
+	}
+	return fmt.Sprintf("• Persisted: %s context | 0 cached-content (proto3 default)", formatCompactNumber(usage.ObservedContextTokens))
 }
 
 func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, isCompact bool) []string {

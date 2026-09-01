@@ -365,19 +365,20 @@ func (w *Watcher) attachPersistedUsage(event *core.UnifiedAgentEvent) bool {
 		return false
 	}
 	event.Usage = core.PersistedUsageObservation{
-		Available:       true,
-		Source:          persistedUsageObservationSource,
-		GenerationIndex: metadata.GenIndex,
-		StepIndex:       event.StepIndex,
-		ModelName:       metadata.ModelName,
-		HasTotalTokens:  metadata.HasTotalTokens,
-		TotalTokens:     metadata.TotalTokens,
-		HasCachedTokens: metadata.HasCachedTokens,
-		CachedTokens:    metadata.CachedTokens,
-		HasContextLimit: metadata.HasContextLimit,
-		ContextLimit:    metadata.ContextLimit,
+		Available:                true,
+		Source:                   persistedUsageObservationSource,
+		GenerationIndex:          metadata.GenIndex,
+		StepIndex:                event.StepIndex,
+		ModelName:                metadata.ModelName,
+		HasObservedContextTokens: metadata.HasObservedContextTokens,
+		ObservedContextTokens:    metadata.ObservedContextTokens,
+		HasMeteredInputTokens:    metadata.HasMeteredInputTokens,
+		MeteredInputTokens:       metadata.MeteredInputTokens,
+		HasCachedContentTokens:   metadata.HasCachedContentTokens,
+		CachedContentTokens:      metadata.CachedContentTokens,
+		HasContextLimit:          metadata.HasContextLimit,
+		ContextLimit:             metadata.ContextLimit,
 	}
-	event.CacheStatus = core.CacheStatusFromUsage(event.Usage)
 	return true
 }
 
@@ -511,17 +512,16 @@ func (w *Watcher) decodeLine(line string) (core.UnifiedAgentEvent, error) {
 	}
 
 	event := core.UnifiedAgentEvent{
-		SessionID:   w.sessionID,
-		StepIndex:   raw.StepIndex,
-		Timestamp:   t,
-		Source:      raw.Source,
-		Type:        stepType,
-		Status:      raw.Status,
-		Summary:     summary,
-		RawContent:  raw.Content,
-		Thinking:    raw.Thinking,
-		ToolCalls:   toolCalls,
-		CacheStatus: "UNKNOWN",
+		SessionID:  w.sessionID,
+		StepIndex:  raw.StepIndex,
+		Timestamp:  t,
+		Source:     raw.Source,
+		Type:       stepType,
+		Status:     raw.Status,
+		Summary:    summary,
+		RawContent: raw.Content,
+		Thinking:   raw.Thinking,
+		ToolCalls:  toolCalls,
 	}
 
 	return event, nil

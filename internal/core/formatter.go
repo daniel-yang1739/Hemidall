@@ -44,24 +44,24 @@ func writePersistedUsageRows(builder *strings.Builder, usage PersistedUsageObser
 		modelName = "unknown"
 	}
 	builder.WriteString(fmt.Sprintf("│ Recorded model          │ %-43s │\n", modelName))
-	if usage.HasTotalTokens {
-		builder.WriteString(fmt.Sprintf("│ Observed total tokens   │ %-43d │\n", usage.TotalTokens))
+	if usage.HasObservedContextTokens {
+		builder.WriteString(fmt.Sprintf("│ Observed context tokens │ %-43d │\n", usage.ObservedContextTokens))
 	} else {
-		builder.WriteString("│ Observed total tokens   │ unavailable                                 │\n")
+		builder.WriteString("│ Observed context tokens │ unavailable                                 │\n")
 	}
 	if usage.HasContextLimit {
 		builder.WriteString(fmt.Sprintf("│ Observed context limit  │ %-43d │\n", usage.ContextLimit))
 	} else {
 		builder.WriteString("│ Observed context limit  │ unavailable                                 │\n")
 	}
-	if usage.HasCachedTokens {
-		hitRate, validRate := usage.CacheHitRate()
-		if validRate {
-			builder.WriteString(fmt.Sprintf("│ Decoded cached tokens   │ %-22d (%5.1f%%)                 │\n", usage.CachedTokens, hitRate))
-		} else {
-			builder.WriteString("│ Decoded cached tokens   │ invalid relative to observed total          │\n")
-		}
+	if usage.HasMeteredInputTokens {
+		builder.WriteString(fmt.Sprintf("│ Metered input tokens    │ %-43d │\n", usage.MeteredInputTokens))
 	} else {
-		builder.WriteString("│ Decoded cached tokens   │ unavailable                                 │\n")
+		builder.WriteString("│ Metered input tokens    │ unavailable                                 │\n")
+	}
+	if usage.HasCachedContentTokens {
+		builder.WriteString(fmt.Sprintf("│ Cached-content tokens   │ %-43d │\n", usage.CachedContentTokens))
+	} else {
+		builder.WriteString("│ Cached-content tokens   │ 0 (proto3 default; scalar omitted)          │\n")
 	}
 }

@@ -131,8 +131,7 @@ func TestHistoryBatch_Pos_PreservesEnrichmentOnSameStepStatusUpdate(t *testing.T
 		PackagedInStepIdx:   historyBatchCloudStep,
 		ConsumedStepIndices: []int{historyBatchPackagedStep},
 		Tokens:              core.TokenBreakdown{StepDelta: historyBatchLatestStep},
-		Usage:               core.PersistedUsageObservation{Available: true, HasTotalTokens: true, TotalTokens: historyBatchLatestStep},
-		CacheStatus:         "HIT",
+		Usage:               core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: historyBatchLatestStep},
 	}}
 
 	updated, _ := model.Update(HistoryBatchMsg{Events: []core.UnifiedAgentEvent{{
@@ -147,15 +146,26 @@ func TestHistoryBatch_Pos_PreservesEnrichmentOnSameStepStatusUpdate(t *testing.T
 	requireUpdatedHistoryScope(t, result, core.ScopeCloudInference)
 	requireUpdatedHistoryTokenDelta(t, result, historyBatchLatestStep)
 	requireUpdatedHistoryUsage(t, result, historyBatchLatestStep)
-	requireUpdatedHistoryCacheStatus(t, result, "HIT")
 	requireUpdatedHistoryContent(t, result, "completed response")
 }
 
 func TestStepModelName_Neg_DoesNotInventSessionModel(t *testing.T) {
 	model := NewModel("session-a", false)
+	model.availableSessions = []core.SessionInfo{{SessionID: "session-a", ModelName: "Gemini 3.7 Flash (High)"}}
 	event := core.UnifiedAgentEvent{SessionID: "session-a", Type: core.StepTypeModelResponse}
 
 	requireStepModelName(t, model, event, "")
+}
+
+func TestStepModelName_Pos_UsesExactPersistedClaudeModel(t *testing.T) {
+	model := NewModel("session-a", false)
+	event := core.UnifiedAgentEvent{
+		SessionID: "session-a",
+		Type:      core.StepTypeModelResponse,
+		Usage:     core.PersistedUsageObservation{ModelName: "claude-sonnet-4-6"},
+	}
+
+	requireStepModelName(t, model, event, "claude-sonnet-4-6")
 }
 
 func hydratedEstimatePayload(history []core.UnifiedAgentEvent, sessionID string) core.AgentContextPayload {
@@ -236,15 +246,8 @@ func requireUpdatedHistoryTokenDelta(t *testing.T, model Model, expected int) {
 
 func requireUpdatedHistoryUsage(t *testing.T, model Model, expectedTotal int) {
 	t.Helper()
-	if got := model.history[0].Usage.TotalTokens; got != expectedTotal {
-		t.Fatalf("updated usage total: got %d, want %d", got, expectedTotal)
-	}
-}
-
-func requireUpdatedHistoryCacheStatus(t *testing.T, model Model, expected string) {
-	t.Helper()
-	if got := model.history[0].CacheStatus; got != expected {
-		t.Fatalf("updated cache status: got %q, want %q", got, expected)
+	if got := model.history[0].Usage.ObservedContextTokens; got != expectedTotal {
+		t.Fatalf("updated observed context: got %d, want %d", got, expectedTotal)
 	}
 }
 

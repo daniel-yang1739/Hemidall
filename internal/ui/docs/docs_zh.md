@@ -3,7 +3,7 @@
 Heimdall 讀的是 Antigravity 留在本機的檔案。它沒有攔到真正送去雲端的 HTTP request，所以不能把畫面上的資料說成官方帳單、實際價格，或保證的 KV cache 行為。
 
 * **Transcript**：`transcript_full.jsonl` 是事件時間線。裡面有使用者輸入、模型回覆、tool call、本機 tool 輸出，以及 checkpoint 類型的內容。
-* **Generation metadata**：`conversations/<session>.db` 的 `gen_metadata` table 有 protobuf blob。Heimdall 會解出目前已觀察到的 `last_step_index`、context total、context limit，以及部分 cache 欄位。
+* **Generation metadata**：`conversations/<session>.db` 的 `gen_metadata` table 有 protobuf blob。Heimdall 會解出目前已觀察到的 `last_step_index`、observed context、context limit，以及同一個 usage message 裡配對的 metered input / cached-content counters。
 * **Persisted context snapshot**：Heimdall 由大於安全門檻、從最新 `idx` 往回找到，且能解出 wire path `1.1` 的 `gen_metadata` blob。它可能包含 system prompt、重複 context record 與 tool 定義；這是一份「當時被保存的 context 狀態」，不是官方 request body。
 
 ## 一筆 generation metadata 對應哪個 step
@@ -16,15 +16,15 @@ Heimdall 讀的是 Antigravity 留在本機的檔案。它沒有攔到真正送�
 
 ## Token 數字分成兩條完全不同的資料線
 
-### Persisted context observation
+### Persisted usage 與 context observation
 
 如果某個 model event 成功對應到 generation metadata，Heimdall 可以顯示：
 
-* **Observed context tokens**：那筆保存資料裡解出的 total。
+* **Observed context tokens**：那筆保存資料裡解出的 context 值。
 * **Observed context limit**：只有 protobuf 裡真的有這個欄位時才顯示。
-* **Cache fields**：只有 total 和 cache 兩個欄位都有被解出、而且彼此合理時才計算。
+* **Metered input tokens** 與 **cached-content tokens**：兩者由同一個巢狀 usage-message path 解出；Dashboard 用這組配對 counter 計算 cache-adjusted input estimate。
 
-這些是根據本機 wire format 做出的觀察，不是官方 API response、帳單、價格或快取保證。Heimdall 不會再根據前一輪、閒置時間或 model 名稱去補一個 cache hit rate。
+observed context 值來自另一條推得的 wire path，只用於顯示這一輪的 context window；Heimdall 不會再拿它和 cached content 相減。Dashboard 的 effective-input 公式是 `metered input + cached content × 該模型設定的 cache-price ratio`。它是 price-equivalent projection，不是 Antigravity invoice。cache scalar 沒有被序列化時，會依 proto3 的整數預設值視為 0；UI 仍會另外顯示有多少筆真的編碼了非預設 cache scalar。
 
 ### Local transcript estimate
 
@@ -48,7 +48,7 @@ Track 2 的五維表是**目前選中 playback step 的可見 context evidence**
 
 * **Track 1 — Persisted Cloud Usage Observation**：只看目前選中的 model event 有沒有對應到保存的 generation metadata。
 * **Track 2 — Playback Context Evidence**：會跟著選中的 event 改變。它使用該 step 已快取的本機 transcript estimate；只有 snapshot 剛好對應到這一個 generated step 時，才使用 snapshot 的維度。對應規則是有 `last_step_index` 時的 `last_step_index + 1`。其他 step 一律清楚標為 transcript estimate。移動 playback 時，Track 1 和 Track 2 都會變，但不會觸發 SQLite I/O。
-* **Session aggregates**：把每一輪觀察到的 context total 加總，適合看趨勢；它不是 API 帳單，也不是去重後的 token 數。
+* **Session aggregates**：把每一輪同源的 metered-input 與 cached-content counter 加總。Dashboard 會依每個精確 model ID 設定的 cache-price ratio 分別算 effective input，再呈現 model-weighted aggregate。它適合看效率趨勢，但不是 API 帳單，也不是去重後的 token 數。
 
 ## Context 頁面怎麼看
 
@@ -65,17 +65,9 @@ Context 頁會把資料來源分開：
 
 `field 2` 的數量是重複 wire field 出現的次數；Heimdall 會安全地顯示部分可讀文字與 wire observation，但沒有官方 protobuf schema，因此不能替每筆 record 判定官方 role 或完整語意。
 
-## Cache 狀態
-
-只有成功對應、而且 total/cache 欄位都合理的資料，才可能顯示 `HIT`、`PARTIAL` 或 `MISS`。`UNKNOWN` 代表沒有足夠資料，或欄位彼此不能比較。
-
-Heimdall 不會從本機證據推論 startup cache write、TTL expired、invoice、storage fee 或 output charge。
-
 ## Cache-adjusted input projection
 
-* **Effective Input**：公式是 `uncached + cached × cache-input price ratio`。只有同時有可比較 total/cache 欄位的 rows，且 model ID 有 exact match 的官方 pricing profile 時才計算。
-* **Gemini 3.7 Flash profile**：Google Gemini Developer API 的 paid standard 表目前是 standard input `$0.75/M`、cached input `$0.075/M`，所以 cache-input price ratio 是 `0.10×`。
-* **範圍**：這是每個 model 各自的 standard-input-price equivalent，不是重組出的 request、跨 model 總計、Antigravity invoice、storage fee、output charge，也不能證明 Antigravity 使用 Google API Standard tier。
+Dashboard 會呈現 total processed input、cached-content volume、metered input、effective input 與 cache savings。effective input 會依每個精確 model ID 的官方 cache-input 價格倍率分開計算。缺少 proto3 cache scalar 的 record 會以 0 cached tokens 納入，同時保留 explicit scalar 的筆數讓人檢查資料。這不是 provider invoice、去重 token 數、cache TTL 訊號或 cache write 訊號。
 
 ## 目前支援的資料來源
 

@@ -25,7 +25,7 @@ func TestProtobuf_Pos_StandardSingleAndMultiByteVarint(t *testing.T) {
 }
 
 func TestProtobuf_Pos_ValidTelemetryBlobExtraction(t *testing.T) {
-	raw := []byte("prefix\x00last_step_index\x12\x045550\x00gemini-3.7-flash\x00suffix")
+	raw := persistedModelFixture(persistedGeminiModelID, persistedGeminiEnum, "5550")
 	meta, err := ParsePersistedGenerationMetadata(1, raw)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
@@ -117,32 +117,61 @@ func TestPersistedGenerationMetadata_Pos_DecodesStructuredUsageFields(t *testing
 				protoVarint(4, 160000),
 			)),
 		)),
-		protoBytes(4, protoMessage(protoVarint(5, 110000))),
-	))
-
-	metadata, parseErr := ParsePersistedGenerationMetadata(1, raw)
-
-	requireAntigravityNoError(t, parseErr)
-	requireAntigravityEqual(t, true, metadata.HasTotalTokens)
-	requireAntigravityEqual(t, 120000, metadata.TotalTokens)
-	requireAntigravityEqual(t, true, metadata.HasContextLimit)
-	requireAntigravityEqual(t, 160000, metadata.ContextLimit)
-	requireAntigravityEqual(t, true, metadata.HasCachedTokens)
-	requireAntigravityEqual(t, 110000, metadata.CachedTokens)
-}
-
-func TestPersistedGenerationMetadata_Boundary_UsesAlternateCachePath(t *testing.T) {
-	raw := protoBytes(1, protoMessage(
-		protoBytes(17, protoMessage(
-			protoBytes(2, protoMessage(protoVarint(5, 75000))),
+		protoBytes(4, protoMessage(
+			protoVarint(1, 10000),
+			protoVarint(5, 110000),
 		)),
 	))
 
 	metadata, parseErr := ParsePersistedGenerationMetadata(1, raw)
 
 	requireAntigravityNoError(t, parseErr)
-	requireAntigravityEqual(t, true, metadata.HasCachedTokens)
-	requireAntigravityEqual(t, 75000, metadata.CachedTokens)
+	requireAntigravityEqual(t, true, metadata.HasObservedContextTokens)
+	requireAntigravityEqual(t, 120000, metadata.ObservedContextTokens)
+	requireAntigravityEqual(t, true, metadata.HasContextLimit)
+	requireAntigravityEqual(t, 160000, metadata.ContextLimit)
+	requireAntigravityEqual(t, true, metadata.HasMeteredInputTokens)
+	requireAntigravityEqual(t, 10000, metadata.MeteredInputTokens)
+	requireAntigravityEqual(t, true, metadata.HasCachedContentTokens)
+	requireAntigravityEqual(t, 110000, metadata.CachedContentTokens)
+}
+
+func TestPersistedGenerationMetadata_Boundary_UsesAlternateCachePath(t *testing.T) {
+	raw := protoBytes(1, protoMessage(
+		protoBytes(17, protoMessage(
+			protoBytes(2, protoMessage(
+				protoVarint(1, 5000),
+				protoVarint(5, 75000),
+			)),
+		)),
+	))
+
+	metadata, parseErr := ParsePersistedGenerationMetadata(1, raw)
+
+	requireAntigravityNoError(t, parseErr)
+	requireAntigravityEqual(t, true, metadata.HasMeteredInputTokens)
+	requireAntigravityEqual(t, 5000, metadata.MeteredInputTokens)
+	requireAntigravityEqual(t, true, metadata.HasCachedContentTokens)
+	requireAntigravityEqual(t, 75000, metadata.CachedContentTokens)
+}
+
+func TestPersistedGenerationMetadata_Boundary_LeavesOmittedCacheScalarAtProtoDefault(t *testing.T) {
+	raw := protoBytes(1, protoMessage(
+		protoBytes(9, protoMessage(
+			protoBytes(10, protoMessage(protoVarint(1, 89344))),
+		)),
+		protoBytes(4, protoMessage(protoVarint(1, 1298))),
+	))
+
+	metadata, parseErr := ParsePersistedGenerationMetadata(1, raw)
+
+	requireAntigravityNoError(t, parseErr)
+	requireAntigravityEqual(t, true, metadata.HasObservedContextTokens)
+	requireAntigravityEqual(t, 89344, metadata.ObservedContextTokens)
+	requireAntigravityEqual(t, true, metadata.HasMeteredInputTokens)
+	requireAntigravityEqual(t, 1298, metadata.MeteredInputTokens)
+	requireAntigravityEqual(t, false, metadata.HasCachedContentTokens)
+	requireAntigravityEqual(t, 0, metadata.CachedContentTokens)
 }
 
 func TestProtobuf_Neg_TruncatedVarintNoInfiniteLoop(t *testing.T) {
@@ -167,7 +196,7 @@ func TestProtobuf_Neg_CorruptedBlobGracefulSkip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Corrupted blob should not panic or fail ParsePersistedGenerationMetadata: %v", err)
 	}
-	if meta.TotalTokens != 0 {
-		t.Errorf("Corrupted blob should have 0 TotalTokens, got %d", meta.TotalTokens)
+	if meta.ObservedContextTokens != 0 {
+		t.Errorf("Corrupted blob should have 0 ObservedContextTokens, got %d", meta.ObservedContextTokens)
 	}
 }

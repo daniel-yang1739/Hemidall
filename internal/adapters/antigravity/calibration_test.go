@@ -14,24 +14,23 @@ func TestPersistedUsageSurvivesLocalAnalysis(t *testing.T) {
 		Type:       core.StepTypeModelResponse,
 		RawContent: "Hello from assistant",
 		Usage: core.PersistedUsageObservation{
-			Available:       true,
-			Source:          "fixture",
-			GenerationIndex: 22,
-			StepIndex:       100,
-			ModelName:       "gemini-3.7-flash-high",
-			HasTotalTokens:  true,
-			TotalTokens:     159_043,
-			HasCachedTokens: true,
-			CachedTokens:    138_240,
+			Available:                true,
+			Source:                   "fixture",
+			GenerationIndex:          22,
+			StepIndex:                100,
+			ModelName:                "gemini-3.7-flash-high",
+			HasObservedContextTokens: true,
+			ObservedContextTokens:    159_043,
+			HasMeteredInputTokens:    true,
+			MeteredInputTokens:       14_812,
+			HasCachedContentTokens:   true,
+			CachedContentTokens:      138_240,
 		},
 	}
 
 	analyzer.AnalyzeStep(&event)
-	uncached, hasUncached := event.Usage.UncachedTokens()
-
-	requireAntigravityEqual(t, 159_043, event.Usage.TotalTokens)
-	requireAntigravityEqual(t, 138_240, event.Usage.CachedTokens)
-	requireAntigravityEqual(t, 20_803, uncached)
-	requireAntigravityEqual(t, true, hasUncached)
+	requireAntigravityEqual(t, 159_043, event.Usage.ObservedContextTokens)
+	requireAntigravityEqual(t, 14_812, event.Usage.MeteredInputTokens)
+	requireAntigravityEqual(t, 138_240, event.Usage.CachedContentTokens)
 	requireAntigravityGreater(t, event.Tokens.TotalTokens, 0)
 }

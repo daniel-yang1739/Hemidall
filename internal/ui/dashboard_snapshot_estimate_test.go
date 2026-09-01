@@ -106,47 +106,66 @@ func TestDashboardPlaybackEstimate_Pos_ChangesScopeWithSelectedEvent(t *testing.
 	requireViewDoesNotContain(t, secondView, "selected Step #1; transcript evidence observed through this event")
 }
 
-func TestDashboardAggregate_Neg_DoesNotInventZeroCacheMetrics(t *testing.T) {
+func TestDashboardAggregate_Neg_RendersUnavailableMetricsWithoutUsage(t *testing.T) {
 	model := NewModel("session-a", false)
 	model.width = dashboardTestWidth
 
 	view := model.renderDashboardView()
 
-	requireViewContains(t, view, "OBSERVED CONTEXT SUM")
-	requireViewContains(t, view, "fields unavailable")
-	requireViewDoesNotContain(t, view, "100.0% Cold In")
+	requireViewContains(t, view, "TOTAL PROCESSED")
+	requireViewContains(t, view, "EFFECTIVE TOKENS")
+	requireViewContains(t, view, "unavailable")
 }
 
-func TestDashboardAggregate_Boundary_LabelsPartialComparableCacheRows(t *testing.T) {
+func TestDashboardAggregate_Boundary_UsesProtoDefaultForOmittedCacheField(t *testing.T) {
 	model := NewModel("session-a", false)
 	model.width = dashboardTestWidth
 	model.history = []core.UnifiedAgentEvent{
-		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, HasTotalTokens: true, TotalTokens: dashboardComparableTotalTokens, HasCachedTokens: true, CachedTokens: dashboardComparableCachedTokens}},
-		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, HasTotalTokens: true, TotalTokens: dashboardUnavailableCacheTokens}},
+		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, HasMeteredInputTokens: true, MeteredInputTokens: dashboardComparableInputTokens, HasCachedContentTokens: true, CachedContentTokens: dashboardComparableCachedTokens}},
+		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, HasMeteredInputTokens: true, MeteredInputTokens: dashboardDefaultZeroInputTokens}},
 	}
 
 	view := model.renderDashboardView()
 
-	requireViewContains(t, view, "CACHE HIT VOLUME (PARTIAL)")
-	requireViewContains(t, view, "1/2 comparable")
-	requireViewContains(t, view, "comparable hit")
-	requireViewDoesNotContain(t, view, "fields unavailable")
+	requireViewContains(t, view, "CACHE HIT VOLUME")
+	requireViewContains(t, view, "1/2 explicit")
+	requireViewContains(t, view, "1 default zero")
+	requireViewContains(t, view, "160 Tok")
 }
 
-func TestDashboardEffectiveInput_Pos_UsesVerifiedModelRatioOnly(t *testing.T) {
+func TestDashboardAggregate_Pos_ProjectsEffectiveInputOnlyForPricedModel(t *testing.T) {
 	model := NewModel("session-a", false)
 	model.width = dashboardTestWidth
 	model.history = []core.UnifiedAgentEvent{
-		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardKnownModel, HasTotalTokens: true, TotalTokens: dashboardComparableTotalTokens, HasCachedTokens: true, CachedTokens: dashboardComparableCachedTokens}},
-		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardUnknownModel, HasTotalTokens: true, TotalTokens: dashboardComparableTotalTokens, HasCachedTokens: true, CachedTokens: dashboardComparableCachedTokens}},
+		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardKnownModel, HasMeteredInputTokens: true, MeteredInputTokens: dashboardComparableInputTokens, HasCachedContentTokens: true, CachedContentTokens: dashboardComparableCachedTokens}},
+		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardUnknownModel, HasMeteredInputTokens: true, MeteredInputTokens: dashboardComparableInputTokens, HasCachedContentTokens: true, CachedContentTokens: dashboardComparableCachedTokens}},
 	}
 
 	view := model.renderDashboardView()
 
 	requireViewContains(t, view, "Effective Input")
 	requireViewContains(t, view, "@0.10x")
-	requireViewContains(t, view, "per-model projection")
+	requireViewContains(t, view, "weighted equivalent input")
 	requireRenderedLinesWithinWidth(t, view, dashboardTestWidth)
+}
+
+func TestDashboardAggregate_Pos_ShowsCompleteEffectiveAndSavedTotals(t *testing.T) {
+	history := []core.UnifiedAgentEvent{
+		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardKnownModel, HasMeteredInputTokens: true, MeteredInputTokens: dashboardGeminiMeteredInputTokens, HasCachedContentTokens: true, CachedContentTokens: dashboardGeminiCachedContentTokens}},
+		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardClaudeModel, HasMeteredInputTokens: true, MeteredInputTokens: dashboardClaudeMeteredInputTokens, HasCachedContentTokens: true, CachedContentTokens: dashboardClaudeCachedContentTokens}},
+	}
+	metrics := core.ComputeSessionAggregateMetrics(history)
+
+	table := renderModelBreakdownTable(metrics.ModelStats, metrics.TotalStats, dashboardTestWidth)
+
+	requireViewContains(t, table, "Effective Input")
+	requireViewContains(t, table, "Cached Saved (%)")
+	requireViewContains(t, table, "TOTAL SUMMARY")
+	requireViewContains(t, table, "300 (15.0%)")
+	requireViewContains(t, table, "470")
+	requireViewContains(t, table, "1.5k (76.5%)")
+	requireViewDoesNotContain(t, table, "Cache Data")
+	requireViewDoesNotContain(t, table, "Source")
 }
 
 func requireViewDoesNotContain(t *testing.T, view, unexpected string) {
@@ -179,9 +198,14 @@ func requireEstimateColumnsAligned(t *testing.T, shortLabel, longLabel string) {
 }
 
 const (
-	dashboardComparableTotalTokens  = 100
-	dashboardComparableCachedTokens = 60
-	dashboardUnavailableCacheTokens = 50
-	dashboardKnownModel             = "gemini-3.7-flash"
-	dashboardUnknownModel           = "unknown"
+	dashboardComparableInputTokens     = 50
+	dashboardComparableCachedTokens    = 60
+	dashboardDefaultZeroInputTokens    = 50
+	dashboardGeminiMeteredInputTokens  = 100
+	dashboardGeminiCachedContentTokens = 900
+	dashboardClaudeMeteredInputTokens  = 200
+	dashboardClaudeCachedContentTokens = 800
+	dashboardKnownModel                = "gemini-3.7-flash"
+	dashboardClaudeModel               = "claude-sonnet-4-6"
+	dashboardUnknownModel              = "unknown"
 )

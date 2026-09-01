@@ -3,9 +3,12 @@ package core
 import "strings"
 
 const (
-	gemini37FlashModelID                    = "gemini-3.7-flash"
-	gemini37FlashStandardInputUSDPerMillion = 0.75
-	gemini37FlashCachedInputUSDPerMillion   = 0.075
+	gemini37FlashModelID                     = "gemini-3.7-flash"
+	gemini37FlashStandardInputUSDPerMillion  = 0.75
+	gemini37FlashCachedInputUSDPerMillion    = 0.075
+	claudeSonnet46ModelID                    = "claude-sonnet-4-6"
+	claudeSonnet46StandardInputUSDPerMillion = 3.30
+	claudeSonnet46CachedInputUSDPerMillion   = 0.33
 )
 
 // ModelPricingSpec is a verified, provider-specific input-pricing profile.
@@ -41,30 +44,39 @@ func ResolveModelPricing(modelID string) (ModelPricingSpec, bool) {
 			SourceLabel:                "Google Gemini Developer API paid standard pricing",
 			SourceURL:                  "https://ai.google.dev/gemini-api/docs/pricing",
 		}, true
+	case claudeSonnet46ModelID:
+		return ModelPricingSpec{
+			ModelID:                    claudeSonnet46ModelID,
+			StandardInputUSDPerMillion: claudeSonnet46StandardInputUSDPerMillion,
+			CachedInputUSDPerMillion:   claudeSonnet46CachedInputUSDPerMillion,
+			SourceLabel:                "Google Cloud Agent Platform Claude Sonnet 4.6 standard pricing",
+			SourceURL:                  "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+		}, true
 	default:
 		return ModelPricingSpec{}, false
 	}
 }
 
-// CacheAdjustedInputProjection is the standard-input-price equivalent for the
-// comparable cache subset of one model. It is not a provider invoice.
+// CacheAdjustedInputProjection is the standard-input-price equivalent for one
+// model. It combines the paired metered-input and cached-content counters from
+// the observed usage message; it is not an Antigravity invoice.
 type CacheAdjustedInputProjection struct {
 	ModelID              string
-	ComparableTurns      int
-	ComparableTokens     int
+	ObservedTurns        int
+	TotalProcessedTokens int
 	CachedTokens         int
-	UncachedTokens       int
+	MeteredInputTokens   int
 	CacheInputMultiplier float64
 	EffectiveInputTokens float64
 	SourceLabel          string
 	SourceURL            string
 }
 
-// ProjectCacheAdjustedInput computes uncached + cached * cache-price-ratio.
-// The caller must keep different model profiles separate because a cross-model
-// sum of price-equivalent tokens has no common token-price baseline.
+// ProjectCacheAdjustedInput computes metered input plus cached content at the
+// official cache-input price ratio. It deliberately does not use the separate
+// persisted context-state counter as an input to the formula.
 func ProjectCacheAdjustedInput(stats ModelTokenStats) (CacheAdjustedInputProjection, bool) {
-	if stats.CachedTurnCount == 0 || stats.ComparableTokens <= 0 {
+	if stats.TurnCount == 0 || stats.TotalProcessedTokenSum <= 0 {
 		return CacheAdjustedInputProjection{}, false
 	}
 	spec, found := ResolveModelPricing(stats.ModelName)
@@ -77,12 +89,12 @@ func ProjectCacheAdjustedInput(stats ModelTokenStats) (CacheAdjustedInputProject
 	}
 	return CacheAdjustedInputProjection{
 		ModelID:              spec.ModelID,
-		ComparableTurns:      stats.CachedTurnCount,
-		ComparableTokens:     stats.ComparableTokens,
-		CachedTokens:         stats.TotalCached,
-		UncachedTokens:       stats.TotalNew,
+		ObservedTurns:        stats.TurnCount,
+		TotalProcessedTokens: stats.TotalProcessedTokenSum,
+		CachedTokens:         stats.CachedContentTokenSum,
+		MeteredInputTokens:   stats.MeteredInputTokenSum,
 		CacheInputMultiplier: multiplier,
-		EffectiveInputTokens: float64(stats.TotalNew) + float64(stats.TotalCached)*multiplier,
+		EffectiveInputTokens: float64(stats.MeteredInputTokenSum) + float64(stats.CachedContentTokenSum)*multiplier,
 		SourceLabel:          spec.SourceLabel,
 		SourceURL:            spec.SourceURL,
 	}, true

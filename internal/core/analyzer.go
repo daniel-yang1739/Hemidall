@@ -58,7 +58,6 @@ func (a *PayloadAnalyzer) AnalyzeStep(event *UnifiedAgentEvent) {
 	event.Tokens = estimate
 
 	assignScope(event)
-	event.CacheStatus = CacheStatusFromUsage(event.Usage)
 }
 
 func estimateToolArguments(calls []ToolCallInfo) int {
@@ -92,17 +91,4 @@ func assignScope(event *UnifiedAgentEvent) {
 	default:
 		event.Scope = ScopeLocalExecution
 	}
-}
-
-// CacheStatusFromUsage classifies only a valid persisted total/cache pair.
-// Missing or inconsistent fields remain UNKNOWN rather than becoming a miss.
-func CacheStatusFromUsage(usage PersistedUsageObservation) string {
-	if !usage.Available || !usage.HasTotalTokens || !usage.HasCachedTokens {
-		return "UNKNOWN"
-	}
-	hitRate, ok := usage.CacheHitRate()
-	if !ok {
-		return "UNKNOWN"
-	}
-	return ClassifyCacheStatus(hitRate, usage.CachedTokens, usage.TotalTokens)
 }

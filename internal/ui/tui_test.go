@@ -542,13 +542,13 @@ func TestHistoryFilteringAndStepSearch(t *testing.T) {
 	m.activeView = ViewHistory
 	m.focusPane = FocusList
 
-	// Seed with distinct types and cache statuses
+	// Seed with distinct types and cache field observations.
 	m.history = []core.UnifiedAgentEvent{
 		{StepIndex: 1, Type: core.StepTypeUserInput, Summary: "User question"},
-		{StepIndex: 2, Type: core.StepTypeModelResponse, CacheStatus: "HIT", Usage: core.PersistedUsageObservation{Available: true, HasTotalTokens: true, TotalTokens: 100, HasCachedTokens: true, CachedTokens: 85}, Summary: "Model plan"},
-		{StepIndex: 3, Type: core.StepTypeToolCall, CacheStatus: "HIT", Usage: core.PersistedUsageObservation{Available: true, HasTotalTokens: true, TotalTokens: 100, HasCachedTokens: true, CachedTokens: 90}, Summary: "Run command"},
-		{StepIndex: 4, Type: core.StepTypeToolCall, CacheStatus: "PARTIAL", Usage: core.PersistedUsageObservation{Available: true, HasTotalTokens: true, TotalTokens: 100, HasCachedTokens: true, CachedTokens: 40}, Summary: "Command result"},
-		{StepIndex: 14, Type: core.StepTypeToolCall, CacheStatus: "HIT", Usage: core.PersistedUsageObservation{Available: true, HasTotalTokens: true, TotalTokens: 100, HasCachedTokens: true, CachedTokens: 95}, Summary: "Write file"},
+		{StepIndex: 2, Type: core.StepTypeModelResponse, Usage: core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: 100, HasCachedContentTokens: true, CachedContentTokens: 85}, Summary: "Model plan"},
+		{StepIndex: 3, Type: core.StepTypeToolCall, Usage: core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: 100, HasCachedContentTokens: true, CachedContentTokens: 90}, Summary: "Run command"},
+		{StepIndex: 4, Type: core.StepTypeToolCall, Usage: core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: 100}, Summary: "Command result"},
+		{StepIndex: 14, Type: core.StepTypeToolCall, Usage: core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: 100, HasCachedContentTokens: true, CachedContentTokens: 95}, Summary: "Write file"},
 	}
 
 	// 1. Initial State: All 5 events and [T:All] [C:All] rendered
@@ -572,26 +572,26 @@ func TestHistoryFilteringAndStepSearch(t *testing.T) {
 		t.Fatalf("Expected 3 tool events, got %d", len(filtered))
 	}
 
-	// 3. Cycle Cache Filter: press 'c' -> Hit (should match Step 3, 14)
+	// 3. Cycle Cache Filter: press 'c' -> Observed (should match Step 3, 14)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
 	m = updated.(Model)
-	if m.historyCacheFilter != CacheFilterHit {
-		t.Fatalf("Expected CacheFilterHit, got %v", m.historyCacheFilter)
+	if m.historyCacheFilter != CacheFilterObserved {
+		t.Fatalf("Expected CacheFilterObserved, got %v", m.historyCacheFilter)
 	}
 	filtered = m.getFilteredHistory()
 	if len(filtered) != 2 {
 		t.Fatalf("Expected 2 hit events, got %d", len(filtered))
 	}
 
-	// Cycle Cache Filter: press 'c' -> Partial (should match Step 4)
+	// Cycle Cache Filter: press 'c' -> Omitted (should match Step 4)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
 	m = updated.(Model)
-	if m.historyCacheFilter != CacheFilterPartial {
-		t.Fatalf("Expected CacheFilterPartial, got %v", m.historyCacheFilter)
+	if m.historyCacheFilter != CacheFilterOmitted {
+		t.Fatalf("Expected CacheFilterOmitted, got %v", m.historyCacheFilter)
 	}
 	filtered = m.getFilteredHistory()
 	if len(filtered) != 1 || filtered[0].StepIndex != 4 {
-		t.Fatalf("Expected 1 partial event (step 4), got %v", filtered)
+		t.Fatalf("Expected 1 omitted-cache event (step 4), got %v", filtered)
 	}
 
 	// 4. Press Esc to reset filters
@@ -715,7 +715,7 @@ func TestHistoryThreePanelSplitAndZeroTruncation(t *testing.T) {
 			Summary:    "Model response with tool call",
 			RawContent: "Let me check the tools.",
 			Usage: core.PersistedUsageObservation{
-				Available: true, ModelName: "gemini-3.7-flash", HasTotalTokens: true, TotalTokens: 151479, HasCachedTokens: true, CachedTokens: 150866,
+				Available: true, ModelName: "gemini-3.7-flash", HasObservedContextTokens: true, ObservedContextTokens: 151479, HasCachedContentTokens: true, CachedContentTokens: 150866,
 			},
 		},
 	}
@@ -1011,7 +1011,7 @@ func TestDirectSessionSwitchMsgState(t *testing.T) {
 			Summary:   "Hello! How can I help you?",
 			Timestamp: time.Now(),
 			Usage: core.PersistedUsageObservation{
-				Available: true, HasTotalTokens: true, TotalTokens: 1500, HasCachedTokens: true, CachedTokens: 1200,
+				Available: true, HasObservedContextTokens: true, ObservedContextTokens: 1500, HasCachedContentTokens: true, CachedContentTokens: 1200,
 			},
 		},
 	}
@@ -1079,7 +1079,7 @@ func TestDashboardKpiRendering(t *testing.T) {
 		Scope:     core.ScopeCloudInference,
 		Type:      core.StepTypeModelResponse,
 		Usage: core.PersistedUsageObservation{
-			Available: true, ModelName: "gemini-3.7-flash", HasTotalTokens: true, TotalTokens: 120000, HasCachedTokens: true, CachedTokens: 100000,
+			Available: true, ModelName: "gemini-3.7-flash", HasObservedContextTokens: true, ObservedContextTokens: 120000, HasMeteredInputTokens: true, MeteredInputTokens: 20000, HasCachedContentTokens: true, CachedContentTokens: 100000,
 		},
 	})
 	m.history = append(m.history, core.UnifiedAgentEvent{
@@ -1087,7 +1087,7 @@ func TestDashboardKpiRendering(t *testing.T) {
 		Scope:     core.ScopeCloudInference,
 		Type:      core.StepTypeModelResponse,
 		Usage: core.PersistedUsageObservation{
-			Available: true, ModelName: "claude-3.7-sonnet", HasTotalTokens: true, TotalTokens: 80000, HasCachedTokens: true, CachedTokens: 70000,
+			Available: true, ModelName: "claude-3.7-sonnet", HasObservedContextTokens: true, ObservedContextTokens: 80000, HasMeteredInputTokens: true, MeteredInputTokens: 10000, HasCachedContentTokens: true, CachedContentTokens: 70000,
 		},
 	})
 	m.latestEvent = m.history[1]
@@ -1095,30 +1095,16 @@ func TestDashboardKpiRendering(t *testing.T) {
 	m.activeView = ViewDashboard
 	viewStr := m.View()
 
-	// 1. Verify persisted-observation KPI cards are present.
-	if !strings.Contains(viewStr, "OBSERVED CONTEXT SUM") {
-		t.Error("Dashboard missing OBSERVED CONTEXT SUM card")
-	}
-	if !strings.Contains(viewStr, "CACHE HIT VOLUME") {
-		t.Error("Dashboard missing CACHE HIT VOLUME card")
-	}
-	if !strings.Contains(viewStr, "CACHE DATA") {
-		t.Error("Dashboard missing CACHE DATA card")
-	}
-	if !strings.Contains(viewStr, "OBSERVED TURNS") {
-		t.Error("Dashboard missing OBSERVED TURNS card")
-	}
+	// 1. Verify metered-usage KPI cards are present.
+	requireViewContains(t, viewStr, "TOTAL PROCESSED")
+	requireViewContains(t, viewStr, "CACHE HIT VOLUME")
+	requireViewContains(t, viewStr, "UNCACHED INBOUND")
+	requireViewContains(t, viewStr, "EFFECTIVE TOKENS")
 
-	// 2. Verify Multi-Model breakdown table shows both models
-	if !strings.Contains(viewStr, "gemini-3.7-flash") {
-		t.Error("Dashboard table missing gemini-3.7-flash row")
-	}
-	if !strings.Contains(viewStr, "claude-3.7-sonnet") {
-		t.Error("Dashboard table missing claude-3.7-sonnet row")
-	}
-	if !strings.Contains(viewStr, "TOTAL SUMMARY") {
-		t.Error("Dashboard table missing TOTAL SUMMARY row")
-	}
+	// 2. Verify Multi-Model breakdown table shows both models.
+	requireViewContains(t, viewStr, "gemini-3.7-flash")
+	requireViewContains(t, viewStr, "claude-3.7-sonnet")
+	requireViewContains(t, viewStr, "TOTAL SUMMARY")
 
 }
 
@@ -1132,7 +1118,7 @@ func TestDashboardHalfWidthResponsiveRendering(t *testing.T) {
 		Scope:     core.ScopeCloudInference,
 		Type:      core.StepTypeModelResponse,
 		Usage: core.PersistedUsageObservation{
-			Available: true, ModelName: "gemini-3.7-flash", HasTotalTokens: true, TotalTokens: 120000, HasCachedTokens: true, CachedTokens: 100000,
+			Available: true, ModelName: "gemini-3.7-flash", HasObservedContextTokens: true, ObservedContextTokens: 120000, HasMeteredInputTokens: true, MeteredInputTokens: 20000, HasCachedContentTokens: true, CachedContentTokens: 100000,
 		},
 	})
 	m.latestEvent = m.history[0]
@@ -1141,24 +1127,10 @@ func TestDashboardHalfWidthResponsiveRendering(t *testing.T) {
 	viewStr := m.View()
 
 	// In half-width (80 cols), ensure 2-column KPI labels are complete without truncation
-	if !strings.Contains(viewStr, "OBSERVED CONTEXT SUM") {
-		t.Error("Half-width dashboard missing complete OBSERVED CONTEXT SUM label")
-	}
-	if !strings.Contains(viewStr, "CACHE HIT VOLUME") {
-		t.Error("Half-width dashboard missing complete CACHE HIT VOLUME label")
-	}
-	if !strings.Contains(viewStr, "UNCACHED INBOUND") {
-		t.Error("Half-width dashboard missing complete UNCACHED INBOUND label")
-	}
-
-	// Ensure lines do not exceed 80 columns
-	lines := strings.Split(viewStr, "\n")
-	for i, l := range lines {
-		w := lipgloss.Width(l)
-		if w > 80 {
-			t.Errorf("Line %d width %d exceeds 80 columns: %s", i, w, l)
-		}
-	}
+	requireViewContains(t, viewStr, "TOTAL PROCESSED")
+	requireViewContains(t, viewStr, "CACHE HIT VOLUME")
+	requireViewContains(t, viewStr, "UNCACHED INBOUND")
+	requireRenderedLinesWithinWidth(t, viewStr, 80)
 }
 
 func TestSpaceBetweenRowDistribution(t *testing.T) {
@@ -1183,27 +1155,27 @@ func TestCacheFilterStrictCloudIsolation(t *testing.T) {
 
 	m.history = []core.UnifiedAgentEvent{
 		{StepIndex: 0, Type: core.StepTypeUserInput, Summary: "User prompt"},
-		{StepIndex: 1, Type: core.StepTypeModelResponse, CacheStatus: "HIT", Usage: core.PersistedUsageObservation{Available: true, HasTotalTokens: true, TotalTokens: 1000, HasCachedTokens: true, CachedTokens: 900}, Summary: "Model Response 1"},
+		{StepIndex: 1, Type: core.StepTypeModelResponse, Usage: core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: 1000, HasCachedContentTokens: true, CachedContentTokens: 900}, Summary: "Model Response 1"},
 		{StepIndex: 2, Type: core.StepTypeRunCommand, Summary: "cat file.go"},
 		{StepIndex: 3, Type: core.StepTypeCheckpoint, Summary: "Checkpoint 1"},
-		{StepIndex: 4, Type: core.StepTypeModelResponse, CacheStatus: "PARTIAL", Usage: core.PersistedUsageObservation{Available: true, HasTotalTokens: true, TotalTokens: 1000, HasCachedTokens: true, CachedTokens: 740}, Summary: "Model Response 2"},
+		{StepIndex: 4, Type: core.StepTypeModelResponse, Usage: core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: 1000}, Summary: "Model Response 2"},
 	}
 
-	// 1. Partial Filter: should only match Step 4 (Cloud Model Response with 74% hit rate)
-	m.historyCacheFilter = CacheFilterPartial
+	// 1. Omitted Filter: should only match Step 4.
+	m.historyCacheFilter = CacheFilterOmitted
 	filtered := m.getFilteredHistory()
 	if len(filtered) != 1 {
-		t.Fatalf("Expected exactly 1 partial event (Step 4), got %d: %v", len(filtered), filtered)
+		t.Fatalf("Expected exactly 1 omitted-cache event (Step 4), got %d: %v", len(filtered), filtered)
 	}
 	if filtered[0].StepIndex != 4 {
 		t.Errorf("Expected Step 4, got Step %d", filtered[0].StepIndex)
 	}
 
-	// 2. Hit Filter: should only match Step 1 (Cloud Model Response with 90% hit rate)
-	m.historyCacheFilter = CacheFilterHit
+	// 2. Observed Filter: should only match Step 1.
+	m.historyCacheFilter = CacheFilterObserved
 	filtered = m.getFilteredHistory()
 	if len(filtered) != 1 {
-		t.Fatalf("Expected exactly 1 hit event (Step 1), got %d: %v", len(filtered), filtered)
+		t.Fatalf("Expected exactly 1 observed-cache event (Step 1), got %d: %v", len(filtered), filtered)
 	}
 	if filtered[0].StepIndex != 1 {
 		t.Errorf("Expected Step 1, got Step %d", filtered[0].StepIndex)

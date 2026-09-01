@@ -4,27 +4,46 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 var (
-	inputBoundaryPattern = regexp.MustCompile(`last_step_index\x12[\x01-\x08](\d+)`)
-	modelNamePattern     = regexp.MustCompile(`(gemini-[a-zA-Z0-9\.\-]+)`)
+	inputBoundaryPattern     = regexp.MustCompile(`last_step_index\x12[\x01-\x08](\d+)`)
+	exactModelNamePattern    = regexp.MustCompile(`(?i)^(?:gemini|claude|gpt)-[a-z0-9][a-z0-9.\-]*$`)
+	embeddedModelNamePattern = regexp.MustCompile(`(?i)(?:gemini|claude|gpt)-[a-z0-9][a-z0-9.\-]*`)
+)
+
+const (
+	persistedMetadataRootFieldNumber       = 1
+	persistedMetadataModelFieldNumber      = 19
+	persistedMetadataAttributesFieldNumber = 20
+	persistedMetadataMapKeyFieldNumber     = 1
+	persistedMetadataMapValueFieldNumber   = 2
+	persistedModelEnumKey                  = "model_enum"
+	persistedLastStepIndexKey              = "last_step_index"
+	persistedLastExecutionIDKey            = "last_execution_id"
+	persistedUsageInputFieldNumber         = 1
+	persistedUsageCachedContentFieldNumber = 5
 )
 
 // PersistedGenerationMetadata contains schema-inferred observations from an
 // Antigravity generation metadata blob. The local wire format is not an
 // official public protobuf schema.
 type PersistedGenerationMetadata struct {
-	GenIndex               int
-	InputBoundaryStepIndex int
-	HasInputBoundary       bool
-	TotalTokens            int
-	HasTotalTokens         bool
-	CachedTokens           int
-	HasCachedTokens        bool
-	ContextLimit           int
-	HasContextLimit        bool
-	ModelName              string
+	GenIndex                 int
+	InputBoundaryStepIndex   int
+	HasInputBoundary         bool
+	ObservedContextTokens    int
+	HasObservedContextTokens bool
+	MeteredInputTokens       int
+	HasMeteredInputTokens    bool
+	CachedContentTokens      int
+	HasCachedContentTokens   bool
+	ContextLimit             int
+	HasContextLimit          bool
+	ModelName                string
+	ModelEnum                string
+	LastExecutionID          string
 }
 
 // ParsePersistedGenerationMetadata decodes the raw protobuf blob from gen_metadata.
@@ -37,24 +56,93 @@ func ParsePersistedGenerationMetadata(genIndex int, data []byte) (*PersistedGene
 
 	meta := &PersistedGenerationMetadata{GenIndex: genIndex}
 
-	// Extract the persisted last_step_index input boundary from the raw bytes.
-	// It identifies the final transcript input included by the generation, not
-	// the generated model-output step itself.
+	decodePersistedMetadataEnvelope(data, meta)
+
+	// The raw form remains a compatibility fallback for records written before
+	// the observed metadata envelope. Current records use the structured map.
+	if !meta.HasInputBoundary {
+		decodeLegacyInputBoundary(data, meta)
+	}
+
+	decodePersistedUsageFields(data, meta)
+
+	return meta, nil
+}
+
+func decodePersistedMetadataEnvelope(data []byte, meta *PersistedGenerationMetadata) {
+	root, err := decodeProtoFields(data)
+	if err != nil {
+		return
+	}
+	for _, rootField := range root {
+		if rootField.number != persistedMetadataRootFieldNumber || rootField.wireType != 2 {
+			continue
+		}
+		rootMetadata, decodeErr := decodeProtoFields(rootField.bytes)
+		if decodeErr != nil {
+			continue
+		}
+		if decodePersistedMetadataFields(rootMetadata, meta) {
+			return
+		}
+	}
+}
+
+func decodePersistedMetadataFields(fields []protoField, meta *PersistedGenerationMetadata) bool {
+	modelEnum := persistedMetadataMapValue(fields, persistedModelEnumKey)
+	lastExecutionID := persistedMetadataMapValue(fields, persistedLastExecutionIDKey)
+	if modelEnum == "" && lastExecutionID == "" {
+		return false
+	}
+	meta.ModelEnum = modelEnum
+	meta.ModelName = persistedDirectModelName(fields)
+	meta.LastExecutionID = lastExecutionID
+	decodeStructuredInputBoundary(persistedMetadataMapValue(fields, persistedLastStepIndexKey), meta)
+	return true
+}
+
+func persistedMetadataMapValue(fields []protoField, targetKey string) string {
+	for _, field := range fields {
+		if field.number != persistedMetadataAttributesFieldNumber || field.wireType != 2 {
+			continue
+		}
+		entry, decodeErr := decodeProtoFields(field.bytes)
+		if decodeErr != nil {
+			continue
+		}
+		key := printableString(firstBytes(entry, persistedMetadataMapKeyFieldNumber))
+		if key != targetKey {
+			continue
+		}
+		return printableString(firstBytes(entry, persistedMetadataMapValueFieldNumber))
+	}
+	return ""
+}
+
+func persistedDirectModelName(fields []protoField) string {
+	modelName := printableString(firstBytes(fields, persistedMetadataModelFieldNumber))
+	if !exactModelNamePattern.MatchString(modelName) {
+		return ""
+	}
+	return strings.ToLower(modelName)
+}
+
+func decodeStructuredInputBoundary(rawValue string, meta *PersistedGenerationMetadata) {
+	stepIndex, err := strconv.Atoi(rawValue)
+	if err != nil {
+		return
+	}
+	meta.InputBoundaryStepIndex = stepIndex
+	meta.HasInputBoundary = true
+}
+
+func decodeLegacyInputBoundary(data []byte, meta *PersistedGenerationMetadata) {
 	if match := inputBoundaryPattern.FindSubmatch(data); len(match) > 1 {
 		if s, err := strconv.Atoi(string(match[1])); err == nil {
 			meta.InputBoundaryStepIndex = s
 			meta.HasInputBoundary = true
 		}
 	}
-
-	// Extract ModelName
-	if match := modelNamePattern.FindSubmatch(data); len(match) > 1 {
-		meta.ModelName = string(match[1])
-	}
-
-	decodePersistedUsageFields(data, meta)
-
-	return meta, nil
 }
 
 // decodePersistedUsageFields follows only the observed nested wire paths. The
@@ -72,7 +160,7 @@ func decodePersistedUsageFields(data []byte, meta *PersistedGenerationMetadata) 
 	}
 
 	decodeContextUsage(levelOne, meta)
-	decodeCachedUsage(levelOne, meta)
+	decodeMeteredUsage(levelOne, meta)
 }
 
 func decodeContextUsage(levelOne []protoField, meta *PersistedGenerationMetadata) {
@@ -85,8 +173,8 @@ func decodeContextUsage(levelOne []protoField, meta *PersistedGenerationMetadata
 		return
 	}
 	if total, found := protoVarintValue(levelTen, 1); found {
-		meta.TotalTokens = int(total)
-		meta.HasTotalTokens = true
+		meta.ObservedContextTokens = int(total)
+		meta.HasObservedContextTokens = true
 	}
 	if limit, found := protoVarintValue(levelTen, 4); found && limit > 0 {
 		meta.ContextLimit = int(limit)
@@ -94,14 +182,11 @@ func decodeContextUsage(levelOne []protoField, meta *PersistedGenerationMetadata
 	}
 }
 
-func decodeCachedUsage(levelOne []protoField, meta *PersistedGenerationMetadata) {
-	levelFour, directCacheFound := nestedProtoFields(levelOne, 4)
-	if directCacheFound {
-		if cached, found := protoVarintValue(levelFour, 5); found {
-			meta.CachedTokens = int(cached)
-			meta.HasCachedTokens = true
-			return
-		}
+func decodeMeteredUsage(levelOne []protoField, meta *PersistedGenerationMetadata) {
+	levelFour, directUsageFound := nestedProtoFields(levelOne, 4)
+	if directUsageFound {
+		decodeMeteredUsageFields(levelFour, meta)
+		return
 	}
 
 	levelSeventeen, ok := nestedProtoFields(levelOne, 17)
@@ -112,9 +197,17 @@ func decodeCachedUsage(levelOne []protoField, meta *PersistedGenerationMetadata)
 	if !ok {
 		return
 	}
-	if cached, found := protoVarintValue(levelTwo, 5); found {
-		meta.CachedTokens = int(cached)
-		meta.HasCachedTokens = true
+	decodeMeteredUsageFields(levelTwo, meta)
+}
+
+func decodeMeteredUsageFields(fields []protoField, meta *PersistedGenerationMetadata) {
+	if input, found := protoVarintValue(fields, persistedUsageInputFieldNumber); found {
+		meta.MeteredInputTokens = int(input)
+		meta.HasMeteredInputTokens = true
+	}
+	if cached, found := protoVarintValue(fields, persistedUsageCachedContentFieldNumber); found {
+		meta.CachedContentTokens = int(cached)
+		meta.HasCachedContentTokens = true
 	}
 }
 

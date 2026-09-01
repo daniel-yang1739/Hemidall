@@ -72,25 +72,37 @@ func formatCacheCoverage(stats core.ModelTokenStats) string {
 	if stats.TurnCount == 0 {
 		return "unavailable"
 	}
-	return fmt.Sprintf("%d/%d comparable", stats.CachedTurnCount, stats.TurnCount)
+	return fmt.Sprintf("%d/%d explicit", stats.ExplicitCacheValueTurnCount, stats.TurnCount)
 }
 
-func hasComparableCacheMetrics(stats core.ModelTokenStats) bool {
-	return stats.CachedTurnCount > 0 && stats.ComparableTokens > 0
+func formatCacheDefaultZeroCount(stats core.ModelTokenStats) string {
+	if stats.TurnCount == 0 {
+		return "unavailable"
+	}
+	return fmt.Sprintf("%d default zero", stats.DefaultZeroCacheTurnCount)
+}
+
+func hasMeteredUsage(stats core.ModelTokenStats) bool {
+	return stats.TurnCount > 0 && stats.TotalProcessedTokenSum > 0
+}
+
+func hasCompleteEffectiveProjection(stats core.ModelTokenStats) bool {
+	return hasMeteredUsage(stats) && stats.EffectiveProjectionTurnCount == stats.TurnCount
 }
 
 func formatCacheHitCell(stats core.ModelTokenStats) string {
-	if !hasComparableCacheMetrics(stats) {
+	if !hasMeteredUsage(stats) {
 		return "unavailable"
 	}
-	return fmt.Sprintf("%s (%.1f%%)", formatTokShort(stats.TotalCached), stats.CacheHitRate)
+	return fmt.Sprintf("%s (%.1f%%)", formatTokShort(stats.CachedContentTokenSum), stats.CacheContentSharePercent)
 }
 
 func formatUncachedCell(stats core.ModelTokenStats) string {
-	if !hasComparableCacheMetrics(stats) {
+	if !hasMeteredUsage(stats) {
 		return "unavailable"
 	}
-	return formatTokShort(stats.TotalNew)
+	uncachedPercent := percentageScale - stats.CacheContentSharePercent
+	return fmt.Sprintf("%s (%.1f%%)", formatTokShort(stats.MeteredInputTokenSum), uncachedPercent)
 }
 
 func formatEffectiveInputCell(stats core.ModelTokenStats) string {
@@ -101,43 +113,63 @@ func formatEffectiveInputCell(stats core.ModelTokenStats) string {
 	return fmt.Sprintf("%s @%.2fx", formatTokFloatShort(projection.EffectiveInputTokens), projection.CacheInputMultiplier)
 }
 
-func formatObservedContextSum(stats core.ModelTokenStats) string {
-	if stats.TurnCount == 0 {
+func formatEffectiveAggregateCell(stats core.ModelTokenStats) string {
+	if !hasCompleteEffectiveProjection(stats) {
 		return "unavailable"
 	}
-	return formatTokShort(stats.TotalProcessed) + " Tok"
+	return formatTokFloatShort(stats.EffectiveInputTokenSum)
 }
 
-func cacheMetricSubLabel(stats core.ModelTokenStats, hitRate bool) string {
-	if !hasComparableCacheMetrics(stats) {
-		return "fields unavailable"
+func formatEffectiveAggregateTokenCell(stats core.ModelTokenStats) string {
+	if !hasCompleteEffectiveProjection(stats) {
+		return "unavailable"
 	}
-	if hitRate {
-		return fmt.Sprintf("%.1f%% comparable hit", stats.CacheHitRate)
-	}
-	return fmt.Sprintf("%.1f%% comparable new", percentageScale-stats.CacheHitRate)
+	return formatEffectiveAggregateCell(stats) + " Tok"
 }
 
-func cacheMetricLabel(base string, stats core.ModelTokenStats) string {
-	if !hasComparableCacheMetrics(stats) {
-		return base
+func formatCacheSavedTokens(stats core.ModelTokenStats) string {
+	if !hasCompleteEffectiveProjection(stats) {
+		return "unavailable"
 	}
-	if stats.CompleteUsage {
-		return base
+	savedTokens := float64(stats.TotalProcessedTokenSum) - stats.EffectiveInputTokenSum
+	return formatTokFloatShort(savedTokens)
+}
+
+func formatCacheSavedTokenCell(stats core.ModelTokenStats) string {
+	if !hasCompleteEffectiveProjection(stats) {
+		return "unavailable"
 	}
-	return base + " (PARTIAL)"
+	return formatCacheSavedTokens(stats) + " Tok"
+}
+
+func formatCacheSavedCell(stats core.ModelTokenStats) string {
+	if !hasCompleteEffectiveProjection(stats) {
+		return "unavailable"
+	}
+	savedPercent := (float64(stats.TotalProcessedTokenSum) - stats.EffectiveInputTokenSum) / float64(stats.TotalProcessedTokenSum) * percentageScale
+	return fmt.Sprintf("%s (%.1f%%)", formatCacheSavedTokens(stats), savedPercent)
+}
+
+func formatCacheSavedRate(stats core.ModelTokenStats) string {
+	if !hasCompleteEffectiveProjection(stats) {
+		return "unavailable"
+	}
+	savedPercent := (float64(stats.TotalProcessedTokenSum) - stats.EffectiveInputTokenSum) / float64(stats.TotalProcessedTokenSum) * percentageScale
+	return fmt.Sprintf("%.1f%% net saved", savedPercent)
+}
+
+func formatObservedContextSum(stats core.ModelTokenStats) string {
+	if !hasMeteredUsage(stats) {
+		return "unavailable"
+	}
+	return formatTokShort(stats.TotalProcessedTokenSum) + " Tok"
 }
 
 func formatCacheFields(usage core.PersistedUsageObservation) string {
-	if !usage.HasCachedTokens {
-		return "cached token field unavailable"
+	if !usage.HasCachedContentTokens {
+		return fmt.Sprintf("0 cached (protobuf default); %s metered input", formatTokShort(usage.MeteredInputTokens))
 	}
-	uncached, hasUncached := usage.UncachedTokens()
-	hitRate, hasHitRate := usage.CacheHitRate()
-	if !hasUncached || !hasHitRate {
-		return "invalid relative to observed total"
-	}
-	return fmt.Sprintf("%s cached (%.1f%% hit), %s uncached", formatTokShort(usage.CachedTokens), hitRate, formatTokShort(uncached))
+	return fmt.Sprintf("%s cached; %s metered input", formatTokShort(usage.CachedContentTokens), formatTokShort(usage.MeteredInputTokens))
 }
 
 func formatEstimateDimension(name string, tokens, total, barBlocks int, color lipgloss.TerminalColor) string {
@@ -170,19 +202,19 @@ func renderBorderlessKpiStrip(tot core.ModelTokenStats, width int) string {
 		}
 		hStyle := lipgloss.NewStyle().Foreground(ColorMuted).Bold(true)
 
-		h1 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "OBSERVED CONTEXT SUM"), colW))
-		h2 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, cacheMetricLabel("CACHE HIT VOLUME", tot)), colW))
+		h1 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "TOTAL PROCESSED"), colW))
+		h2 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "CACHE HIT VOLUME"), colW))
 		v1 := lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render(
 			truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%s (%d Turns)", formatObservedContextSum(tot), tot.TurnCount)), colW))
 		v2 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(
 			truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheHitCell(tot)), colW))
 
-		h3 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, cacheMetricLabel("UNCACHED INBOUND", tot)), colW))
-		h4 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "CACHE DATA"), colW))
+		h3 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "UNCACHED INBOUND"), colW))
+		h4 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "EFFECTIVE TOKENS"), colW))
 		v3 := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(
 			truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatUncachedCell(tot)), colW))
 		v4 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(
-			truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheCoverage(tot)), colW))
+			truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatEffectiveAggregateTokenCell(tot)), colW))
 
 		row1 := fmt.Sprintf("  %s %s", h1, h2)
 		row2 := fmt.Sprintf("  %s %s", v1, v2)
@@ -201,23 +233,23 @@ func renderBorderlessKpiStrip(tot core.ModelTokenStats, width int) string {
 	hStyle := lipgloss.NewStyle().Foreground(ColorMuted).Bold(true)
 	subStyle := lipgloss.NewStyle().Foreground(ColorMuted)
 
-	h1 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "OBSERVED CONTEXT SUM"), colW))
-	h2 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, cacheMetricLabel("CACHE HIT VOLUME", tot)), colW))
-	h3 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, cacheMetricLabel("UNCACHED INBOUND", tot)), colW))
-	h4 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "CACHE DATA"), colW))
-	h5 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "OBSERVED TURNS"), colW))
+	h1 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "TOTAL PROCESSED"), colW))
+	h2 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "CACHE HIT VOLUME"), colW))
+	h3 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "UNCACHED INBOUND"), colW))
+	h4 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "EFFECTIVE TOKENS"), colW))
+	h5 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "CACHED SAVED (%)"), colW))
 
 	v1 := lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatObservedContextSum(tot)), colW))
 	v2 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheHitCell(tot)), colW))
 	v3 := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatUncachedCell(tot)), colW))
-	v4 := lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheCoverage(tot)), colW))
-	v5 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%d turns", tot.TurnCount)), colW))
+	v4 := lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatEffectiveAggregateTokenCell(tot)), colW))
+	v5 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheSavedTokenCell(tot)), colW))
 
 	s1 := subStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%d observed turns", tot.TurnCount)), colW))
-	s2 := lipgloss.NewStyle().Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, cacheMetricSubLabel(tot, true)), colW))
-	s3 := lipgloss.NewStyle().Foreground(ColorHighlight).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, cacheMetricSubLabel(tot, false)), colW))
-	s4 := lipgloss.NewStyle().Foreground(ColorSecondary).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "schema-inferred"), colW))
-	s5 := lipgloss.NewStyle().Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "persisted records"), colW))
+	s2 := lipgloss.NewStyle().Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheCoverage(tot)), colW))
+	s3 := lipgloss.NewStyle().Foreground(ColorHighlight).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheDefaultZeroCount(tot)), colW))
+	s4 := lipgloss.NewStyle().Foreground(ColorSecondary).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "weighted equivalent input"), colW))
+	s5 := lipgloss.NewStyle().Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheSavedRate(tot)), colW))
 
 	row1 := fmt.Sprintf("  %s %s %s %s %s", h1, h2, h3, h4, h5)
 	row2 := fmt.Sprintf("  %s %s %s %s %s", v1, v2, v3, v4, v5)
@@ -271,7 +303,7 @@ func formatSpaceBetweenRow(cols []string, minWidths []int, leftAlign []bool, tar
 
 func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTokenStats, width int) string {
 	var sb strings.Builder
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("  MULTI-MODEL PERSISTED USAGE & PRICE-EQUIVALENT PROJECTIONS:") + "\n")
+	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("  MULTI-MODEL PERSISTED USAGE & WEIGHTED TOKEN EFFICIENCY:") + "\n")
 
 	targetWidth := width - 4
 	if targetWidth < 30 {
@@ -279,11 +311,11 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 	}
 
 	if width < 75 {
-		// Tier 1: 4-Column Ultra-Compact Table for Narrow Laptop Splits (< 75 cols)
-		minWidths := []int{14, 5, 10, 14}
-		leftAligns := []bool{true, false, false, false}
+		// Tier 1: 3-Column Ultra-Compact Table for Narrow Laptop Splits (< 75 cols)
+		minWidths := []int{14, 5, 10}
+		leftAligns := []bool{true, false, false}
 
-		headers := []string{"Model Name", "Turns", "Observed", "Cache Data"}
+		headers := []string{"Model Name", "Turns", "Processed"}
 		headerStr := "  " + formatSpaceBetweenRow(headers, minWidths, leftAligns, targetWidth)
 		sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(headerStr) + "\n")
 
@@ -291,8 +323,7 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 			rowCols := []string{
 				truncateVisualWidth(m.ModelName, 14),
 				fmt.Sprintf("%d", m.TurnCount),
-				formatTokShort(m.TotalProcessed),
-				formatCacheCoverage(m),
+				formatTokShort(m.TotalProcessedTokenSum),
 			}
 			rowStr := "  " + formatSpaceBetweenRow(rowCols, minWidths, leftAligns, targetWidth)
 			sb.WriteString(rowStr + "\n")
@@ -304,19 +335,18 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 		totCols := []string{
 			"TOTAL",
 			fmt.Sprintf("%d", total.TurnCount),
-			formatTokShort(total.TotalProcessed),
-			formatCacheCoverage(total),
+			formatTokShort(total.TotalProcessedTokenSum),
 		}
 		totStr := "  " + formatSpaceBetweenRow(totCols, minWidths, leftAligns, targetWidth)
 		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(totStr))
 
 		return sb.String()
 	} else if width < 110 {
-		// Tier 2: 5-Column Compact Table for Medium Terminals (75 <= width < 110)
-		minWidths := []int{16, 5, 9, 14, 14}
-		leftAligns := []bool{true, false, false, false, false}
+		// Tier 2: 4-Column Compact Table for Medium Terminals (75 <= width < 110)
+		minWidths := []int{16, 5, 10, 16}
+		leftAligns := []bool{true, false, false, false}
 
-		headers := []string{"Model Name", "Turns", "Observed", "Effective", "Coverage"}
+		headers := []string{"Model Name", "Turns", "Processed", "Effective"}
 		headerStr := "  " + formatSpaceBetweenRow(headers, minWidths, leftAligns, targetWidth)
 		sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(headerStr) + "\n")
 
@@ -324,9 +354,8 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 			rowCols := []string{
 				truncateVisualWidth(m.ModelName, 16),
 				fmt.Sprintf("%d", m.TurnCount),
-				formatTokShort(m.TotalProcessed),
+				formatTokShort(m.TotalProcessedTokenSum),
 				formatEffectiveInputCell(m),
-				formatCacheCoverage(m),
 			}
 			rowStr := "  " + formatSpaceBetweenRow(rowCols, minWidths, leftAligns, targetWidth)
 			sb.WriteString(rowStr + "\n")
@@ -338,9 +367,8 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 		totCols := []string{
 			"TOTAL SUMMARY",
 			fmt.Sprintf("%d", total.TurnCount),
-			formatTokShort(total.TotalProcessed),
-			"per-model only",
-			formatCacheCoverage(total),
+			formatTokShort(total.TotalProcessedTokenSum),
+			formatEffectiveAggregateCell(total),
 		}
 		totStr := "  " + formatSpaceBetweenRow(totCols, minWidths, leftAligns, targetWidth)
 		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(totStr))
@@ -348,11 +376,11 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 		return sb.String()
 	}
 
-	// Tier 3: 8-Column Full Table for Wide Terminals (>= 110 cols)
-	minWidths := []int{18, 5, 10, 15, 10, 16, 15, 8}
-	leftAligns := []bool{true, false, false, false, false, false, false, false}
+	// Tier 3: 7-Column Full Table for Wide Terminals (>= 110 cols)
+	minWidths := []int{18, 5, 10, 15, 12, 16, 17}
+	leftAligns := []bool{true, false, false, false, false, false, false}
 
-	headers := []string{"Model Name", "Turns", "Observed", "Cached", "Uncached", "Effective Input", "Cache Coverage", "Source"}
+	headers := []string{"Model Name", "Turns", "Processed", "Cached", "Uncached", "Effective Input", "Cached Saved (%)"}
 	headerStr := "  " + formatSpaceBetweenRow(headers, minWidths, leftAligns, targetWidth)
 	sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(headerStr) + "\n")
 
@@ -360,12 +388,11 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 		rowCols := []string{
 			truncateVisualWidth(m.ModelName, 18),
 			fmt.Sprintf("%d", m.TurnCount),
-			formatTokShort(m.TotalProcessed),
+			formatTokShort(m.TotalProcessedTokenSum),
 			formatCacheHitCell(m),
 			formatUncachedCell(m),
 			formatEffectiveInputCell(m),
-			formatCacheCoverage(m),
-			"metadata",
+			formatCacheSavedCell(m),
 		}
 		rowStr := "  " + formatSpaceBetweenRow(rowCols, minWidths, leftAligns, targetWidth)
 		sb.WriteString(rowStr + "\n")
@@ -377,17 +404,16 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 	totCols := []string{
 		"TOTAL SUMMARY",
 		fmt.Sprintf("%d", total.TurnCount),
-		formatTokShort(total.TotalProcessed),
+		formatTokShort(total.TotalProcessedTokenSum),
 		formatCacheHitCell(total),
 		formatUncachedCell(total),
-		"per-model only",
-		formatCacheCoverage(total),
-		"metadata",
+		formatEffectiveAggregateCell(total),
+		formatCacheSavedCell(total),
 	}
 	totStr := "  " + formatSpaceBetweenRow(totCols, minWidths, leftAligns, targetWidth)
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(totStr))
 	sb.WriteString("\n")
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render("  Effective Input = uncached + cached × official model cache-price ratio; per-model projection, not an Antigravity invoice."))
+	sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render("  Effective Input is the cache-price-weighted equivalent of all observed input tokens."))
 
 	return sb.String()
 }
@@ -414,8 +440,8 @@ func (m Model) renderDashboardView() string {
 	t := e.Tokens
 	usage := e.Usage
 	total := t.TotalTokens
-	if usage.HasTotalTokens {
-		total = usage.TotalTokens
+	if usage.HasObservedContextTokens {
+		total = usage.ObservedContextTokens
 	}
 
 	ctxLimit := 0
@@ -434,14 +460,12 @@ func (m Model) renderDashboardView() string {
 		cacheBadge = lipgloss.NewStyle().Foreground(ColorHighlight).Render("[USER INPUT]")
 	} else if e.IsCompactionStep() || e.Scope == core.ScopeSystemCompaction {
 		cacheBadge = TitleStyle.Render("[COMPACTION RECORD]")
+	} else if usage.HasCachedContentTokens {
+		cacheBadge = BadgeSuccess.Render(fmt.Sprintf("[CACHE CONTENT %s OBSERVED]", formatTokShort(usage.CachedContentTokens)))
+	} else if usage.Available {
+		cacheBadge = lipgloss.NewStyle().Foreground(ColorMuted).Render("[CACHE 0 DEFAULT]")
 	} else {
-		switch e.CacheStatus {
-		case "HIT", "PARTIAL":
-			hitRate, _ := usage.CacheHitRate()
-			cacheBadge = BadgeSuccess.Render(fmt.Sprintf("[DECODED CACHE %.1f%%]", hitRate))
-		default:
-			cacheBadge = BadgeDanger.Render("[CACHE DATA UNAVAILABLE]")
-		}
+		cacheBadge = BadgeDanger.Render("[CACHE DATA UNAVAILABLE]")
 	}
 
 	panelInnerWidth := m.width - 2
@@ -450,7 +474,7 @@ func (m Model) renderDashboardView() string {
 	}
 	contentWidth := panelInnerWidth - 2 // Account for Padding(0, 1)
 
-	// ==================== PANEL 0: SESSION AGGREGATE & MULTI-MODEL EFFICIENCY ====================
+	// ==================== PANEL 0: SESSION TOKEN AGGREGATES ====================
 	agg := core.ComputeSessionAggregateMetrics(m.history)
 	tot := agg.TotalStats
 
@@ -543,7 +567,7 @@ func (m Model) renderDashboardView() string {
 	} else {
 		p1Title := "TRACK 1: PERSISTED CLOUD USAGE OBSERVATION"
 		if e.IsSubagent || e.GetAgentRole() == "SUBAGENT" {
-			p1Title = "TRACK 1: SUBAGENT PERSISTED USAGE OBSERVATION"
+			p1Title = "TRACK 1: SUBAGENT PERSISTED CLOUD USAGE OBSERVATION"
 		}
 		p1.WriteString(TitleStyle.Render(p1Title) + "\n")
 
@@ -555,7 +579,7 @@ func (m Model) renderDashboardView() string {
 		if contentWidth < 80 {
 			p1.WriteString(fmt.Sprintf("  • Agent / Model  : [%s] %s (Step #%03d)\n",
 				e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(modelName, contentWidth-28)), e.StepIndex))
-			if usage.HasTotalTokens {
+			if usage.HasObservedContextTokens {
 				p1.WriteString(fmt.Sprintf("  • Observed Total : %s Tok %s\n", lipgloss.NewStyle().Bold(true).Render(formatTokShort(total)), cacheBadge))
 				p1.WriteString(fmt.Sprintf("  • Cache Fields   : %s\n", formatCacheFields(usage)))
 			} else {
@@ -566,7 +590,7 @@ func (m Model) renderDashboardView() string {
 		} else {
 			p1.WriteString(fmt.Sprintf("  • Agent / Model        : [%s] %s  (Step #%03d | Status: %s | %s)\n",
 				e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName), e.StepIndex, e.Status, timeStr))
-			if usage.HasTotalTokens {
+			if usage.HasObservedContextTokens {
 				if usage.HasContextLimit {
 					p1.WriteString(fmt.Sprintf("  • Observed Context      : %s Tokens (%5.1f%% of observed %dk limit)  %s\n", lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1_000, cacheBadge))
 				} else {
@@ -1156,31 +1180,10 @@ func formatShortCache(e core.UnifiedAgentEvent) string {
 	if !e.IsCloudStep() || !e.Usage.Available {
 		return ""
 	}
-	status := e.CacheStatus
-	if status == "" {
-		hitRate, ok := e.Usage.CacheHitRate()
-		if !ok {
-			return ""
-		}
-		status = core.ClassifyCacheStatus(hitRate, e.Usage.CachedTokens, e.Usage.TotalTokens)
+	if e.Usage.HasCachedContentTokens {
+		return lipgloss.NewStyle().Foreground(ColorSuccess).Render(fmt.Sprintf("[CACHE %s]", formatTokShort(e.Usage.CachedContentTokens)))
 	}
-	hitRate, hasHitRate := e.Usage.CacheHitRate()
-	switch status {
-	case "HIT":
-		if hasHitRate {
-			return lipgloss.NewStyle().Foreground(ColorSuccess).Render(fmt.Sprintf("[HIT %.0f%%]", hitRate))
-		}
-		return ""
-	case "PARTIAL":
-		if hasHitRate {
-			return lipgloss.NewStyle().Foreground(ColorWarning).Render(fmt.Sprintf("[PART %.0f%%]", hitRate))
-		}
-		return ""
-	case "MISS":
-		return lipgloss.NewStyle().Foreground(ColorDanger).Render("[MISS]")
-	default:
-		return ""
-	}
+	return lipgloss.NewStyle().Foreground(ColorMuted).Render("[CACHE 0 DEFAULT]")
 }
 
 func (m Model) formatHistoryCard(
@@ -1366,9 +1369,6 @@ func (m Model) getStepModelName(e core.UnifiedAgentEvent) string {
 		return ""
 	}
 	model := e.Usage.ModelName
-	if model == "" && (e.IsCloudStep() || e.Type == core.StepTypeToolCall || e.Type == core.StepTypeModelResponse) {
-		model = m.getSessionModelName()
-	}
 	if model == "" {
 		return ""
 	}

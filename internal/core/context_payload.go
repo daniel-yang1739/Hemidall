@@ -204,10 +204,10 @@ func BuildContextPayloadFromHistory(input ContextBuildInput) AgentContextPayload
 	}
 	payload.StagedBuffers = extractStagedBuffers(history)
 	for i := len(history) - 1; i >= 0; i-- {
-		if !history[i].Usage.HasTotalTokens {
+		if !history[i].Usage.HasObservedContextTokens {
 			continue
 		}
-		payload.TotalTokens = history[i].Usage.TotalTokens
+		payload.TotalTokens = history[i].Usage.ObservedContextTokens
 		if history[i].Usage.HasContextLimit {
 			payload.ContextLimit = history[i].Usage.ContextLimit
 		}

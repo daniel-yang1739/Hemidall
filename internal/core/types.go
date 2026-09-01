@@ -52,9 +52,11 @@ type TokenBreakdown struct {
 
 }
 
-// PersistedUsageObservation is a decoded observation from a local Antigravity
-// generation record. Its schema is inferred from the persisted wire format, so
-// it is not an HTTP request capture or vendor billing guarantee.
+// PersistedUsageObservation contains schema-inferred observations decoded from
+// a local Antigravity generation record. MeteredInputTokens and
+// CachedContentTokens share one observed usage-message path; they support the
+// cache-adjusted input projection. ObservedContextTokens comes from a separate
+// context-state path and is kept separate from metered usage.
 type PersistedUsageObservation struct {
 	Available       bool   `json:"available"`
 	Source          string `json:"source"`
@@ -62,30 +64,14 @@ type PersistedUsageObservation struct {
 	StepIndex       int    `json:"step_index"`
 	ModelName       string `json:"model_name"`
 
-	HasTotalTokens  bool `json:"has_total_tokens"`
-	TotalTokens     int  `json:"total_tokens"`
-	HasCachedTokens bool `json:"has_cached_tokens"`
-	CachedTokens    int  `json:"cached_tokens"`
-	HasContextLimit bool `json:"has_context_limit"`
-	ContextLimit    int  `json:"context_limit"`
-}
-
-// UncachedTokens returns a derived value only when both persisted operands were
-// decoded. It never manufactures a cache value from earlier turns or TTL rules.
-func (o PersistedUsageObservation) UncachedTokens() (int, bool) {
-	if !o.HasTotalTokens || !o.HasCachedTokens || o.CachedTokens > o.TotalTokens {
-		return 0, false
-	}
-	return o.TotalTokens - o.CachedTokens, true
-}
-
-// CacheHitRate returns a derived ratio only when both persisted operands were
-// decoded and the observed total is positive.
-func (o PersistedUsageObservation) CacheHitRate() (float64, bool) {
-	if !o.HasTotalTokens || !o.HasCachedTokens || o.TotalTokens <= 0 || o.CachedTokens > o.TotalTokens {
-		return 0, false
-	}
-	return float64(o.CachedTokens) / float64(o.TotalTokens) * 100.0, true
+	HasObservedContextTokens bool `json:"has_observed_context_tokens"`
+	ObservedContextTokens    int  `json:"observed_context_tokens"`
+	HasMeteredInputTokens    bool `json:"has_metered_input_tokens"`
+	MeteredInputTokens       int  `json:"metered_input_tokens"`
+	HasCachedContentTokens   bool `json:"has_cached_content_tokens"`
+	CachedContentTokens      int  `json:"cached_content_tokens"`
+	HasContextLimit          bool `json:"has_context_limit"`
+	ContextLimit             int  `json:"context_limit"`
 }
 
 // StepScope defines the observed origin category of an agent event.
@@ -99,23 +85,6 @@ const (
 	ScopeSystemCompaction StepScope = "COMPACTION"
 	ScopeSystemBootstrap  StepScope = "SYSTEM"
 )
-
-// ClassifyCacheStatus provides the single source of truth for cache classification across the entire codebase
-func ClassifyCacheStatus(hitRate float64, cachedTokens, totalTokens int) string {
-	if totalTokens == 0 {
-		return ""
-	}
-	if cachedTokens == 0 {
-		return "MISS"
-	}
-	if hitRate >= CacheHitRateThresholdHit {
-		return "HIT"
-	}
-	if hitRate >= CacheHitRateThresholdPartial {
-		return "PARTIAL"
-	}
-	return "MISS"
-}
 
 // UnifiedAgentEvent is the standardized domain event model across agent backends
 type UnifiedAgentEvent struct {
@@ -143,9 +112,8 @@ type UnifiedAgentEvent struct {
 
 	// Tokens is a local cl100k_base estimate injected by Analyzer. Usage is the
 	// separately persisted generation metadata observation, when available.
-	Tokens      TokenBreakdown            `json:"tokens"`
-	Usage       PersistedUsageObservation `json:"usage"`
-	CacheStatus string                    `json:"cache_status"` // HIT, PARTIAL, MISS, UNKNOWN
+	Tokens TokenBreakdown            `json:"tokens"`
+	Usage  PersistedUsageObservation `json:"usage"`
 }
 
 // GetAgentRole returns the authoritative role of the agent executing this step (MAIN, SUBAGENT, or INTERNAL)
@@ -187,17 +155,21 @@ func (e UnifiedAgentEvent) IsCloudStep() bool {
 		(e.Scope == ScopeCloudInference || e.Type == StepTypeModelResponse || e.Type == StepTypeToolCall)
 }
 
-// ModelTokenStats holds only aggregates derived from persisted usage observations.
+// ModelTokenStats holds aggregates from the observed metered usage message.
+// CachedContentTokenSum is a cached-input counter, not a provider invoice.
 type ModelTokenStats struct {
-	ModelName        string  `json:"model_name"`
-	TurnCount        int     `json:"turn_count"`
-	CachedTurnCount  int     `json:"cached_turn_count"`
-	TotalProcessed   int     `json:"total_processed"`
-	TotalCached      int     `json:"total_cached"`
-	TotalNew         int     `json:"total_new"`
-	ComparableTokens int     `json:"comparable_tokens"`
-	CacheHitRate     float64 `json:"cache_hit_rate"`
-	CompleteUsage    bool    `json:"complete_usage"`
+	ModelName                     string  `json:"model_name"`
+	TurnCount                     int     `json:"turn_count"`
+	MeteredInputTokenSum          int     `json:"metered_input_token_sum"`
+	CachedContentTokenSum         int     `json:"cached_content_token_sum"`
+	TotalProcessedTokenSum        int     `json:"total_processed_token_sum"`
+	ExplicitCacheValueTurnCount   int     `json:"explicit_cache_value_turn_count"`
+	DefaultZeroCacheTurnCount     int     `json:"default_zero_cache_turn_count"`
+	CacheContentSharePercent      float64 `json:"cache_content_share_percent"`
+	EffectiveInputTokenSum        float64 `json:"effective_input_token_sum"`
+	EffectiveProjectionTurnCount  int     `json:"effective_projection_turn_count"`
+	ObservedContextTokenSum       int     `json:"observed_context_token_sum"`
+	ObservedContextValueTurnCount int     `json:"observed_context_value_turn_count"`
 }
 
 // SessionAggregateMetrics holds session-wide aggregate stats across all models and per-model

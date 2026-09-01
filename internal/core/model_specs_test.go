@@ -3,38 +3,59 @@ package core
 import "testing"
 
 const (
-	modelSpecComparableTurns      = 2
-	modelSpecComparableTokens     = 1_000
-	modelSpecCachedTokens         = 900
-	modelSpecUncachedTokens       = 100
-	modelSpecCacheMultiplier      = 0.10
-	modelSpecEffectiveInputTokens = 190.0
+	modelSpecCacheMultiplier = 0.10
 )
 
-func TestModelPricing_Pos_ProjectsExactVerifiedModel(t *testing.T) {
+func TestModelPricing_Pos_ResolvesExactVerifiedGeminiModel(t *testing.T) {
+	spec, available := ResolveModelPricing(gemini37FlashModelID)
+	multiplier, multiplierAvailable := spec.CacheInputMultiplier()
+
+	requireModelSpecEqual(t, true, available)
+	requireModelSpecEqual(t, gemini37FlashModelID, spec.ModelID)
+	requireModelSpecEqual(t, true, multiplierAvailable)
+	requireModelSpecFloatEqual(t, modelSpecCacheMultiplier, multiplier)
+}
+
+func TestModelPricing_Pos_ResolvesExactVerifiedClaudeModel(t *testing.T) {
+	spec, available := ResolveModelPricing(claudeSonnet46ModelID)
+	multiplier, multiplierAvailable := spec.CacheInputMultiplier()
+
+	requireModelSpecEqual(t, true, available)
+	requireModelSpecEqual(t, claudeSonnet46ModelID, spec.ModelID)
+	requireModelSpecEqual(t, true, multiplierAvailable)
+	requireModelSpecFloatEqual(t, modelSpecCacheMultiplier, multiplier)
+}
+
+func TestModelPricing_Neg_DoesNotResolveUnknownModel(t *testing.T) {
+	_, available := ResolveModelPricing("unknown")
+
+	requireModelSpecEqual(t, false, available)
+}
+
+func TestCacheAdjustedInputProjection_UsesPairedMeteredUsageCounters(t *testing.T) {
 	stats := ModelTokenStats{
-		ModelName:        gemini37FlashModelID,
-		CachedTurnCount:  modelSpecComparableTurns,
-		ComparableTokens: modelSpecComparableTokens,
-		TotalCached:      modelSpecCachedTokens,
-		TotalNew:         modelSpecUncachedTokens,
+		ModelName:              gemini37FlashModelID,
+		TurnCount:              1,
+		MeteredInputTokenSum:   1_000,
+		CachedContentTokenSum:  9_000,
+		TotalProcessedTokenSum: 10_000,
 	}
 
 	projection, available := ProjectCacheAdjustedInput(stats)
 
 	requireModelSpecEqual(t, true, available)
-	requireModelSpecEqual(t, gemini37FlashModelID, projection.ModelID)
-	requireModelSpecFloatEqual(t, modelSpecCacheMultiplier, projection.CacheInputMultiplier)
-	requireModelSpecFloatEqual(t, modelSpecEffectiveInputTokens, projection.EffectiveInputTokens)
+	requireModelSpecEqual(t, 1_000, projection.MeteredInputTokens)
+	requireModelSpecEqual(t, 9_000, projection.CachedTokens)
+	requireModelSpecFloatEqual(t, 1_900, projection.EffectiveInputTokens)
 }
 
-func TestModelPricing_Neg_DoesNotProjectUnknownModel(t *testing.T) {
+func TestCacheAdjustedInputProjection_Neg_RejectsUnpricedModel(t *testing.T) {
 	stats := ModelTokenStats{
-		ModelName:        "unknown",
-		CachedTurnCount:  modelSpecComparableTurns,
-		ComparableTokens: modelSpecComparableTokens,
-		TotalCached:      modelSpecCachedTokens,
-		TotalNew:         modelSpecUncachedTokens,
+		ModelName:              "unknown",
+		TurnCount:              1,
+		MeteredInputTokenSum:   1_000,
+		CachedContentTokenSum:  9_000,
+		TotalProcessedTokenSum: 10_000,
 	}
 
 	_, available := ProjectCacheAdjustedInput(stats)
