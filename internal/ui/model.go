@@ -68,8 +68,19 @@ type SessionCatalogMsg struct {
 type ContextEstimateMsg struct {
 	SessionID    string
 	HistoryCount int
+	Revision     uint64
 	Refresh      bool
 	Estimate     core.VisibleContextEvidenceEstimate
+	Payload      core.AgentContextPayload
+}
+
+// DashboardReadModelMsg delivers the complete dashboard projection prepared
+// outside the TUI update and render paths.
+type DashboardReadModelMsg struct {
+	SessionID    string
+	HistoryCount int
+	Revision     uint64
+	ReadModel    core.DashboardReadModel
 }
 
 // PlaybackContextEstimatesMsg delivers the transcript-only playback cache.
@@ -86,12 +97,17 @@ type PlaybackContextEstimatesMsg struct {
 // host filesystem or session database.
 type ContextPayloadBuilder func([]core.UnifiedAgentEvent, string) core.AgentContextPayload
 
+// DashboardReadModelBuilder is injected by the application boundary. The
+// builder reaches core QueryService, never an adapter, parser, or database.
+type DashboardReadModelBuilder func([]core.UnifiedAgentEvent, string) core.DashboardReadModel
+
 // ModelData is the non-blocking initial data available before the TUI starts.
 // History is normally empty at startup and populated by background batches.
 type ModelData struct {
-	Sessions              []core.SessionInfo
-	InitialHistory        []core.UnifiedAgentEvent
-	ContextPayloadBuilder ContextPayloadBuilder
+	Sessions                  []core.SessionInfo
+	InitialHistory            []core.UnifiedAgentEvent
+	ContextPayloadBuilder     ContextPayloadBuilder
+	DashboardReadModelBuilder DashboardReadModelBuilder
 }
 
 // Model represents the bubbletea application state
@@ -139,6 +155,12 @@ type Model struct {
 	contextHistoryScrollOffset     int
 	contextPayload                 core.AgentContextPayload
 	contextPayloadBuilder          ContextPayloadBuilder
+	dashboardReadModel             core.DashboardReadModel
+	dashboardReadModelBuilder      DashboardReadModelBuilder
+	dashboardReadModelHistoryCount int
+	dashboardReadModelRevision     uint64
+	dashboardReadModelPending      bool
+	dashboardReadModelDirty        bool
 	contextEstimate                core.VisibleContextEvidenceEstimate
 	contextEstimateHistoryCount    int
 	contextEstimateRefreshPending  bool
@@ -150,8 +172,8 @@ type Model struct {
 	playbackEstimateRefreshPending bool
 	playbackEstimateRefreshDirty   bool
 	contextPayloadReady            bool
-	contextPayloadHistoryCount     int
-	contextPayloadLastStep         int
+	contextRevision                uint64
+	contextPayloadRevision         uint64
 	contextInspectorLines          []string
 	contextInspectorMax            int
 	contextInspectorSubcat         int
@@ -269,9 +291,9 @@ func matchCacheFilter(e core.UnifiedAgentEvent, filter CacheFilter) bool {
 	}
 	switch filter {
 	case CacheFilterObserved:
-		return e.Usage.HasCachedContentTokens
+		return e.Usage.HasUncachedInputTokens && e.Usage.HasCachedInputTokens
 	case CacheFilterOmitted:
-		return !e.Usage.HasCachedContentTokens
+		return e.Usage.HasUncachedInputTokens && !e.Usage.HasCachedInputTokens
 	}
 	return true
 }
@@ -287,6 +309,7 @@ func (m *Model) nextView() {
 	case ViewHistory:
 		m.activeView = ViewContext
 		m.contextFocusPane = FocusList
+		m.refreshContextInspectorCache()
 	case ViewContext:
 		m.activeView = ViewDocs
 	case ViewDocs:
@@ -309,6 +332,7 @@ func (m *Model) prevView() {
 	case ViewDocs:
 		m.activeView = ViewContext
 		m.contextFocusPane = FocusList
+		m.refreshContextInspectorCache()
 	}
 }
 
@@ -340,31 +364,32 @@ func NewModelWithData(sessionID string, openSwitcherOnStart bool, data ModelData
 	}
 
 	m := Model{
-		sessionID:             sessionID,
-		activeView:            ViewDashboard,
-		focusPane:             FocusList,
-		dashboardIdx:          dashboardIdx,
-		detailScroll:          0,
-		history:               initialHistory,
-		historyIndex:          buildHistoryIndex(initialHistory),
-		latestEvent:           latestEvent,
-		selectedIdx:           0,
-		lastActivity:          time.Now(),
-		availableSessions:     sessions,
-		filteredSessions:      filterSessions(sessions, ""),
-		switcherSelectedIdx:   0,
-		isSessionSwitcherOpen: openSwitcherOnStart,
-		isShortcutsModalOpen:  false,
-		docsSearchQuery:       "",
-		isDocsSearching:       false,
-		docsScroll:            0,
-		docsLang:              "en",
-		historyTypeFilter:     TypeFilterAll,
-		historyCacheFilter:    CacheFilterAll,
-		historyStepQuery:      "",
-		isHistorySearching:    false,
-		contextPayloadBuilder: data.ContextPayloadBuilder,
-		switcher:              sw,
+		sessionID:                 sessionID,
+		activeView:                ViewDashboard,
+		focusPane:                 FocusList,
+		dashboardIdx:              dashboardIdx,
+		detailScroll:              0,
+		history:                   initialHistory,
+		historyIndex:              buildHistoryIndex(initialHistory),
+		latestEvent:               latestEvent,
+		selectedIdx:               0,
+		lastActivity:              time.Now(),
+		availableSessions:         sessions,
+		filteredSessions:          filterSessions(sessions, ""),
+		switcherSelectedIdx:       0,
+		isSessionSwitcherOpen:     openSwitcherOnStart,
+		isShortcutsModalOpen:      false,
+		docsSearchQuery:           "",
+		isDocsSearching:           false,
+		docsScroll:                0,
+		docsLang:                  "en",
+		historyTypeFilter:         TypeFilterAll,
+		historyCacheFilter:        CacheFilterAll,
+		historyStepQuery:          "",
+		isHistorySearching:        false,
+		contextPayloadBuilder:     data.ContextPayloadBuilder,
+		dashboardReadModelBuilder: data.DashboardReadModelBuilder,
+		switcher:                  sw,
 	}
 
 	// If sessionID matches one of discovered sessions, select it in the switcher
@@ -471,6 +496,7 @@ func (m *Model) applyHistoryEvents(events []core.UnifiedAgentEvent) {
 		}
 	}
 	m.refreshContextPayload()
+	m.invalidateDashboardReadModel()
 	m.playbackEstimateRevision++
 }
 
@@ -529,9 +555,44 @@ func (m *Model) reconcileHistoryPackaging() {
 // render rebuilds it lazily; AgentEventMsg handling therefore performs no DB or
 // filesystem work while background history is hydrating.
 func (m *Model) refreshContextPayload() {
+	m.contextRevision++
 	m.contextPayloadReady = false
 	m.contextInspectorLines = nil
 	m.contextInspectorMax = 0
+}
+
+// invalidateDashboardReadModel marks the presentation projection stale after
+// session history changes. The replacement is prepared asynchronously.
+func (m *Model) invalidateDashboardReadModel() {
+	m.dashboardReadModelRevision++
+}
+
+// requestDashboardReadModelRefresh rebuilds the dashboard projection outside
+// Bubble Tea's render path. Cursor movement only reads the last completed
+// projection, so it cannot trigger tokenization or session queries.
+func (m *Model) requestDashboardReadModelRefresh() tea.Cmd {
+	if m.dashboardReadModelPending {
+		m.dashboardReadModelDirty = true
+		return nil
+	}
+	m.dashboardReadModelPending = true
+	m.dashboardReadModelDirty = false
+	history := append([]core.UnifiedAgentEvent(nil), m.history...)
+	sessionID := m.sessionID
+	revision := m.dashboardReadModelRevision
+	builder := m.dashboardReadModelBuilder
+	return func() tea.Msg {
+		readModel := core.BuildDashboardReadModelFromEvents(sessionID, history)
+		if builder != nil {
+			readModel = builder(history, sessionID)
+		}
+		return DashboardReadModelMsg{
+			SessionID:    sessionID,
+			HistoryCount: len(history),
+			Revision:     revision,
+			ReadModel:    readModel,
+		}
+	}
 }
 
 // requestContextEstimateRefresh rebuilds snapshot-derived visible-text counts
@@ -550,14 +611,17 @@ func (m *Model) requestContextEstimateRefresh() tea.Cmd {
 	history := make([]core.UnifiedAgentEvent, len(m.history))
 	copy(history, m.history)
 	sessionID := m.sessionID
+	revision := m.contextRevision
 	builder := m.contextPayloadBuilder
 	return func() tea.Msg {
 		payload := builder(history, sessionID)
 		return ContextEstimateMsg{
 			SessionID:    sessionID,
 			HistoryCount: len(history),
+			Revision:     revision,
 			Refresh:      true,
 			Estimate:     core.EstimateVisibleContextEvidence(payload),
+			Payload:      payload,
 		}
 	}
 }
@@ -621,8 +685,7 @@ func (m *Model) refreshContextInspectorCache() {
 	payload := m.cachedContextPayload()
 	m.contextPayload = payload
 	m.contextPayloadReady = true
-	m.contextPayloadHistoryCount = len(m.history)
-	m.contextPayloadLastStep = m.latestContextHistoryStep()
+	m.contextPayloadRevision = m.contextRevision
 	innerWidth, innerHeight := m.contextInspectorDimensions()
 	payload.IsRawMode = m.isContextRawMode
 	m.contextInspectorLines = m.buildRefinedInspectorLines(payload, innerWidth)
@@ -652,11 +715,11 @@ func (m Model) hasContextInspectorCache(innerWidth, innerHeight int) bool {
 }
 
 func (m Model) cachedContextPayload() core.AgentContextPayload {
-	if m.contextPayloadReady && m.contextPayloadHistoryCount == len(m.history) && m.contextPayloadLastStep == m.latestContextHistoryStep() {
+	if m.contextPayloadReady && m.contextPayloadRevision == m.contextRevision {
 		return m.contextPayload
 	}
 	if m.contextPayloadBuilder != nil {
-		return m.contextPayloadBuilder(m.history, m.sessionID)
+		return m.contextPayload
 	}
 	return core.BuildContextPayloadFromHistory(core.ContextBuildInput{History: m.history, SessionID: m.sessionID, NativeTools: core.GetNativeToolsDefinitions(m.history)})
 }
@@ -831,19 +894,19 @@ func formatObservedUsageLine(usage core.PersistedUsageObservation) string {
 	if !usage.Available {
 		return "• Persisted usage: unavailable"
 	}
-	if usage.HasMeteredInputTokens && usage.HasCachedContentTokens {
-		return fmt.Sprintf("• Persisted: %s metered input | %s cached-content", formatCompactNumber(usage.MeteredInputTokens), formatCompactNumber(usage.CachedContentTokens))
+	if usage.HasUncachedInputTokens && usage.HasCachedInputTokens {
+		return fmt.Sprintf("• Persisted: %s uncached input | %s cached input", formatCompactNumber(usage.UncachedInputTokens), formatCompactNumber(usage.CachedInputTokens))
 	}
-	if usage.HasMeteredInputTokens {
-		return fmt.Sprintf("• Persisted: %s metered input | 0 cached-content (proto3 default)", formatCompactNumber(usage.MeteredInputTokens))
+	if usage.HasUncachedInputTokens {
+		return fmt.Sprintf("• Persisted: %s uncached input | 0 cached input (inferred)", formatCompactNumber(usage.UncachedInputTokens))
 	}
 	if !usage.HasObservedContextTokens {
 		return "• Persisted usage: unavailable"
 	}
-	if usage.HasCachedContentTokens {
-		return fmt.Sprintf("• Persisted: %s context | %s cached-content observed", formatCompactNumber(usage.ObservedContextTokens), formatCompactNumber(usage.CachedContentTokens))
+	if usage.HasCachedInputTokens {
+		return fmt.Sprintf("• Persisted: %s context | %s cached input observed", formatCompactNumber(usage.ObservedContextTokens), formatCompactNumber(usage.CachedInputTokens))
 	}
-	return fmt.Sprintf("• Persisted: %s context | 0 cached-content (proto3 default)", formatCompactNumber(usage.ObservedContextTokens))
+	return fmt.Sprintf("• Persisted: %s context | input usage unavailable", formatCompactNumber(usage.ObservedContextTokens))
 }
 
 func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, isCompact bool) []string {
@@ -1041,11 +1104,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AgentEventMsg:
 		m.applyHistoryEvents([]core.UnifiedAgentEvent{core.UnifiedAgentEvent(msg)})
-		return m, m.requestPlaybackContextEstimateRefresh()
+		return m, m.requestDashboardReadModelRefresh()
 
 	case HistoryBatchMsg:
 		m.applyHistoryEvents(msg.Events)
-		return m, tea.Batch(m.requestContextEstimateRefresh(), m.requestPlaybackContextEstimateRefresh())
+		if m.activeView == ViewContext {
+			m.refreshContextInspectorCache()
+		}
+		return m, tea.Batch(m.requestContextEstimateRefresh(), m.requestDashboardReadModelRefresh())
 
 	case SessionCatalogMsg:
 		m.availableSessions = msg.Sessions
@@ -1060,11 +1126,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.contextEstimate = msg.Estimate
 			m.contextEstimateHistoryCount = msg.HistoryCount
 		}
+		if msg.Refresh && msg.SessionID == m.sessionID && msg.Revision == m.contextRevision {
+			m.contextPayload = msg.Payload
+			m.contextPayloadReady = true
+			m.contextPayloadRevision = msg.Revision
+			if m.activeView == ViewContext {
+				m.refreshContextInspectorCache()
+			}
+		}
 		if msg.Refresh && msg.SessionID == m.sessionID {
 			m.contextEstimateRefreshPending = false
 			if m.contextEstimateRefreshDirty {
 				return m, m.requestContextEstimateRefresh()
 			}
+		}
+		return m, nil
+
+	case DashboardReadModelMsg:
+		if msg.SessionID != m.sessionID {
+			return m, nil
+		}
+		m.dashboardReadModelPending = false
+		if msg.HistoryCount == len(m.history) && msg.Revision == m.dashboardReadModelRevision {
+			m.dashboardReadModel = msg.ReadModel
+			m.dashboardReadModelHistoryCount = msg.HistoryCount
+		}
+		if m.dashboardReadModelDirty {
+			return m, m.requestDashboardReadModelRefresh()
 		}
 		return m, nil
 
@@ -1100,6 +1188,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.contextEstimateHistoryCount = 0
 		m.contextEstimateRefreshPending = false
 		m.contextEstimateRefreshDirty = false
+		m.dashboardReadModel = core.DashboardReadModel{}
+		m.dashboardReadModelHistoryCount = 0
+		m.dashboardReadModelRevision++
+		m.dashboardReadModelPending = false
+		m.dashboardReadModelDirty = false
 		m.playbackContextEstimates = nil
 		m.playbackEstimateHistoryCount = 0
 		m.playbackEstimateRevision = 0
@@ -1130,6 +1223,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.contextEstimateHistoryCount = 0
 		m.contextEstimateRefreshPending = false
 		m.contextEstimateRefreshDirty = false
+		m.dashboardReadModel = core.DashboardReadModel{}
+		m.dashboardReadModelHistoryCount = 0
+		m.dashboardReadModelRevision++
+		m.dashboardReadModelPending = false
+		m.dashboardReadModelDirty = false
 		m.playbackContextEstimates = nil
 		m.playbackEstimateHistoryCount = 0
 		m.playbackEstimateRevision = 0
@@ -1162,6 +1260,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.contextEstimateHistoryCount = 0
 		m.contextEstimateRefreshPending = false
 		m.contextEstimateRefreshDirty = false
+		m.dashboardReadModel = core.DashboardReadModel{}
+		m.dashboardReadModelHistoryCount = 0
+		m.dashboardReadModelRevision++
+		m.dashboardReadModelPending = false
+		m.dashboardReadModelDirty = false
 		m.playbackContextEstimates = nil
 		m.playbackEstimateHistoryCount = 0
 		m.playbackEstimateRevision = 0
@@ -1170,7 +1273,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.playbackEstimateRefreshDirty = false
 		m.clipboardStatus = fmt.Sprintf("Switched to session %s (%d steps)", truncateStr(msg.SessionID, 8), len(msg.Events))
 		m.clipboardStatusTime = time.Now()
-		return m, tea.Batch(m.requestContextEstimateRefresh(), m.requestPlaybackContextEstimateRefresh())
+		return m, tea.Batch(m.requestContextEstimateRefresh(), m.requestDashboardReadModelRefresh())
 
 	case tea.KeyMsg:
 		key := msg.String()
@@ -1450,6 +1553,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.contextFocusPane = FocusList
 				m.isDocsSearching = false
 				m.isHistorySearching = false
+				m.refreshContextInspectorCache()
 				return m, nil
 			case "4":
 				m.activeView = ViewDocs

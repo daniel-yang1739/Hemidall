@@ -26,6 +26,37 @@ func TestModelPricing_Pos_ResolvesExactVerifiedClaudeModel(t *testing.T) {
 	requireModelSpecFloatEqual(t, modelSpecCacheMultiplier, multiplier)
 }
 
+func TestModelPricing_Pos_UsesFreeSavingsPolicyOnlyForSafetyModel(t *testing.T) {
+	highSpec, highAvailable := ResolveModelPricing(gemini37FlashHighModelID)
+	safetySpec, safetyAvailable := ResolveModelPricing(gemini37FlashSafetyLEModelID)
+
+	requireModelSpecEqual(t, true, highAvailable)
+	requireModelSpecFloatEqual(t, 1, highSpec.CachedSavingsMultiplier)
+	requireModelSpecEqual(t, true, safetyAvailable)
+	requireModelSpecFloatEqual(t, 0, safetySpec.StandardInputUSDPerMillion)
+	requireModelSpecFloatEqual(t, 0, safetySpec.CachedInputUSDPerMillion)
+	requireModelSpecFloatEqual(t, 0, safetySpec.CachedSavingsMultiplier)
+	safetyMultiplier, multiplierAvailable := safetySpec.CacheInputMultiplier()
+	requireModelSpecEqual(t, true, multiplierAvailable)
+	requireModelSpecFloatEqual(t, 0, safetyMultiplier)
+}
+
+func TestCacheAdjustedInputProjection_Pos_UsesZeroEquivalentForFreeSafetyModel(t *testing.T) {
+	stats := ModelTokenStats{
+		ModelName:              gemini37FlashSafetyLEModelID,
+		TurnCount:              1,
+		UncachedInputTokenSum:  1_000,
+		CachedInputTokenSum:    9_000,
+		TotalProcessedTokenSum: 10_000,
+	}
+
+	projection, available := ProjectCacheAdjustedInput(stats)
+
+	requireModelSpecEqual(t, true, available)
+	requireModelSpecFloatEqual(t, 0, projection.CacheInputMultiplier)
+	requireModelSpecFloatEqual(t, 0, projection.EffectiveInputTokens)
+}
+
 func TestModelPricing_Neg_DoesNotResolveUnknownModel(t *testing.T) {
 	_, available := ResolveModelPricing("unknown")
 
@@ -36,15 +67,15 @@ func TestCacheAdjustedInputProjection_UsesPairedMeteredUsageCounters(t *testing.
 	stats := ModelTokenStats{
 		ModelName:              gemini37FlashModelID,
 		TurnCount:              1,
-		MeteredInputTokenSum:   1_000,
-		CachedContentTokenSum:  9_000,
+		UncachedInputTokenSum:  1_000,
+		CachedInputTokenSum:    9_000,
 		TotalProcessedTokenSum: 10_000,
 	}
 
 	projection, available := ProjectCacheAdjustedInput(stats)
 
 	requireModelSpecEqual(t, true, available)
-	requireModelSpecEqual(t, 1_000, projection.MeteredInputTokens)
+	requireModelSpecEqual(t, 1_000, projection.UncachedInputTokens)
 	requireModelSpecEqual(t, 9_000, projection.CachedTokens)
 	requireModelSpecFloatEqual(t, 1_900, projection.EffectiveInputTokens)
 }
@@ -53,8 +84,8 @@ func TestCacheAdjustedInputProjection_Neg_RejectsUnpricedModel(t *testing.T) {
 	stats := ModelTokenStats{
 		ModelName:              "unknown",
 		TurnCount:              1,
-		MeteredInputTokenSum:   1_000,
-		CachedContentTokenSum:  9_000,
+		UncachedInputTokenSum:  1_000,
+		CachedInputTokenSum:    9_000,
 		TotalProcessedTokenSum: 10_000,
 	}
 

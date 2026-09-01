@@ -66,24 +66,24 @@ func TestHistoryBatch_Pos_RefreshesVisibleSnapshotEstimateAfterHydration(t *test
 	requireContextEstimateHistoryCount(t, result, historyBatchFirstStep)
 	requireContextEstimateAvailable(t, result, true)
 	requireContextEstimatePositiveInbound(t, result)
-	requirePlaybackEstimateCache(t, result, historyBatchFirstStep)
+	requireDashboardReadModelCache(t, result, historyBatchFirstStep)
 }
 
-func TestPlaybackContextEstimates_Boundary_DropsStaleRevision(t *testing.T) {
+func TestDashboardReadModel_Boundary_DropsStaleRevision(t *testing.T) {
 	model := NewModel("session-a", false)
 	model.history = []core.UnifiedAgentEvent{{SessionID: "session-a", StepIndex: historyBatchFirstStep, Type: core.StepTypeUserInput, RawContent: "current"}}
-	model.playbackEstimateRevision = historyBatchPackagedStep
-	stale := PlaybackContextEstimatesMsg{
+	model.dashboardReadModelRevision = historyBatchPackagedStep
+	stale := DashboardReadModelMsg{
 		SessionID:    "session-a",
 		HistoryCount: len(model.history),
 		Revision:     historyBatchFirstStep,
-		Estimates:    core.BuildPlaybackContextEvidence(model.history),
+		ReadModel:    core.BuildDashboardReadModelFromEvents("session-a", model.history),
 	}
 
 	updated, _ := model.Update(stale)
 	result := updated.(Model)
 
-	requirePlaybackEstimateCache(t, result, 0)
+	requireDashboardReadModelCache(t, result, 0)
 }
 
 func TestHistoryBatch_Pos_SortsPreviewBeforeChronologicalBackfill(t *testing.T) {
@@ -293,10 +293,10 @@ func requireContextEstimatePositiveInbound(t *testing.T, model Model) {
 	}
 }
 
-func requirePlaybackEstimateCache(t *testing.T, model Model, wantCount int) {
+func requireDashboardReadModelCache(t *testing.T, model Model, wantCount int) {
 	t.Helper()
-	if model.playbackEstimateHistoryCount != wantCount {
-		t.Fatalf("playback estimate history count: got %d, want %d", model.playbackEstimateHistoryCount, wantCount)
+	if model.dashboardReadModelHistoryCount != wantCount {
+		t.Fatalf("dashboard read model history count: got %d, want %d", model.dashboardReadModelHistoryCount, wantCount)
 	}
 }
 

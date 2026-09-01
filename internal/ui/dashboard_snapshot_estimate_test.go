@@ -23,77 +23,64 @@ const (
 	dashboardPlaybackSecondStep = 2
 )
 
-func TestDashboardSnapshotEstimate_Pos_RendersFiveVisibleDimensions(t *testing.T) {
+func TestDashboardCloudStep_Pos_RendersFourContextDimensionsWithBars(t *testing.T) {
 	model := NewModel("session-a", false)
 	model.width = dashboardTestWidth
+	model.height = 40
 	model.history = []core.UnifiedAgentEvent{{StepIndex: dashboardSnapshotStep, Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference}}
 	model.dashboardIdx = 0
-	model.playbackEstimateHistoryCount = len(model.history)
-	model.playbackEstimateRevision = dashboardPlaybackRevision
-	model.playbackEstimateCachedRevision = dashboardPlaybackRevision
-	model.playbackContextEstimates = []core.VisibleContextEvidenceEstimate{{
-		Available:         true,
-		SourceKind:        core.ContextEvidenceTranscriptFallback,
-		SelectedStepIndex: dashboardSnapshotStep,
-		ToolBufferTokens:  dashboardBufferTokens,
-		InboundTokens:     dashboardInboundTokens,
-		TotalTokens:       dashboardBufferTokens + dashboardInboundTokens,
-	}}
-	model.contextEstimate = core.VisibleContextEvidenceEstimate{
-		Available:                  true,
-		SourceKind:                 core.ContextEvidencePersistedSnapshot,
-		SnapshotGenIndex:           1104,
-		SnapshotGeneratedStepIndex: dashboardSnapshotStep,
-		HasSnapshotGeneratedStep:   true,
-		SystemTokens:               dashboardSystemTokens,
-		ToolsTokens:                dashboardToolsTokens,
-		ToolBufferTokens:           dashboardBufferTokens,
-		HistoryTokens:              dashboardHistoryTokens,
-		InboundTokens:              dashboardInboundTokens,
-		TotalTokens:                dashboardTotalTokens,
+	model.dashboardReadModel = core.DashboardReadModel{
+		SessionID: "session-a",
+		Inspections: map[int]core.StepInspectionReadModel{dashboardSnapshotStep: {
+			Kind: core.DashboardStepCloud,
+			RequestContext: &core.RequestContextComposition{
+				SystemInstruction:   core.RequestContextSection{Tokens: dashboardSystemTokens, Evidence: core.ContextSectionSnapshot},
+				ToolSchemas:         core.RequestContextSection{Tokens: dashboardToolsTokens, Evidence: core.ContextSectionSnapshot},
+				ConversationContext: core.RequestContextSection{Tokens: dashboardHistoryTokens, Evidence: core.ContextSectionSnapshot},
+				ActiveInput:         core.RequestContextSection{Tokens: dashboardInboundTokens, Evidence: core.ContextSectionReconstructed},
+				TotalVisibleTokens:  dashboardSystemTokens + dashboardToolsTokens + dashboardHistoryTokens + dashboardInboundTokens,
+			},
+		}},
 	}
+	model.dashboardReadModelHistoryCount = len(model.history)
 
 	view := model.renderDashboardView()
 
-	requireViewContains(t, view, "PLAYBACK CONTEXT EVIDENCE")
-	requireViewContains(t, view, "selected Step #2280; snapshot idx=1104 exactly matches this generated step")
-	requireViewContains(t, view, "1. System [snapshot]")
-	requireViewContains(t, view, "2. Tools [snapshot]")
-	requireViewContains(t, view, "3. Tool buffers [transcript]")
-	requireViewContains(t, view, "4. History [snapshot]")
-	requireViewContains(t, view, "5. Inbound [transcript]")
-	requireViewContains(t, view, "Visible evidence counted locally")
+	requireViewContains(t, view, "REQUEST CONTEXT COMPOSITION")
+	requireViewContains(t, view, "System Instruction")
+	requireViewContains(t, view, "Tool Schemas")
+	requireViewContains(t, view, "Conversation Context")
+	requireViewContains(t, view, "Active Input")
+	requireViewDoesNotContain(t, view, "Tool buffers")
 	requireViewContains(t, view, "████")
 }
 
-func TestDashboardSnapshotEstimate_Neg_LabelsUnavailableSnapshot(t *testing.T) {
+func TestDashboardReadModel_Neg_ShowsPreparationWithoutCachedReadModel(t *testing.T) {
 	model := NewModel("session-a", false)
 	model.width = dashboardTestWidth
+	model.height = 40
 
 	view := model.renderDashboardView()
 
-	requireViewContains(t, view, "Playback estimate: preparing cached transcript timeline")
-	requireViewContains(t, view, "no SQLite query runs when moving the cursor")
+	requireViewContains(t, view, "Preparing cached session metrics")
 }
 
 func TestFormatEstimateDimension_Pos_AlignsColumnsForShortAndLongLabels(t *testing.T) {
-	shortLabel := formatEstimateDimension("1. System [transcript]", dashboardSystemTokens, dashboardTotalTokens, dashboardDefaultProgressBarBlocks, ColorSecondary)
-	longLabel := formatEstimateDimension("3. Tool buffers [transcript]", dashboardBufferTokens, dashboardTotalTokens, dashboardDefaultProgressBarBlocks, ColorWarning)
+	shortLabel := formatRequestContextDimension("Tool Schemas", core.RequestContextSection{Tokens: dashboardSystemTokens, Evidence: core.ContextSectionReconstructed}, dashboardTotalTokens, dashboardTestWidth, ColorSecondary)
+	longLabel := formatRequestContextDimension("Conversation Context", core.RequestContextSection{Tokens: dashboardHistoryTokens, Evidence: core.ContextSectionReconstructed}, dashboardTotalTokens, dashboardTestWidth, ColorWarning)
 
 	requireEstimateColumnsAligned(t, shortLabel, longLabel)
 }
 
-func TestDashboardPlaybackEstimate_Pos_ChangesScopeWithSelectedEvent(t *testing.T) {
+func TestDashboardPlayback_Pos_ChangesSelectedStepPanel(t *testing.T) {
 	model := NewModel("session-a", false)
 	model.width = dashboardTestWidth
+	model.height = 40
 	model.history = []core.UnifiedAgentEvent{
 		{StepIndex: dashboardPlaybackFirstStep, Type: core.StepTypeUserInput, RawContent: "first prompt"},
 		{StepIndex: dashboardPlaybackSecondStep, Type: core.StepTypeRunCommand, RawContent: "tool result"},
 	}
-	model.playbackEstimateHistoryCount = len(model.history)
-	model.playbackEstimateRevision = dashboardPlaybackRevision
-	model.playbackEstimateCachedRevision = dashboardPlaybackRevision
-	model.playbackContextEstimates = core.BuildPlaybackContextEvidence(model.history)
+	attachDashboardReadModel(&model)
 	model.dashboardIdx = 0
 
 	firstView := model.renderDashboardView()
@@ -101,14 +88,29 @@ func TestDashboardPlaybackEstimate_Pos_ChangesScopeWithSelectedEvent(t *testing.
 	model.dashboardIdx = 1
 	secondView := model.renderDashboardView()
 
-	requireViewContains(t, firstView, "selected Step #1; transcript evidence observed through this event")
-	requireViewContains(t, secondView, "selected Step #2; transcript evidence observed through this event")
-	requireViewDoesNotContain(t, secondView, "selected Step #1; transcript evidence observed through this event")
+	requireViewContains(t, firstView, "USER INPUT")
+	requireViewContains(t, secondView, "LOCAL EXECUTION")
+	requireViewDoesNotContain(t, secondView, "USER INPUT")
+}
+
+func TestDashboardLayout_Pos_KeepsTwoFixedHeightPanels(t *testing.T) {
+	model := NewModel("session-a", false)
+	model.width = dashboardTestWidth
+	model.height = 40
+	model.history = []core.UnifiedAgentEvent{{StepIndex: dashboardPlaybackFirstStep, Type: core.StepTypeUserInput, RawContent: strings.Repeat("long input ", dashboardResultPreviewRows)}}
+	attachDashboardReadModel(&model)
+
+	view := model.renderDashboardView()
+
+	requireDashboardPanelCount(t, view, 2)
+	requireDashboardHeight(t, view, dashboardPanelOuterHeight+selectedStepPanelOuterHeight)
 }
 
 func TestDashboardAggregate_Neg_RendersUnavailableMetricsWithoutUsage(t *testing.T) {
 	model := NewModel("session-a", false)
 	model.width = dashboardTestWidth
+	model.height = 40
+	attachDashboardReadModel(&model)
 
 	view := model.renderDashboardView()
 
@@ -120,26 +122,30 @@ func TestDashboardAggregate_Neg_RendersUnavailableMetricsWithoutUsage(t *testing
 func TestDashboardAggregate_Boundary_UsesProtoDefaultForOmittedCacheField(t *testing.T) {
 	model := NewModel("session-a", false)
 	model.width = dashboardTestWidth
+	model.height = 40
 	model.history = []core.UnifiedAgentEvent{
-		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, HasMeteredInputTokens: true, MeteredInputTokens: dashboardComparableInputTokens, HasCachedContentTokens: true, CachedContentTokens: dashboardComparableCachedTokens}},
-		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, HasMeteredInputTokens: true, MeteredInputTokens: dashboardDefaultZeroInputTokens}},
+		{SessionID: "session-a", StepIndex: dashboardPlaybackFirstStep, Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, HasUncachedInputTokens: true, UncachedInputTokens: dashboardComparableInputTokens, HasCachedInputTokens: true, CachedInputTokens: dashboardComparableCachedTokens}},
+		{SessionID: "session-a", StepIndex: dashboardPlaybackSecondStep, Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, HasUncachedInputTokens: true, UncachedInputTokens: dashboardDefaultZeroInputTokens}},
 	}
+	attachDashboardReadModel(&model)
 
 	view := model.renderDashboardView()
 
 	requireViewContains(t, view, "CACHE HIT VOLUME")
 	requireViewContains(t, view, "1/2 explicit")
-	requireViewContains(t, view, "1 default zero")
+	requireViewContains(t, view, "1 inferred zero")
 	requireViewContains(t, view, "160 Tok")
 }
 
 func TestDashboardAggregate_Pos_ProjectsEffectiveInputOnlyForPricedModel(t *testing.T) {
 	model := NewModel("session-a", false)
 	model.width = dashboardTestWidth
+	model.height = 40
 	model.history = []core.UnifiedAgentEvent{
-		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardKnownModel, HasMeteredInputTokens: true, MeteredInputTokens: dashboardComparableInputTokens, HasCachedContentTokens: true, CachedContentTokens: dashboardComparableCachedTokens}},
-		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardUnknownModel, HasMeteredInputTokens: true, MeteredInputTokens: dashboardComparableInputTokens, HasCachedContentTokens: true, CachedContentTokens: dashboardComparableCachedTokens}},
+		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardKnownModel, HasUncachedInputTokens: true, UncachedInputTokens: dashboardComparableInputTokens, HasCachedInputTokens: true, CachedInputTokens: dashboardComparableCachedTokens}},
+		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardUnknownModel, HasUncachedInputTokens: true, UncachedInputTokens: dashboardComparableInputTokens, HasCachedInputTokens: true, CachedInputTokens: dashboardComparableCachedTokens}},
 	}
+	attachDashboardReadModel(&model)
 
 	view := model.renderDashboardView()
 
@@ -151,8 +157,8 @@ func TestDashboardAggregate_Pos_ProjectsEffectiveInputOnlyForPricedModel(t *test
 
 func TestDashboardAggregate_Pos_ShowsCompleteEffectiveAndSavedTotals(t *testing.T) {
 	history := []core.UnifiedAgentEvent{
-		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardKnownModel, HasMeteredInputTokens: true, MeteredInputTokens: dashboardGeminiMeteredInputTokens, HasCachedContentTokens: true, CachedContentTokens: dashboardGeminiCachedContentTokens}},
-		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardClaudeModel, HasMeteredInputTokens: true, MeteredInputTokens: dashboardClaudeMeteredInputTokens, HasCachedContentTokens: true, CachedContentTokens: dashboardClaudeCachedContentTokens}},
+		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardKnownModel, HasUncachedInputTokens: true, UncachedInputTokens: dashboardGeminiUncachedInputTokens, HasCachedInputTokens: true, CachedInputTokens: dashboardGeminiCachedInputTokens}},
+		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardClaudeModel, HasUncachedInputTokens: true, UncachedInputTokens: dashboardClaudeUncachedInputTokens, HasCachedInputTokens: true, CachedInputTokens: dashboardClaudeCachedInputTokens}},
 	}
 	metrics := core.ComputeSessionAggregateMetrics(history)
 
@@ -197,14 +203,33 @@ func requireEstimateColumnsAligned(t *testing.T, shortLabel, longLabel string) {
 	}
 }
 
+func requireDashboardPanelCount(t *testing.T, view string, want int) {
+	t.Helper()
+	if got := strings.Count(view, "╭"); got != want {
+		t.Fatalf("dashboard panel count: got %d, want %d", got, want)
+	}
+}
+
+func requireDashboardHeight(t *testing.T, view string, want int) {
+	t.Helper()
+	if got := lipgloss.Height(view); got != want {
+		t.Fatalf("dashboard height: got %d, want %d", got, want)
+	}
+}
+
+func attachDashboardReadModel(model *Model) {
+	model.dashboardReadModel = core.BuildDashboardReadModelFromEvents(model.sessionID, model.history)
+	model.dashboardReadModelHistoryCount = len(model.history)
+}
+
 const (
 	dashboardComparableInputTokens     = 50
 	dashboardComparableCachedTokens    = 60
 	dashboardDefaultZeroInputTokens    = 50
-	dashboardGeminiMeteredInputTokens  = 100
-	dashboardGeminiCachedContentTokens = 900
-	dashboardClaudeMeteredInputTokens  = 200
-	dashboardClaudeCachedContentTokens = 800
+	dashboardGeminiUncachedInputTokens = 100
+	dashboardGeminiCachedInputTokens   = 900
+	dashboardClaudeUncachedInputTokens = 200
+	dashboardClaudeCachedInputTokens   = 800
 	dashboardKnownModel                = "gemini-3.7-flash"
 	dashboardClaudeModel               = "claude-sonnet-4-6"
 	dashboardUnknownModel              = "unknown"

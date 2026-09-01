@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"heimdall/internal/adapters/antigravity"
+	"heimdall/internal/agent_adapters/antigravity/forensics"
 )
 
 const (
@@ -25,18 +25,18 @@ const (
 )
 
 func TestWriteUsageAudit_Pos_ListsRowsAndRunningUncachedTotal(t *testing.T) {
-	audit := antigravity.PersistedUsageAudit{
-		Rows: []antigravity.PersistedUsageAuditRow{
-			{GenIndex: commandAuditFirstGenerationIndex, InputBoundaryStepIndex: 41, HasInputBoundary: true, ModelName: "gemini-3.7-flash", MeteredInputTokens: commandAuditFirstMeteredTokens, CachedContentTokens: commandAuditFirstCachedTokens, HasCachedContentTokens: true},
-			{GenIndex: commandAuditSecondGenerationIndex, MeteredInputTokens: commandAuditSecondMeteredTokens},
+	audit := forensics.PersistedUsageAudit{
+		Rows: []forensics.PersistedUsageAuditRow{
+			{GenIndex: commandAuditFirstGenerationIndex, InputBoundaryStepIndex: 41, HasInputBoundary: true, ModelName: "gemini-3.7-flash", UncachedInputTokens: commandAuditFirstMeteredTokens, CachedInputTokens: commandAuditFirstCachedTokens, HasCachedInputTokens: true},
+			{GenIndex: commandAuditSecondGenerationIndex, UncachedInputTokens: commandAuditSecondMeteredTokens},
 		},
-		Summary: antigravity.PersistedUsageAuditSummary{
-			ScannedRecordCount:          2,
-			UsageRecordCount:            2,
-			ExplicitCacheRecordCount:    1,
-			DefaultZeroCacheRecordCount: 1,
-			MeteredInputTokenSum:        commandAuditFirstMeteredTokens + commandAuditSecondMeteredTokens,
-			CachedContentTokenSum:       commandAuditFirstCachedTokens,
+		Summary: forensics.PersistedUsageAuditSummary{
+			ScannedRecordCount:           2,
+			UsageRecordCount:             2,
+			ExplicitCacheRecordCount:     1,
+			InferredZeroCacheRecordCount: 1,
+			UncachedInputTokenSum:        commandAuditFirstMeteredTokens + commandAuditSecondMeteredTokens,
+			CachedInputTokenSum:          commandAuditFirstCachedTokens,
 		},
 	}
 	var output bytes.Buffer
@@ -55,10 +55,10 @@ func TestWriteUsageAudit_Pos_ListsRowsAndRunningUncachedTotal(t *testing.T) {
 	requireCommandAuditContains(t, output.String(), "2026-08-31 09:10:11")
 	requireCommandAuditContains(t, output.String(), "gemini-3.7-flash")
 	requireCommandAuditContains(t, output.String(), "30")
-	requireCommandAuditContains(t, output.String(), "default-zero")
+	requireCommandAuditContains(t, output.String(), "inferred-zero")
 	requireCommandAuditContains(t, output.String(), "TOTAL")
 	requireCommandAuditContains(t, output.String(), "50")
-	requireCommandAuditContains(t, output.String(), "SCANNED=2 USAGE_ROWS=2")
+	requireCommandAuditContains(t, output.String(), "SCANNED=2 COMPLETE_USAGE_ROWS=2")
 }
 
 func TestFormatAuditModelName_Boundary_TruncatesOnlyOverlongModelIDs(t *testing.T) {

@@ -217,6 +217,36 @@ func BuildContextPayloadFromHistory(input ContextBuildInput) AgentContextPayload
 	return payload
 }
 
+// BuildContextPayloadFromSession overlays the latest parsed persisted snapshot
+// onto transcript-derived facts. It consumes only the core session model, never
+// an adapter path or parser implementation.
+func BuildContextPayloadFromSession(session Session, input ContextBuildInput) AgentContextPayload {
+	payload := BuildContextPayloadFromHistory(input)
+	payload.SourceKind = ContextEvidenceTranscriptFallback
+	if len(session.ContextSnapshots) == 0 {
+		return payload
+	}
+	snapshot := session.ContextSnapshots[len(session.ContextSnapshots)-1]
+	payload.SourceKind = ContextEvidencePersistedSnapshot
+	payload.SourcePath = snapshot.Source.Path
+	payload.SnapshotAvailable = true
+	payload.SnapshotGenIndex = snapshot.GenerationIndex
+	payload.SnapshotBytes = snapshot.ByteSize
+	payload.SnapshotInputBoundaryStep = snapshot.InputBoundaryStepIndex
+	payload.SnapshotHasInputBoundary = snapshot.HasInputBoundary
+	payload.SystemPrompt = snapshot.SystemPrompt
+	payload.IdentityPrompt = snapshot.IdentityPrompt
+	payload.ConstitutionDoc = snapshot.ConstitutionDoc
+	payload.SkillsSection = snapshot.SkillsSection
+	payload.MCPSection = snapshot.MCPSection
+	payload.PersistedContextEntryCount = len(snapshot.PersistedContextRecords)
+	payload.PersistedRecords = append([]PersistedContextRecord(nil), snapshot.PersistedContextRecords...)
+	payload.NativeTools = append([]ToolSignature(nil), snapshot.NativeTools...)
+	payload.ActiveSkills = nil
+	payload.MCPServers = nil
+	return payload
+}
+
 func extractTranscriptTaggedSection(text, tag string) string {
 	openingTag := "<" + tag + ">"
 	closingTag := "</" + tag + ">"

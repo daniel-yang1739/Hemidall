@@ -98,7 +98,7 @@ make build
 Heimdall follows a strict **Hexagonal Architecture (Ports & Adapters)**:
 
 - `internal/core/`: Universal Agent Finite State Machine (FSM), BPE Tokenizer, and Reverse Sliding Window Accounting Algorithm.
-- `internal/adapters/`: Non-invasive readers (Antigravity SQLite WAL, Protobuf decoders, directory watchers).
+- `internal/legacy/adapters/`: Legacy Antigravity readers retained while the new agent-adapter data pipeline is migrated.
 - `internal/ui/`: Bubbletea & Lipgloss reactive terminal user interface engine.
 
 ---

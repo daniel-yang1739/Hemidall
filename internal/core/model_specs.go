@@ -6,6 +6,9 @@ const (
 	gemini37FlashModelID                     = "gemini-3.7-flash"
 	gemini37FlashStandardInputUSDPerMillion  = 0.75
 	gemini37FlashCachedInputUSDPerMillion    = 0.075
+	freeInputUSDPerMillion                   = 0.0
+	gemini37FlashHighModelID                 = "gemini-3.7-flash-high"
+	gemini37FlashSafetyLEModelID             = "gemini-3.7-flash-safety-le"
 	claudeSonnet46ModelID                    = "claude-sonnet-4-6"
 	claudeSonnet46StandardInputUSDPerMillion = 3.30
 	claudeSonnet46CachedInputUSDPerMillion   = 0.33
@@ -18,17 +21,34 @@ type ModelPricingSpec struct {
 	ModelID                    string
 	StandardInputUSDPerMillion float64
 	CachedInputUSDPerMillion   float64
+	CachedSavingsMultiplier    float64
 	SourceLabel                string
 	SourceURL                  string
 }
 
 // CacheInputMultiplier returns the cached-input price as a fraction of the
-// standard input price. A ratio is available only for a complete positive spec.
+// standard input price. A zero ratio is also valid for an explicitly free model.
 func (spec ModelPricingSpec) CacheInputMultiplier() (float64, bool) {
-	if spec.StandardInputUSDPerMillion <= 0 || spec.CachedInputUSDPerMillion < 0 {
+	if spec.StandardInputUSDPerMillion == freeInputUSDPerMillion && spec.CachedInputUSDPerMillion == freeInputUSDPerMillion {
+		return freeInputUSDPerMillion, true
+	}
+	if spec.StandardInputUSDPerMillion <= freeInputUSDPerMillion || spec.CachedInputUSDPerMillion < freeInputUSDPerMillion {
 		return 0, false
 	}
 	return spec.CachedInputUSDPerMillion / spec.StandardInputUSDPerMillion, true
+}
+
+// StandardInputMultiplier returns one for metered models and zero for an
+// explicitly free model. It keeps the price-equivalent formula well-defined
+// without treating a free model as a discounted paid model.
+func (spec ModelPricingSpec) StandardInputMultiplier() (float64, bool) {
+	if spec.StandardInputUSDPerMillion == freeInputUSDPerMillion && spec.CachedInputUSDPerMillion == freeInputUSDPerMillion {
+		return freeInputUSDPerMillion, true
+	}
+	if spec.StandardInputUSDPerMillion > freeInputUSDPerMillion {
+		return 1, true
+	}
+	return freeInputUSDPerMillion, false
 }
 
 // ResolveModelPricing returns a profile only for an exact, verified model ID.
@@ -41,14 +61,20 @@ func ResolveModelPricing(modelID string) (ModelPricingSpec, bool) {
 			ModelID:                    gemini37FlashModelID,
 			StandardInputUSDPerMillion: gemini37FlashStandardInputUSDPerMillion,
 			CachedInputUSDPerMillion:   gemini37FlashCachedInputUSDPerMillion,
+			CachedSavingsMultiplier:    1,
 			SourceLabel:                "Google Gemini Developer API paid standard pricing",
 			SourceURL:                  "https://ai.google.dev/gemini-api/docs/pricing",
 		}, true
+	case gemini37FlashHighModelID:
+		return ModelPricingSpec{ModelID: gemini37FlashHighModelID, StandardInputUSDPerMillion: gemini37FlashStandardInputUSDPerMillion, CachedInputUSDPerMillion: gemini37FlashCachedInputUSDPerMillion, CachedSavingsMultiplier: 1, SourceLabel: "Gemini Flash High pricing policy", SourceURL: ""}, true
+	case gemini37FlashSafetyLEModelID:
+		return ModelPricingSpec{ModelID: gemini37FlashSafetyLEModelID, StandardInputUSDPerMillion: freeInputUSDPerMillion, CachedInputUSDPerMillion: freeInputUSDPerMillion, CachedSavingsMultiplier: freeInputUSDPerMillion, SourceLabel: "Antigravity safety model policy", SourceURL: ""}, true
 	case claudeSonnet46ModelID:
 		return ModelPricingSpec{
 			ModelID:                    claudeSonnet46ModelID,
 			StandardInputUSDPerMillion: claudeSonnet46StandardInputUSDPerMillion,
 			CachedInputUSDPerMillion:   claudeSonnet46CachedInputUSDPerMillion,
+			CachedSavingsMultiplier:    1,
 			SourceLabel:                "Google Cloud Agent Platform Claude Sonnet 4.6 standard pricing",
 			SourceURL:                  "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
 		}, true
@@ -58,21 +84,21 @@ func ResolveModelPricing(modelID string) (ModelPricingSpec, bool) {
 }
 
 // CacheAdjustedInputProjection is the standard-input-price equivalent for one
-// model. It combines the paired metered-input and cached-content counters from
+// model. It combines the paired uncached-input and cached-input counters from
 // the observed usage message; it is not an Antigravity invoice.
 type CacheAdjustedInputProjection struct {
 	ModelID              string
 	ObservedTurns        int
 	TotalProcessedTokens int
 	CachedTokens         int
-	MeteredInputTokens   int
+	UncachedInputTokens  int
 	CacheInputMultiplier float64
 	EffectiveInputTokens float64
 	SourceLabel          string
 	SourceURL            string
 }
 
-// ProjectCacheAdjustedInput computes metered input plus cached content at the
+// ProjectCacheAdjustedInput computes uncached input plus cached input at the
 // official cache-input price ratio. It deliberately does not use the separate
 // persisted context-state counter as an input to the formula.
 func ProjectCacheAdjustedInput(stats ModelTokenStats) (CacheAdjustedInputProjection, bool) {
@@ -87,14 +113,18 @@ func ProjectCacheAdjustedInput(stats ModelTokenStats) (CacheAdjustedInputProject
 	if !valid {
 		return CacheAdjustedInputProjection{}, false
 	}
+	standardMultiplier, standardValid := spec.StandardInputMultiplier()
+	if !standardValid {
+		return CacheAdjustedInputProjection{}, false
+	}
 	return CacheAdjustedInputProjection{
 		ModelID:              spec.ModelID,
 		ObservedTurns:        stats.TurnCount,
 		TotalProcessedTokens: stats.TotalProcessedTokenSum,
-		CachedTokens:         stats.CachedContentTokenSum,
-		MeteredInputTokens:   stats.MeteredInputTokenSum,
+		CachedTokens:         stats.CachedInputTokenSum,
+		UncachedInputTokens:  stats.UncachedInputTokenSum,
 		CacheInputMultiplier: multiplier,
-		EffectiveInputTokens: float64(stats.MeteredInputTokenSum) + float64(stats.CachedContentTokenSum)*multiplier,
+		EffectiveInputTokens: (float64(stats.UncachedInputTokenSum) + float64(stats.CachedInputTokenSum)*multiplier) * standardMultiplier,
 		SourceLabel:          spec.SourceLabel,
 		SourceURL:            spec.SourceURL,
 	}, true

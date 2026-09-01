@@ -10,7 +10,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"heimdall/internal/adapters/antigravity"
+	"heimdall/internal/agent_adapters/antigravity/forensics"
 )
 
 const (
@@ -24,12 +24,12 @@ const (
 )
 
 type sessionModelAuditRow struct {
-	sessionID               string
-	generationModels        []string
-	executorModels          []string
-	usageRows               int
-	unknownUsageModelRows   int
-	noMeteredGenerationRows int
+	sessionID                string
+	generationModels         []string
+	executorModels           []string
+	usageRows                int
+	unknownUsageModelRows    int
+	noUncachedGenerationRows int
 }
 
 func main() {
@@ -65,21 +65,21 @@ func readSessionModelAudits(databaseDirectory string) ([]sessionModelAuditRow, e
 			continue
 		}
 		databasePath := filepath.Join(databaseDirectory, entry.Name())
-		audit, auditErr := antigravity.ReadPersistedUsageAudit(databasePath)
+		audit, auditErr := forensics.ReadPersistedUsageAudit(databasePath)
 		if auditErr != nil {
 			continue
 		}
-		executorAudit, executorErr := antigravity.ReadExecutorMetadataAudit(databasePath)
+		executorAudit, executorErr := forensics.ReadExecutorMetadataAudit(databasePath)
 		if executorErr != nil {
-			executorAudit = antigravity.ExecutorMetadataAudit{}
+			executorAudit = forensics.ExecutorMetadataAudit{}
 		}
 		row := sessionModelAuditRow{
-			sessionID:               strings.TrimSuffix(entry.Name(), databaseExtension),
-			generationModels:        distinctGenerationModels(audit.Rows),
-			executorModels:          distinctExecutorModels(executorAudit.Rows),
-			usageRows:               audit.Summary.UsageRecordCount,
-			unknownUsageModelRows:   audit.Summary.UnknownModelRecordCount,
-			noMeteredGenerationRows: audit.Summary.NoMeteredInputRecordCount,
+			sessionID:                strings.TrimSuffix(entry.Name(), databaseExtension),
+			generationModels:         distinctGenerationModels(audit.Rows),
+			executorModels:           distinctExecutorModels(executorAudit.Rows),
+			usageRows:                audit.Summary.UsageRecordCount,
+			unknownUsageModelRows:    audit.Summary.UnknownModelRecordCount,
+			noUncachedGenerationRows: audit.Summary.NoUncachedInputRecordCount,
 		}
 		rows = append(rows, row)
 	}
@@ -89,7 +89,7 @@ func readSessionModelAudits(databaseDirectory string) ([]sessionModelAuditRow, e
 	return rows, nil
 }
 
-func distinctGenerationModels(rows []antigravity.PersistedUsageAuditRow) []string {
+func distinctGenerationModels(rows []forensics.PersistedUsageAuditRow) []string {
 	values := make(map[string]struct{})
 	for _, row := range rows {
 		if row.ModelName != "" {
@@ -99,7 +99,7 @@ func distinctGenerationModels(rows []antigravity.PersistedUsageAuditRow) []strin
 	return sortedKeys(values)
 }
 
-func distinctExecutorModels(rows []antigravity.ExecutorMetadataAuditRow) []string {
+func distinctExecutorModels(rows []forensics.ExecutorMetadataAuditRow) []string {
 	values := make(map[string]struct{})
 	for _, row := range rows {
 		if row.ModelName != "" {
@@ -120,11 +120,11 @@ func sortedKeys(values map[string]struct{}) []string {
 
 func writeSessionModelAudits(output io.Writer, rows []sessionModelAuditRow) error {
 	writer := tabwriter.NewWriter(output, tabMinimumWidth, tabWidth, tabPadding, tabPadCharacter, tabFlags)
-	if _, err := fmt.Fprintln(writer, "SESSION ID\tGENERATION MODELS\tEXECUTOR MODELS\tUSAGE ROWS\tUNKNOWN USAGE MODELS\tNO-METERED ROWS"); err != nil {
+	if _, err := fmt.Fprintln(writer, "SESSION ID\tGENERATION MODELS\tEXECUTOR MODELS\tCOMPLETE USAGE ROWS\tUNKNOWN USAGE MODELS\tNO-UNCACHED-INPUT ROWS"); err != nil {
 		return err
 	}
 	for _, row := range rows {
-		if _, err := fmt.Fprintf(writer, "%s\t%s\t%s\t%d\t%d\t%d\n", row.sessionID, displayModels(row.generationModels), displayModels(row.executorModels), row.usageRows, row.unknownUsageModelRows, row.noMeteredGenerationRows); err != nil {
+		if _, err := fmt.Fprintf(writer, "%s\t%s\t%s\t%d\t%d\t%d\n", row.sessionID, displayModels(row.generationModels), displayModels(row.executorModels), row.usageRows, row.unknownUsageModelRows, row.noUncachedGenerationRows); err != nil {
 			return err
 		}
 	}

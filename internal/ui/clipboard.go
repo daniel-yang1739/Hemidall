@@ -40,7 +40,7 @@ const (
 )
 
 var (
-	ansiRegex      = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07`)
+	ansiRegex                = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07`)
 	osStderrWriter io.Writer = os.Stderr
 )
 

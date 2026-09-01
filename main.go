@@ -12,9 +12,9 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"heimdall/internal/adapters"
-	"heimdall/internal/adapters/antigravity"
+	"heimdall/internal/agent_adapters/antigravity"
 	"heimdall/internal/core"
+	"heimdall/internal/runtime"
 	"heimdall/internal/ui"
 )
 
@@ -55,10 +55,16 @@ func main() {
 	targetDBPath := *dbPath
 	sessions := make([]core.SessionInfo, 0, 1)
 
+	homeDirectory, homeErr := os.UserHomeDir()
+	if homeErr != nil {
+		fmt.Fprintf(os.Stderr, "Failed to resolve home directory: %v\n", homeErr)
+		os.Exit(1)
+	}
+
 	// Resolve only the latest session synchronously. Full catalog discovery runs
 	// after the TUI starts so one slow historical database cannot delay first paint.
 	if !sessionPassed || targetSessionID == "" {
-		if latest, latestErr := antigravity.GetLatestActiveSession(); latestErr == nil {
+		if latest, latestErr := antigravity.DiscoverLatestSession(homeDirectory); latestErr == nil {
 			sessions = append(sessions, *latest)
 			targetSessionID = latest.SessionID
 			if targetFilePath == "" {
@@ -75,16 +81,18 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Initialize core payload analyzer
-	analyzer := core.NewPayloadAnalyzer()
-
 	// Initialize event channel with large buffer for seamless history warmup
 	eventChan := make(chan core.UnifiedAgentEvent, eventChannelCapacity)
 
-	// Initialize Dynamic Watcher Hub
-	hub := adapters.NewWatcherHub(ctx, eventChan, analyzer)
+	// The runtime owns the adapter-to-core hand-off. The TUI receives projected
+	// domain events and never imports an adapter or parser package.
+	supervisor, supervisorErr := runtime.NewSessionSupervisor(ctx, eventChan)
+	if supervisorErr != nil {
+		fmt.Fprintf(os.Stderr, "Failed to initialize session supervisor: %v\n", supervisorErr)
+		os.Exit(1)
+	}
 	if targetSessionID != "" {
-		if err := hub.StartSession(targetSessionID, targetFilePath, targetDBPath); err != nil {
+		if err := supervisor.StartSession(targetSessionID, targetFilePath, targetDBPath); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to start session watcher: %v\n", err)
 			os.Exit(1)
 		}
@@ -113,30 +121,30 @@ func main() {
 		return
 	}
 
-	// ==================== FULL-SCREEN INTERACTIVE TUI (k9s STYLE WITH DYNAMIC WATCHER HUB) ====================
-	contextBuilder := antigravity.NewContextPayloadBuilder()
+	// ==================== FULL-SCREEN INTERACTIVE TUI ====================
 	initialModel := ui.NewModelWithData(targetSessionID, openSwitcherOnStart, ui.ModelData{
 		Sessions: sessions,
 		ContextPayloadBuilder: func(history []core.UnifiedAgentEvent, sessionID string) core.AgentContextPayload {
-			return contextBuilder.Build(history, sessionID, "")
+			query := supervisor.Query()
+			if query == nil || query.Session().Ref.SessionID != sessionID {
+				return core.BuildContextPayloadFromHistory(core.ContextBuildInput{History: history, SessionID: sessionID})
+			}
+			return core.BuildContextPayloadFromSession(query.Session(), core.ContextBuildInput{History: history, SessionID: sessionID})
 		},
-	}, hub)
+		DashboardReadModelBuilder: func(history []core.UnifiedAgentEvent, sessionID string) core.DashboardReadModel {
+			query := supervisor.Query()
+			if query == nil || query.Session().Ref.SessionID != sessionID {
+				return core.BuildDashboardReadModelFromEvents(sessionID, history)
+			}
+			return query.DashboardReadModel()
+		},
+	}, supervisor)
 	p := tea.NewProgram(initialModel, tea.WithAltScreen(), tea.WithMouseCellMotion())
-
-	// Decode the static snapshot and its visible-text estimate off the UI thread.
-	// The result is session-scoped and the builder memoizes the parsed snapshot
-	// for later Context-view rendering.
-	if targetSessionID != "" {
-		go func(sessionID string) {
-			payload := contextBuilder.Build(nil, sessionID, "")
-			p.Send(ui.ContextEstimateMsg{SessionID: sessionID, Estimate: core.EstimateVisibleContextEvidence(payload)})
-		}(targetSessionID)
-	}
 
 	// Discover the switcher catalog in the background. This is deliberately
 	// independent from live watcher startup and from the first TUI frame.
 	go func() {
-		catalog, catalogErr := antigravity.DiscoverAllSessions()
+		catalog, catalogErr := antigravity.DiscoverAllSessions(homeDirectory)
 		if catalogErr == nil {
 			p.Send(ui.SessionCatalogMsg{Sessions: catalog})
 		}

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"heimdall/internal/adapters/antigravity"
+	"heimdall/internal/agent_adapters/antigravity/forensics"
 )
 
 const (
@@ -16,7 +16,7 @@ const (
 )
 
 func TestWriteExecutorMetadataAudit_Pos_ListsObservedSummary(t *testing.T) {
-	audit := antigravity.ExecutorMetadataAudit{Rows: []antigravity.ExecutorMetadataAuditRow{{
+	audit := forensics.ExecutorMetadataAudit{Rows: []forensics.ExecutorMetadataAuditRow{{
 		Index:                  commandExecutorAuditIndex,
 		ByteCount:              commandExecutorAuditBytes,
 		ObservedExecutionUUIDs: []string{commandExecutorAuditExecutionID},

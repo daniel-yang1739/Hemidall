@@ -53,10 +53,10 @@ type TokenBreakdown struct {
 }
 
 // PersistedUsageObservation contains schema-inferred observations decoded from
-// a local Antigravity generation record. MeteredInputTokens and
-// CachedContentTokens share one observed usage-message path; they support the
-// cache-adjusted input projection. ObservedContextTokens comes from a separate
-// context-state path and is kept separate from metered usage.
+// a local Antigravity generation record. UncachedInputTokens and
+// CachedInputTokens share one schema-inferred usage-message path; they support
+// the cache-adjusted input projection. ObservedContextTokens comes from a
+// separate context-state path and is kept separate from input usage.
 type PersistedUsageObservation struct {
 	Available       bool   `json:"available"`
 	Source          string `json:"source"`
@@ -66,10 +66,10 @@ type PersistedUsageObservation struct {
 
 	HasObservedContextTokens bool `json:"has_observed_context_tokens"`
 	ObservedContextTokens    int  `json:"observed_context_tokens"`
-	HasMeteredInputTokens    bool `json:"has_metered_input_tokens"`
-	MeteredInputTokens       int  `json:"metered_input_tokens"`
-	HasCachedContentTokens   bool `json:"has_cached_content_tokens"`
-	CachedContentTokens      int  `json:"cached_content_tokens"`
+	HasUncachedInputTokens   bool `json:"has_uncached_input_tokens"`
+	UncachedInputTokens      int  `json:"uncached_input_tokens"`
+	HasCachedInputTokens     bool `json:"has_cached_input_tokens"`
+	CachedInputTokens        int  `json:"cached_input_tokens"`
 	HasContextLimit          bool `json:"has_context_limit"`
 	ContextLimit             int  `json:"context_limit"`
 }
@@ -155,19 +155,20 @@ func (e UnifiedAgentEvent) IsCloudStep() bool {
 		(e.Scope == ScopeCloudInference || e.Type == StepTypeModelResponse || e.Type == StepTypeToolCall)
 }
 
-// ModelTokenStats holds aggregates from the observed metered usage message.
-// CachedContentTokenSum is a cached-input counter, not a provider invoice.
+// ModelTokenStats holds aggregates from one schema-inferred input-usage message.
+// CachedInputTokenSum is a cached-input counter, not a provider invoice.
 type ModelTokenStats struct {
 	ModelName                     string  `json:"model_name"`
 	TurnCount                     int     `json:"turn_count"`
-	MeteredInputTokenSum          int     `json:"metered_input_token_sum"`
-	CachedContentTokenSum         int     `json:"cached_content_token_sum"`
+	UncachedInputTokenSum         int     `json:"uncached_input_token_sum"`
+	CachedInputTokenSum           int     `json:"cached_input_token_sum"`
 	TotalProcessedTokenSum        int     `json:"total_processed_token_sum"`
 	ExplicitCacheValueTurnCount   int     `json:"explicit_cache_value_turn_count"`
-	DefaultZeroCacheTurnCount     int     `json:"default_zero_cache_turn_count"`
-	CacheContentSharePercent      float64 `json:"cache_content_share_percent"`
+	InferredZeroCacheTurnCount    int     `json:"inferred_zero_cache_turn_count"`
+	CacheInputSharePercent        float64 `json:"cache_input_share_percent"`
 	EffectiveInputTokenSum        float64 `json:"effective_input_token_sum"`
 	EffectiveProjectionTurnCount  int     `json:"effective_projection_turn_count"`
+	CachedSavedTokenSum           float64 `json:"cached_saved_token_sum"`
 	ObservedContextTokenSum       int     `json:"observed_context_token_sum"`
 	ObservedContextValueTurnCount int     `json:"observed_context_value_turn_count"`
 }

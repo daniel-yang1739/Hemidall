@@ -22,16 +22,16 @@ func TestAnalyzerPreservesPersistedUsageAndBuildsLocalEstimate(t *testing.T) {
 			ModelName:                "gemini-test",
 			HasObservedContextTokens: true,
 			ObservedContextTokens:    800,
-			HasCachedContentTokens:   true,
-			CachedContentTokens:      0,
+			HasCachedInputTokens:     true,
+			CachedInputTokens:        0,
 		},
 	}
 
 	analyzer.AnalyzeStep(&event)
 
 	requireEqual(t, 800, event.Usage.ObservedContextTokens)
-	requireEqual(t, 0, event.Usage.CachedContentTokens)
-	requireEqual(t, true, event.Usage.HasCachedContentTokens)
+	requireEqual(t, 0, event.Usage.CachedInputTokens)
+	requireEqual(t, true, event.Usage.HasCachedInputTokens)
 	requireGreaterThan(t, event.Tokens.StepDelta, 0)
 	requireEqual(t, event.Tokens.StepDelta, event.Tokens.RawLocalAccumulated)
 }
@@ -67,10 +67,10 @@ func TestPersistedUsageDoesNotDeriveCacheMathFromIndependentFields(t *testing.T)
 	observation := core.PersistedUsageObservation{
 		HasObservedContextTokens: true,
 		ObservedContextTokens:    10,
-		HasCachedContentTokens:   true,
-		CachedContentTokens:      11,
+		HasCachedInputTokens:     true,
+		CachedInputTokens:        11,
 	}
 
 	requireEqual(t, 10, observation.ObservedContextTokens)
-	requireEqual(t, 11, observation.CachedContentTokens)
+	requireEqual(t, 11, observation.CachedInputTokens)
 }

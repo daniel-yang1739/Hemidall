@@ -12,7 +12,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"heimdall/internal/adapters/antigravity"
+	"heimdall/internal/agent_adapters/antigravity/forensics"
+	"heimdall/internal/agent_adapters/antigravity/parsers/transcript"
 )
 
 const (
@@ -29,7 +30,7 @@ const (
 	missingStepLabel              = "-"
 	missingTimestampLabel         = "-"
 	explicitCacheLabel            = "explicit"
-	defaultZeroLabel              = "default-zero"
+	inferredZeroLabel             = "inferred-zero"
 	conversationDatabaseExtension = ".db"
 	conversationDirectoryName     = "conversations"
 	brainDirectoryName            = "brain"
@@ -44,7 +45,7 @@ func main() {
 	transcriptPath := flag.String("transcript", "", "path to transcript_full.jsonl; derived from -db when omitted")
 	flag.Parse()
 
-	audit, auditErr := antigravity.ReadPersistedUsageAudit(*databasePath)
+	audit, auditErr := forensics.ReadPersistedUsageAudit(*databasePath)
 	if auditErr != nil {
 		fmt.Fprintln(os.Stderr, auditErr)
 		os.Exit(1)
@@ -65,7 +66,7 @@ func main() {
 	}
 }
 
-func writeUsageAudit(output io.Writer, audit antigravity.PersistedUsageAudit, timestamps transcriptTimestampIndex) error {
+func writeUsageAudit(output io.Writer, audit forensics.PersistedUsageAudit, timestamps transcriptTimestampIndex) error {
 	writer := tabwriter.NewWriter(output, auditTabMinimumWidth, auditTabWidth, auditTabPadding, auditTabPadCharacter, auditTabFlags)
 	if _, err := fmt.Fprintln(writer, "GEN IDX\tGENERATED STEP\tMODEL\tUNCACHED\tCACHED\tRUNNING UNCACHED\tRUNNING CACHED\tCACHE FIELD\tTRANSCRIPT TIME"); err != nil {
 		return err
@@ -74,28 +75,28 @@ func writeUsageAudit(output io.Writer, audit antigravity.PersistedUsageAudit, ti
 	runningUncached := 0
 	runningCached := 0
 	for _, row := range audit.Rows {
-		runningUncached += row.MeteredInputTokens
-		runningCached += row.CachedContentTokens
+		runningUncached += row.UncachedInputTokens
+		runningCached += row.CachedInputTokens
 		step := formatGeneratedStep(row)
 		timestamp := timestamps.format(row)
 		modelName := formatAuditModelName(row.ModelName)
-		cacheField := formatCacheField(row.HasCachedContentTokens)
-		if _, err := fmt.Fprintf(writer, "%d\t%s\t%s\t%d\t%d\t%d\t%d\t%s\t%s\n", row.GenIndex, step, modelName, row.MeteredInputTokens, row.CachedContentTokens, runningUncached, runningCached, cacheField, timestamp); err != nil {
+		cacheField := formatCacheField(row.HasCachedInputTokens)
+		if _, err := fmt.Fprintf(writer, "%d\t%s\t%s\t%d\t%d\t%d\t%d\t%s\t%s\n", row.GenIndex, step, modelName, row.UncachedInputTokens, row.CachedInputTokens, runningUncached, runningCached, cacheField, timestamp); err != nil {
 			return err
 		}
 	}
 
 	summary := audit.Summary
-	if _, err := fmt.Fprintf(writer, "TOTAL\t-\t-\t%d\t%d\t%d\t%d\t-\t-\n", summary.MeteredInputTokenSum, summary.CachedContentTokenSum, runningUncached, runningCached); err != nil {
+	if _, err := fmt.Fprintf(writer, "TOTAL\t-\t-\t%d\t%d\t%d\t%d\t-\t-\n", summary.UncachedInputTokenSum, summary.CachedInputTokenSum, runningUncached, runningCached); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(writer, "SCANNED=%d USAGE_ROWS=%d NO_METERED_INPUT=%d MALFORMED=%d PROCESSED=%d EXPLICIT_CACHE=%d DEFAULT_ZERO_CACHE=%d EXECUTOR_MODEL_MATCHES=%d ENUM_MODEL_MATCHES=%d UNKNOWN_MODELS=%d TRANSCRIPT_ROWS=%d VALID_TIMESTAMPS=%d AMBIGUOUS_STEPS=%d\n", summary.ScannedRecordCount, summary.UsageRecordCount, summary.NoMeteredInputRecordCount, summary.SkippedMalformedRecordCount, summary.ProcessedTokenSum(), summary.ExplicitCacheRecordCount, summary.DefaultZeroCacheRecordCount, summary.ExecutorModelMatchCount, summary.EnumModelMatchCount, summary.UnknownModelRecordCount, timestamps.scannedRows, timestamps.validTimestampRows, timestamps.ambiguousStepCount); err != nil {
+	if _, err := fmt.Fprintf(writer, "SCANNED=%d COMPLETE_USAGE_ROWS=%d NO_UNCACHED_INPUT=%d MALFORMED=%d PROCESSED=%d EXPLICIT_CACHE=%d INFERRED_ZERO_CACHE=%d EXECUTOR_MODEL_MATCHES=%d ENUM_MODEL_MATCHES=%d UNKNOWN_MODELS=%d TRANSCRIPT_ROWS=%d VALID_TIMESTAMPS=%d AMBIGUOUS_STEPS=%d\n", summary.ScannedRecordCount, summary.UsageRecordCount, summary.NoUncachedInputRecordCount, summary.SkippedMalformedRecordCount, summary.ProcessedTokenSum(), summary.ExplicitCacheRecordCount, summary.InferredZeroCacheRecordCount, summary.ExecutorModelMatchCount, summary.EnumModelMatchCount, summary.UnknownModelRecordCount, timestamps.scannedRows, timestamps.validTimestampRows, timestamps.ambiguousStepCount); err != nil {
 		return err
 	}
 	return writer.Flush()
 }
 
-func formatGeneratedStep(row antigravity.PersistedUsageAuditRow) string {
+func formatGeneratedStep(row forensics.PersistedUsageAuditRow) string {
 	if !row.HasInputBoundary {
 		return missingStepLabel
 	}
@@ -118,7 +119,7 @@ func formatCacheField(hasExplicitCacheValue bool) string {
 	if hasExplicitCacheValue {
 		return explicitCacheLabel
 	}
-	return defaultZeroLabel
+	return inferredZeroLabel
 }
 
 type transcriptTimestampIndex struct {
@@ -128,7 +129,7 @@ type transcriptTimestampIndex struct {
 	ambiguousStepCount int
 }
 
-func (index transcriptTimestampIndex) format(row antigravity.PersistedUsageAuditRow) string {
+func (index transcriptTimestampIndex) format(row forensics.PersistedUsageAuditRow) string {
 	if !row.HasInputBoundary {
 		return missingTimestampLabel
 	}
@@ -177,7 +178,7 @@ func readTranscriptTimestamps(transcriptPath string) (transcriptTimestampIndex, 
 	scanner.Buffer(make([]byte, transcriptScanBufferBytes), transcriptMaximumLineBytes)
 	for scanner.Scan() {
 		index.scannedRows++
-		var raw antigravity.RawTranscriptLine
+		var raw transcript.RawTranscriptLine
 		if decodeErr := json.Unmarshal(scanner.Bytes(), &raw); decodeErr != nil {
 			continue
 		}

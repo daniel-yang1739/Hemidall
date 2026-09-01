@@ -54,14 +54,16 @@ func writePersistedUsageRows(builder *strings.Builder, usage PersistedUsageObser
 	} else {
 		builder.WriteString("│ Observed context limit  │ unavailable                                 │\n")
 	}
-	if usage.HasMeteredInputTokens {
-		builder.WriteString(fmt.Sprintf("│ Metered input tokens    │ %-43d │\n", usage.MeteredInputTokens))
+	if usage.HasUncachedInputTokens {
+		builder.WriteString(fmt.Sprintf("│ Uncached input tokens   │ %-43d │\n", usage.UncachedInputTokens))
 	} else {
-		builder.WriteString("│ Metered input tokens    │ unavailable                                 │\n")
+		builder.WriteString("│ Uncached input tokens   │ unavailable                                 │\n")
 	}
-	if usage.HasCachedContentTokens {
-		builder.WriteString(fmt.Sprintf("│ Cached-content tokens   │ %-43d │\n", usage.CachedContentTokens))
+	if usage.HasCachedInputTokens {
+		builder.WriteString(fmt.Sprintf("│ Cached input tokens     │ %-43d │\n", usage.CachedInputTokens))
+	} else if usage.HasUncachedInputTokens {
+		builder.WriteString("│ Cached input tokens     │ 0 (inferred from omitted scalar)             │\n")
 	} else {
-		builder.WriteString("│ Cached-content tokens   │ 0 (proto3 default; scalar omitted)          │\n")
+		builder.WriteString("│ Cached input tokens     │ unavailable                                 │\n")
 	}
 }

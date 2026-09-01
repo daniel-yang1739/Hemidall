@@ -21,6 +21,14 @@ const (
 	dashboardContextLabelWidth        = 30
 	dashboardContextTokenWidth        = 8
 	dashboardContextPercentageWidth   = 5
+	dashboardPanelOuterHeight         = 15
+	selectedStepPanelOuterHeight      = 16
+	dashboardMinimumOuterHeight       = 8
+	selectedStepMinimumOuterHeight    = 10
+	dashboardPanelBorderRows          = 2
+	dashboardMaximumModelRows         = 5
+	dashboardMetadataLabelWidth       = 23
+	dashboardResultPreviewRows        = 6
 )
 
 func formatCommas(n int) string {
@@ -79,7 +87,7 @@ func formatCacheDefaultZeroCount(stats core.ModelTokenStats) string {
 	if stats.TurnCount == 0 {
 		return "unavailable"
 	}
-	return fmt.Sprintf("%d default zero", stats.DefaultZeroCacheTurnCount)
+	return fmt.Sprintf("%d inferred zero", stats.InferredZeroCacheTurnCount)
 }
 
 func hasMeteredUsage(stats core.ModelTokenStats) bool {
@@ -94,15 +102,15 @@ func formatCacheHitCell(stats core.ModelTokenStats) string {
 	if !hasMeteredUsage(stats) {
 		return "unavailable"
 	}
-	return fmt.Sprintf("%s (%.1f%%)", formatTokShort(stats.CachedContentTokenSum), stats.CacheContentSharePercent)
+	return fmt.Sprintf("%s (%.1f%%)", formatTokShort(stats.CachedInputTokenSum), stats.CacheInputSharePercent)
 }
 
 func formatUncachedCell(stats core.ModelTokenStats) string {
 	if !hasMeteredUsage(stats) {
 		return "unavailable"
 	}
-	uncachedPercent := percentageScale - stats.CacheContentSharePercent
-	return fmt.Sprintf("%s (%.1f%%)", formatTokShort(stats.MeteredInputTokenSum), uncachedPercent)
+	uncachedPercent := percentageScale - stats.CacheInputSharePercent
+	return fmt.Sprintf("%s (%.1f%%)", formatTokShort(stats.UncachedInputTokenSum), uncachedPercent)
 }
 
 func formatEffectiveInputCell(stats core.ModelTokenStats) string {
@@ -131,7 +139,7 @@ func formatCacheSavedTokens(stats core.ModelTokenStats) string {
 	if !hasCompleteEffectiveProjection(stats) {
 		return "unavailable"
 	}
-	savedTokens := float64(stats.TotalProcessedTokenSum) - stats.EffectiveInputTokenSum
+	savedTokens := stats.CachedSavedTokenSum
 	return formatTokFloatShort(savedTokens)
 }
 
@@ -146,7 +154,7 @@ func formatCacheSavedCell(stats core.ModelTokenStats) string {
 	if !hasCompleteEffectiveProjection(stats) {
 		return "unavailable"
 	}
-	savedPercent := (float64(stats.TotalProcessedTokenSum) - stats.EffectiveInputTokenSum) / float64(stats.TotalProcessedTokenSum) * percentageScale
+	savedPercent := stats.CachedSavedTokenSum / float64(stats.TotalProcessedTokenSum) * percentageScale
 	return fmt.Sprintf("%s (%.1f%%)", formatCacheSavedTokens(stats), savedPercent)
 }
 
@@ -154,7 +162,7 @@ func formatCacheSavedRate(stats core.ModelTokenStats) string {
 	if !hasCompleteEffectiveProjection(stats) {
 		return "unavailable"
 	}
-	savedPercent := (float64(stats.TotalProcessedTokenSum) - stats.EffectiveInputTokenSum) / float64(stats.TotalProcessedTokenSum) * percentageScale
+	savedPercent := stats.CachedSavedTokenSum / float64(stats.TotalProcessedTokenSum) * percentageScale
 	return fmt.Sprintf("%.1f%% net saved", savedPercent)
 }
 
@@ -166,10 +174,13 @@ func formatObservedContextSum(stats core.ModelTokenStats) string {
 }
 
 func formatCacheFields(usage core.PersistedUsageObservation) string {
-	if !usage.HasCachedContentTokens {
-		return fmt.Sprintf("0 cached (protobuf default); %s metered input", formatTokShort(usage.MeteredInputTokens))
+	if !usage.HasUncachedInputTokens {
+		return "usage unavailable"
 	}
-	return fmt.Sprintf("%s cached; %s metered input", formatTokShort(usage.CachedContentTokens), formatTokShort(usage.MeteredInputTokens))
+	if !usage.HasCachedInputTokens {
+		return fmt.Sprintf("0 cached (inferred); %s uncached input", formatTokShort(usage.UncachedInputTokens))
+	}
+	return fmt.Sprintf("%s cached; %s uncached input", formatTokShort(usage.CachedInputTokens), formatTokShort(usage.UncachedInputTokens))
 }
 
 func formatEstimateDimension(name string, tokens, total, barBlocks int, color lipgloss.TerminalColor) string {
@@ -413,12 +424,315 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 	totStr := "  " + formatSpaceBetweenRow(totCols, minWidths, leftAligns, targetWidth)
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(totStr))
 	sb.WriteString("\n")
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render("  Effective Input is the cache-price-weighted equivalent of all observed input tokens."))
-
 	return sb.String()
 }
 
 func (m Model) renderDashboardView() string {
+	panelWidth := m.width - dashboardPanelBorderRows
+	if panelWidth < 40 {
+		panelWidth = 40
+	}
+	contentWidth := panelWidth - dashboardPanelBorderRows
+	availableRows := m.height - dashboardPanelBorderRows
+	if availableRows <= 0 {
+		availableRows = dashboardPanelOuterHeight + selectedStepPanelOuterHeight
+	}
+	dashboardHeight, selectedStepHeight := dashboardPanelHeights(availableRows)
+
+	dashboardBox := renderExperimentalFixedDashboardPanel(m.renderSessionDashboard(contentWidth), panelWidth, dashboardHeight)
+	stepBox := renderExperimentalFixedDashboardPanel(m.renderSelectedDashboardStep(contentWidth), panelWidth, selectedStepHeight)
+	return lipgloss.JoinVertical(lipgloss.Left, dashboardBox, stepBox)
+}
+
+func dashboardPanelHeights(availableRows int) (int, int) {
+	preferredRows := dashboardPanelOuterHeight + selectedStepPanelOuterHeight
+	minimumRows := dashboardMinimumOuterHeight + selectedStepMinimumOuterHeight
+	if availableRows >= preferredRows {
+		return dashboardPanelOuterHeight, selectedStepPanelOuterHeight
+	}
+	if availableRows >= minimumRows {
+		return availableRows - selectedStepMinimumOuterHeight, selectedStepMinimumOuterHeight
+	}
+	dashboardRows := availableRows / 2
+	if dashboardRows < dashboardPanelBorderRows {
+		dashboardRows = dashboardPanelBorderRows
+	}
+	selectedRows := availableRows - dashboardRows
+	if selectedRows < dashboardPanelBorderRows {
+		selectedRows = dashboardPanelBorderRows
+	}
+	return dashboardRows, selectedRows
+}
+
+func renderExperimentalFixedDashboardPanel(content string, width, outerHeight int) string {
+	contentRows := outerHeight - dashboardPanelBorderRows
+	if contentRows < 1 {
+		contentRows = 1
+	}
+	contentWidth := width - dashboardPanelBorderRows
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+	if len(lines) > contentRows {
+		lines = lines[:contentRows]
+		lines[contentRows-1] = lipgloss.NewStyle().Foreground(ColorMuted).Render(truncateVisualWidth("  … additional details are available in Inspect", contentWidth))
+	}
+	for len(lines) < contentRows {
+		lines = append(lines, "")
+	}
+	for index, line := range lines {
+		if lipgloss.Width(line) > contentWidth {
+			lines[index] = lipgloss.NewStyle().MaxWidth(contentWidth).Render(line)
+		}
+	}
+	return PanelStyle.Width(width).Height(contentRows).Render(strings.Join(lines, "\n"))
+}
+
+func (m Model) renderSessionDashboard(contentWidth int) string {
+	if !m.dashboardReadModelReady() {
+		return strings.Join([]string{
+			TitleStyle.Render("SESSION DASHBOARD"),
+			"  Preparing cached session metrics and model breakdown...",
+			lipgloss.NewStyle().Foreground(ColorMuted).Render("  Cursor navigation remains local while this data is prepared."),
+		}, "\n")
+	}
+
+	metrics := m.dashboardReadModel.Metrics
+	lines := []string{
+		TitleStyle.Render("SESSION DASHBOARD & TOKEN EFFICIENCY"),
+		renderBorderlessKpiStrip(metrics.TotalStats, contentWidth),
+	}
+	if len(metrics.ModelStats) > 0 {
+		lines = append(lines, renderDashboardModelTable(metrics.ModelStats, metrics.TotalStats, contentWidth))
+	} else {
+		lines = append(lines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  No persisted cloud usage is available for this session."))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m Model) dashboardReadModelReady() bool {
+	return m.dashboardReadModel.SessionID == m.sessionID &&
+		m.dashboardReadModelHistoryCount == len(m.history) &&
+		m.dashboardReadModel.Inspections != nil
+}
+
+func renderDashboardModelTable(models []core.ModelTokenStats, total core.ModelTokenStats, width int) string {
+	visible := models
+	remaining := 0
+	if len(models) > dashboardMaximumModelRows {
+		visible = models[:dashboardMaximumModelRows-1]
+		remaining = len(models) - len(visible)
+	}
+	table := strings.TrimRight(renderModelBreakdownTable(visible, total, width), "\n")
+	if remaining == 0 {
+		return table
+	}
+	return table + "\n" + lipgloss.NewStyle().Foreground(ColorMuted).Render(fmt.Sprintf("  … +%d more models", remaining))
+}
+
+func (m Model) renderSelectedDashboardStep(contentWidth int) string {
+	event, found := m.selectedDashboardEvent()
+	if !found {
+		return strings.Join([]string{
+			TitleStyle.Render("SELECTED STEP"),
+			lipgloss.NewStyle().Foreground(ColorMuted).Render("  Waiting for a session step..."),
+		}, "\n")
+	}
+	if !m.dashboardReadModelReady() {
+		return strings.Join([]string{
+			TitleStyle.Render(fmt.Sprintf("STEP #%d", event.StepIndex)),
+			lipgloss.NewStyle().Foreground(ColorMuted).Render("  Preparing cached step details..."),
+		}, "\n")
+	}
+	inspection, found := m.dashboardReadModel.Inspections[event.StepIndex]
+	if !found {
+		return strings.Join([]string{
+			TitleStyle.Render(fmt.Sprintf("STEP #%d", event.StepIndex)),
+			lipgloss.NewStyle().Foreground(ColorMuted).Render("  No cached inspection data is available for this step."),
+		}, "\n")
+	}
+	inspection.Event = event
+	if inspection.Kind == core.DashboardStepCloud {
+		return renderCloudStepInspection(inspection, contentWidth)
+	}
+	return renderNonCloudStepInspection(inspection, contentWidth)
+}
+
+func (m Model) selectedDashboardEvent() (core.UnifiedAgentEvent, bool) {
+	if len(m.history) == 0 {
+		return core.UnifiedAgentEvent{}, false
+	}
+	index := m.dashboardIdx
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(m.history) {
+		index = len(m.history) - 1
+	}
+	return m.history[index], true
+}
+
+func renderCloudStepInspection(inspection core.StepInspectionReadModel, contentWidth int) string {
+	event := inspection.Event
+	usage := event.Usage
+	modelName := usage.ModelName
+	if modelName == "" {
+		modelName = "unknown"
+	}
+	composition := core.RequestContextComposition{}
+	if inspection.RequestContext != nil {
+		composition = *inspection.RequestContext
+	}
+	lines := []string{
+		TitleStyle.Render(fmt.Sprintf("STEP #%d · CLOUD GENERATION", event.StepIndex)),
+		formatExperimentalDashboardMetadata("Agent / Model", fmt.Sprintf("[%s] %s", event.GetAgentRole(), modelName), contentWidth),
+		formatExperimentalDashboardMetadata("Status / Time", fmt.Sprintf("%s · %s", dashboardStatus(event.Status), dashboardTimestamp(event)), contentWidth),
+		formatExperimentalDashboardMetadata("Observed Context", formatObservedContext(event), contentWidth),
+		formatExperimentalDashboardMetadata("Input Usage", formatCacheFields(usage), contentWidth),
+		"",
+		TitleStyle.Render("REQUEST CONTEXT COMPOSITION " + requestContextEvidenceBadge(composition)),
+		formatRequestContextDimension("System Instruction", composition.SystemInstruction, composition.TotalVisibleTokens, contentWidth, ColorSecondary),
+		formatRequestContextDimension("Tool Schemas", composition.ToolSchemas, composition.TotalVisibleTokens, contentWidth, ColorHighlight),
+		formatRequestContextDimension("Conversation Context", composition.ConversationContext, composition.TotalVisibleTokens, contentWidth, ColorPrimary),
+		formatRequestContextDimension("Active Input", composition.ActiveInput, composition.TotalVisibleTokens, contentWidth, ColorSuccess),
+		formatExperimentalDashboardMetadata("Visible Evidence", fmt.Sprintf("%s Tokens · local estimate", formatTokShort(composition.TotalVisibleTokens)), contentWidth),
+	}
+	return strings.Join(lines, "\n")
+}
+
+func renderNonCloudStepInspection(inspection core.StepInspectionReadModel, contentWidth int) string {
+	event := inspection.Event
+	lines := []string{
+		TitleStyle.Render(fmt.Sprintf("STEP #%d · %s", event.StepIndex, dashboardStepTitle(inspection.Kind))) + lipgloss.NewStyle().Foreground(ColorMuted).Render(" (NO CLOUD REQUEST)"),
+		formatExperimentalDashboardMetadata("Event Type", string(event.Type), contentWidth),
+		formatExperimentalDashboardMetadata("Tool / Action", inspection.LocalAction, contentWidth),
+		formatExperimentalDashboardMetadata("Status / Time", fmt.Sprintf("%s · %s", dashboardStatus(event.Status), dashboardTimestamp(event)), contentWidth),
+	}
+	if inspection.Kind == core.DashboardStepLocal {
+		trigger := "unavailable"
+		if inspection.TriggeredCloudStep > 0 {
+			trigger = fmt.Sprintf("#%d", inspection.TriggeredCloudStep)
+		}
+		lines = append(lines, formatExperimentalDashboardMetadata("Triggered Cloud Step", trigger, contentWidth))
+	}
+	lines = append(lines, "", TitleStyle.Render("RESULT"))
+	previewWidth := contentWidth - dashboardMetadataLabelWidth
+	if previewWidth < 1 {
+		previewWidth = 1
+	}
+	previewLines := wrapVisualLines(inspection.ResultPreview, previewWidth)
+	if len(previewLines) > dashboardResultPreviewRows {
+		previewLines = previewLines[:dashboardResultPreviewRows]
+		previewLines[dashboardResultPreviewRows-1] = truncateVisualWidth(previewLines[dashboardResultPreviewRows-1]+" …", previewWidth)
+	}
+	for _, preview := range previewLines {
+		lines = append(lines, "  "+preview)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func dashboardStepTitle(kind core.DashboardStepKind) string {
+	switch kind {
+	case core.DashboardStepLocal:
+		return "LOCAL EXECUTION"
+	case core.DashboardStepUser:
+		return "USER INPUT"
+	case core.DashboardStepCheckpoint:
+		return "CONTEXT COMPACTION"
+	default:
+		return "SYSTEM EVENT"
+	}
+}
+
+func dashboardStatus(status string) string {
+	if status == "" {
+		return "unavailable"
+	}
+	return status
+}
+
+func dashboardTimestamp(event core.UnifiedAgentEvent) string {
+	if event.Timestamp.IsZero() {
+		return "unavailable"
+	}
+	return event.Timestamp.Local().Format("2006-01-02 15:04:05")
+}
+
+func formatObservedContext(event core.UnifiedAgentEvent) string {
+	usage := event.Usage
+	if !usage.HasObservedContextTokens {
+		return "unavailable"
+	}
+	if !usage.HasContextLimit || usage.ContextLimit <= 0 {
+		return formatTokShort(usage.ObservedContextTokens) + " Tokens"
+	}
+	percentage := float64(usage.ObservedContextTokens) / float64(usage.ContextLimit) * percentageScale
+	return fmt.Sprintf("%s Tokens (%5.1f%% of %s limit)", formatTokShort(usage.ObservedContextTokens), percentage, formatTokShort(usage.ContextLimit))
+}
+
+func formatExperimentalDashboardMetadata(label, value string, contentWidth int) string {
+	prefix := fmt.Sprintf("  %-*s ", dashboardMetadataLabelWidth, label+":")
+	availableWidth := contentWidth - lipgloss.Width(prefix)
+	if availableWidth < 1 {
+		availableWidth = 1
+	}
+	return prefix + truncateVisualWidth(value, availableWidth)
+}
+
+func requestContextEvidenceBadge(composition core.RequestContextComposition) string {
+	hasSnapshot := false
+	hasReconstruction := false
+	for _, section := range []core.RequestContextSection{
+		composition.SystemInstruction,
+		composition.ToolSchemas,
+		composition.ConversationContext,
+		composition.ActiveInput,
+	} {
+		if section.Evidence == core.ContextSectionSnapshot {
+			hasSnapshot = true
+		}
+		if section.Evidence == core.ContextSectionReconstructed {
+			hasReconstruction = true
+		}
+	}
+	switch {
+	case hasSnapshot && hasReconstruction:
+		return lipgloss.NewStyle().Foreground(ColorWarning).Render("[MIXED EVIDENCE]")
+	case hasSnapshot:
+		return lipgloss.NewStyle().Foreground(ColorSecondary).Render("[PERSISTED SNAPSHOT]")
+	case hasReconstruction:
+		return lipgloss.NewStyle().Foreground(ColorWarning).Render("[TRANSCRIPT ESTIMATED]")
+	default:
+		return lipgloss.NewStyle().Foreground(ColorMuted).Render("[UNAVAILABLE]")
+	}
+}
+
+func formatRequestContextDimension(label string, section core.RequestContextSection, total, contentWidth int, color lipgloss.TerminalColor) string {
+	barBlocks := dashboardDefaultProgressBarBlocks
+	if contentWidth < dashboardNarrowContentWidth {
+		barBlocks = dashboardNarrowProgressBarBlocks
+	}
+	percentage := zeroPercentage
+	value := "—"
+	unit := ""
+	percentageValue := "n/a"
+	if section.Evidence != core.ContextSectionUnavailable && total > 0 {
+		percentage = float64(section.Tokens) / float64(total) * percentageScale
+		value = formatTokShort(section.Tokens)
+		unit = "Tokens"
+		percentageValue = fmt.Sprintf("%.1f%%", percentage)
+	}
+	return fmt.Sprintf("  %-*s %*s %-6s (%*s) [%s]",
+		dashboardContextLabelWidth,
+		label,
+		dashboardContextTokenWidth,
+		value,
+		unit,
+		dashboardContextPercentageWidth,
+		percentageValue,
+		renderVisibleContentBar(percentage, barBlocks, color),
+	)
+}
+
+func (m Model) renderExperimentalDashboardView() string {
 	e := m.latestEvent
 	dashboardHistoryIndex := -1
 	isPlayback := false
@@ -460,10 +774,10 @@ func (m Model) renderDashboardView() string {
 		cacheBadge = lipgloss.NewStyle().Foreground(ColorHighlight).Render("[USER INPUT]")
 	} else if e.IsCompactionStep() || e.Scope == core.ScopeSystemCompaction {
 		cacheBadge = TitleStyle.Render("[COMPACTION RECORD]")
-	} else if usage.HasCachedContentTokens {
-		cacheBadge = BadgeSuccess.Render(fmt.Sprintf("[CACHE CONTENT %s OBSERVED]", formatTokShort(usage.CachedContentTokens)))
-	} else if usage.Available {
-		cacheBadge = lipgloss.NewStyle().Foreground(ColorMuted).Render("[CACHE 0 DEFAULT]")
+	} else if usage.HasCachedInputTokens {
+		cacheBadge = BadgeSuccess.Render(fmt.Sprintf("[CACHED INPUT %s OBSERVED]", formatTokShort(usage.CachedInputTokens)))
+	} else if usage.HasUncachedInputTokens {
+		cacheBadge = lipgloss.NewStyle().Foreground(ColorMuted).Render("[CACHED INPUT 0 INFERRED]")
 	} else {
 		cacheBadge = BadgeDanger.Render("[CACHE DATA UNAVAILABLE]")
 	}
@@ -580,10 +894,10 @@ func (m Model) renderDashboardView() string {
 			p1.WriteString(fmt.Sprintf("  • Agent / Model  : [%s] %s (Step #%03d)\n",
 				e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(modelName, contentWidth-28)), e.StepIndex))
 			if usage.HasObservedContextTokens {
-				p1.WriteString(fmt.Sprintf("  • Observed Total : %s Tok %s\n", lipgloss.NewStyle().Bold(true).Render(formatTokShort(total)), cacheBadge))
+				p1.WriteString(fmt.Sprintf("  • Context State  : %s Tok %s\n", lipgloss.NewStyle().Bold(true).Render(formatTokShort(total)), cacheBadge))
 				p1.WriteString(fmt.Sprintf("  • Cache Fields   : %s\n", formatCacheFields(usage)))
 			} else {
-				p1.WriteString("  • Observed Total : unavailable\n")
+				p1.WriteString("  • Context State  : unavailable\n")
 				p1.WriteString(fmt.Sprintf("  • Local Delta    : ~%s Tok (cl100k_base estimate)\n", formatTokShort(t.StepDelta)))
 			}
 			p1.WriteString(fmt.Sprintf("  • Status         : %s", e.Status))
@@ -592,14 +906,14 @@ func (m Model) renderDashboardView() string {
 				e.GetAgentRole(), lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(modelName), e.StepIndex, e.Status, timeStr))
 			if usage.HasObservedContextTokens {
 				if usage.HasContextLimit {
-					p1.WriteString(fmt.Sprintf("  • Observed Context      : %s Tokens (%5.1f%% of observed %dk limit)  %s\n", lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), ctxUsagePct, ctxLimit/1_000, cacheBadge))
+					p1.WriteString(fmt.Sprintf("  • Observed Context State: %s Tok (%5.1f%% of observed %s Tok limit)  %s\n", lipgloss.NewStyle().Bold(true).Render(formatTokShort(total)), ctxUsagePct, formatTokShort(ctxLimit), cacheBadge))
 				} else {
-					p1.WriteString(fmt.Sprintf("  • Observed Context      : %s Tokens (limit unavailable)  %s\n", lipgloss.NewStyle().Bold(true).Render(fmt.Sprintf("%d", total)), cacheBadge))
+					p1.WriteString(fmt.Sprintf("  • Observed Context State: %s Tok (limit unavailable)  %s\n", lipgloss.NewStyle().Bold(true).Render(formatTokShort(total)), cacheBadge))
 				}
-				p1.WriteString(fmt.Sprintf("  • Decoded Cache Fields  : %s\n", formatCacheFields(usage)))
+				p1.WriteString(fmt.Sprintf("  • Input Usage Fields    : %s (separate from context state)\n", formatCacheFields(usage)))
 				p1.WriteString(fmt.Sprintf("  • Local Delta Estimate  : +%s Tokens (cl100k_base)", formatTokShort(t.StepDelta)))
 			} else {
-				p1.WriteString("  • Observed Context      : unavailable\n")
+				p1.WriteString("  • Observed Context State: unavailable\n")
 				p1.WriteString(fmt.Sprintf("  • Local Delta Estimate  : +%d Tokens (cl100k_base)", t.StepDelta))
 			}
 			if !isPlayback && len(e.ConsumedStepIndices) > 0 {
@@ -645,6 +959,278 @@ func (m Model) renderDashboardView() string {
 
 	return lipgloss.JoinVertical(lipgloss.Left, panel0Box, panel1Box, panel2Box)
 }
+
+/*
+// Superseded exploratory renderer retained temporarily while the established
+// two-panel renderer above is verified.
+// renderDashboardView deliberately contains only two fixed-height panels:
+// session-level aggregates and the selected step's domain projection. All
+// parsing, context reconstruction, and tokenization happen before this path.
+func (m Model) renderDashboardView() string {
+	panelWidth := m.width - 2
+	if panelWidth < 40 {
+		panelWidth = 40
+	}
+	dashboardHeight, stepHeight := m.dashboardPanelHeights()
+	readModel, ready := m.dashboardReadModelForRender()
+
+	dashboardLines := m.dashboardPanelLines(readModel, ready, dashboardHeight, panelWidth)
+	stepLines := m.stepPanelLines(readModel, ready, panelWidth)
+
+	dashboardBox := renderFixedDashboardPanel(dashboardLines, panelWidth, dashboardHeight)
+	stepBox := renderFixedDashboardPanel(stepLines, panelWidth, stepHeight)
+	return lipgloss.JoinVertical(lipgloss.Left, dashboardBox, stepBox)
+}
+
+func (m Model) dashboardReadModelForRender() (core.DashboardReadModel, bool) {
+	if m.dashboardReadModelHistoryCount != len(m.history) {
+		return core.DashboardReadModel{}, false
+	}
+	if len(m.history) > 0 && len(m.dashboardReadModel.Inspections) == 0 {
+		return core.DashboardReadModel{}, false
+	}
+	return m.dashboardReadModel, true
+}
+
+func (m Model) dashboardPanelHeights() (int, int) {
+	if m.height <= 0 {
+		return dashboardPanelOuterHeight, selectedStepPanelOuterHeight
+	}
+	availableRows := m.height - dashboardPanelBorderRows
+	preferredRows := dashboardPanelOuterHeight + selectedStepPanelOuterHeight
+	if availableRows >= preferredRows {
+		return dashboardPanelOuterHeight, selectedStepPanelOuterHeight
+	}
+	stepRows := selectedStepMinimumOuterHeight
+	dashboardRows := availableRows - stepRows
+	if dashboardRows < dashboardMinimumOuterHeight {
+		dashboardRows = dashboardMinimumOuterHeight
+		stepRows = availableRows - dashboardRows
+	}
+	if stepRows < dashboardPanelBorderRows {
+		stepRows = dashboardPanelBorderRows
+	}
+	return dashboardRows, stepRows
+}
+
+func (m Model) dashboardPanelLines(readModel core.DashboardReadModel, ready bool, outerHeight, panelWidth int) []string {
+	if !ready {
+		return []string{
+			TitleStyle.Render("SESSION DASHBOARD"),
+			"  Preparing cached session aggregates...",
+			"  Rendering never parses a database or recounts transcript tokens.",
+		}
+	}
+	contentWidth := panelWidth - dashboardPanelBorderRows
+	lines := []string{TitleStyle.Render("SESSION DASHBOARD")}
+	lines = append(lines, strings.Split(renderBorderlessKpiStrip(readModel.Metrics.TotalStats, contentWidth), "\n")...)
+	models, omitted := dashboardVisibleModels(readModel.Metrics.ModelStats, outerHeight)
+	if len(models) > 0 {
+		lines = append(lines, strings.Split(renderModelBreakdownTable(models, readModel.Metrics.TotalStats, contentWidth), "\n")...)
+	}
+	if omitted > 0 {
+		lines = append(lines, lipgloss.NewStyle().Foreground(ColorMuted).Render(fmt.Sprintf("  +%d more models", omitted)))
+	}
+	return lines
+}
+
+func dashboardVisibleModels(models []core.ModelTokenStats, outerHeight int) ([]core.ModelTokenStats, int) {
+	contentRows := outerHeight - dashboardPanelBorderRows
+	const dashboardSummaryRows = 4
+	const dashboardModelTableFixedRows = 4
+	const dashboardOverflowNoticeRows = 1
+	maxRows := contentRows - dashboardSummaryRows - dashboardModelTableFixedRows
+	if len(models) > maxRows {
+		maxRows -= dashboardOverflowNoticeRows
+	}
+	if maxRows < 0 {
+		maxRows = 0
+	}
+	if maxRows > dashboardMaximumModelRows {
+		maxRows = dashboardMaximumModelRows
+	}
+	if len(models) <= maxRows {
+		return models, 0
+	}
+	return models[:maxRows], len(models) - maxRows
+}
+
+func (m Model) stepPanelLines(readModel core.DashboardReadModel, ready bool, panelWidth int) []string {
+	if !ready || len(m.history) == 0 {
+		return []string{
+			TitleStyle.Render("SELECTED STEP"),
+			"  Preparing the selected step projection...",
+		}
+	}
+	selected := m.dashboardSelectedEvent()
+	inspection, found := readModel.Inspections[selected.StepIndex]
+	if !found {
+		return []string{
+			TitleStyle.Render(fmt.Sprintf("STEP #%d", selected.StepIndex)),
+			"  Step details are unavailable in the current cached session revision.",
+		}
+	}
+	if inspection.Kind == core.DashboardStepCloud {
+		return renderCloudStepPanelLines(inspection, panelWidth-dashboardPanelBorderRows)
+	}
+	return renderNonCloudStepPanelLines(inspection, panelWidth-dashboardPanelBorderRows)
+}
+
+func (m Model) dashboardSelectedEvent() core.UnifiedAgentEvent {
+	if len(m.history) == 0 {
+		return core.UnifiedAgentEvent{}
+	}
+	index := m.dashboardIdx
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(m.history) {
+		index = len(m.history) - 1
+	}
+	return m.history[index]
+}
+
+func renderCloudStepPanelLines(inspection core.StepInspectionReadModel, contentWidth int) []string {
+	event := inspection.Event
+	usage := event.Usage
+	modelName := usage.ModelName
+	if modelName == "" {
+		modelName = "unknown"
+	}
+	lines := []string{
+		TitleStyle.Render(fmt.Sprintf("STEP #%d · CLOUD GENERATION", event.StepIndex)),
+		formatDashboardMetadata("Agent / Model", fmt.Sprintf("[%s] %s", event.GetAgentRole(), modelName)),
+		formatDashboardMetadata("Status / Time", fmt.Sprintf("%s · %s", event.Status, formatDashboardTime(event))),
+	}
+	if usage.HasObservedContextTokens {
+		observed := formatTokShort(usage.ObservedContextTokens) + " Tokens"
+		if usage.HasContextLimit {
+			observed += fmt.Sprintf(" (%s limit)", formatTokShort(usage.ContextLimit))
+		}
+		lines = append(lines, formatDashboardMetadata("Observed Context", observed))
+	} else {
+		lines = append(lines, formatDashboardMetadata("Observed Context", "unavailable"))
+	}
+	lines = append(lines, "", TitleStyle.Render("REQUEST CONTEXT COMPOSITION"))
+	if inspection.RequestContext == nil {
+		return append(lines, "  Context evidence is unavailable for this cloud generation.")
+	}
+	composition := *inspection.RequestContext
+	lines = append(lines,
+		formatRequestContextSection("1. System Instruction", composition.SystemInstruction, composition.TotalVisibleTokens, ColorSecondary),
+		formatRequestContextSection("2. Tool Schemas", composition.ToolSchemas, composition.TotalVisibleTokens, ColorHighlight),
+		formatRequestContextSection("3. Conversation Context", composition.ConversationContext, composition.TotalVisibleTokens, ColorPrimary),
+		formatRequestContextSection("4. Active Input", composition.ActiveInput, composition.TotalVisibleTokens, ColorSuccess),
+		lipgloss.NewStyle().Foreground(ColorMuted).Render("  Visible text is locally estimated; provider context totals are separate."),
+	)
+	return lines
+}
+
+func renderNonCloudStepPanelLines(inspection core.StepInspectionReadModel, contentWidth int) []string {
+	event := inspection.Event
+	title := fmt.Sprintf("STEP #%d · %s", event.StepIndex, dashboardStepKindTitle(inspection.Kind))
+	lines := []string{
+		TitleStyle.Render(title),
+		formatDashboardMetadata("Event Type", string(event.Type)),
+		formatDashboardMetadata("Action", inspection.LocalAction),
+		formatDashboardMetadata("Status / Time", fmt.Sprintf("%s · %s", event.Status, formatDashboardTime(event))),
+	}
+	if inspection.Kind == core.DashboardStepLocal {
+		trigger := "unavailable"
+		if inspection.TriggeredCloudStep > 0 {
+			trigger = fmt.Sprintf("#%d", inspection.TriggeredCloudStep)
+		}
+		lines = append(lines, formatDashboardMetadata("Triggered Cloud Step", trigger))
+	} else if inspection.Kind == core.DashboardStepUser {
+		lines = append(lines, formatDashboardMetadata("Request Context", "not sent by a user-input record"))
+	} else if inspection.Kind == core.DashboardStepCheckpoint {
+		lines = append(lines, formatDashboardMetadata("Request Context", "not sent by a compaction record"))
+	}
+	previewWidth := contentWidth - dashboardMetadataLabelWidth - dashboardPanelBorderRows
+	if previewWidth < 20 {
+		previewWidth = 20
+	}
+	previewLines := wrapVisualLines(inspection.ResultPreview, previewWidth)
+	lines = append(lines, "", TitleStyle.Render("RESULT PREVIEW"))
+	for index, preview := range previewLines {
+		if index >= dashboardResultPreviewRows {
+			lines = append(lines, lipgloss.NewStyle().Foreground(ColorMuted).Render("  … inspect the step for full content"))
+			break
+		}
+		lines = append(lines, "  "+preview)
+	}
+	return lines
+}
+
+func dashboardStepKindTitle(kind core.DashboardStepKind) string {
+	switch kind {
+	case core.DashboardStepLocal:
+		return "LOCAL EXECUTION"
+	case core.DashboardStepUser:
+		return "USER INPUT"
+	case core.DashboardStepCheckpoint:
+		return "COMPACTION"
+	default:
+		return "SYSTEM EVENT"
+	}
+}
+
+func formatDashboardMetadata(label, value string) string {
+	return fmt.Sprintf("  %-*s %s", dashboardMetadataLabelWidth, label+":", value)
+}
+
+func formatDashboardTime(event core.UnifiedAgentEvent) string {
+	if event.Timestamp.IsZero() {
+		return "unavailable"
+	}
+	return event.Timestamp.Local().Format("2006-01-02 15:04:05")
+}
+
+func formatRequestContextSection(label string, section core.RequestContextSection, total int, color lipgloss.TerminalColor) string {
+	evidence := requestContextEvidenceLabel(section.Evidence)
+	if section.Evidence == core.ContextSectionUnavailable {
+		return fmt.Sprintf("  %-*s %-11s unavailable", dashboardContextLabelWidth, label, evidence)
+	}
+	percentage := zeroPercentage
+	if total > 0 {
+		percentage = float64(section.Tokens) / float64(total) * percentageScale
+	}
+	return fmt.Sprintf("  %-*s %-11s %*s Tokens (%*.1f%%) [%s]", dashboardContextLabelWidth, label, evidence, dashboardContextTokenWidth, formatTokShort(section.Tokens), dashboardContextPercentageWidth, percentage, renderVisibleContentBar(percentage, dashboardDefaultProgressBarBlocks, color))
+}
+
+func requestContextEvidenceLabel(evidence core.ContextSectionEvidence) string {
+	switch evidence {
+	case core.ContextSectionSnapshot:
+		return "[SNAPSHOT]"
+	case core.ContextSectionReconstructed:
+		return "[ESTIMATED]"
+	default:
+		return "[UNAVAILABLE]"
+	}
+}
+
+func renderFixedDashboardPanel(lines []string, panelWidth, outerHeight int) string {
+	contentRows := outerHeight - dashboardPanelBorderRows
+	contentWidth := panelWidth - dashboardPanelBorderRows
+	if contentRows < 1 {
+		contentRows = 1
+	}
+	if contentWidth < 1 {
+		contentWidth = 1
+	}
+	if len(lines) > contentRows {
+		lines = append([]string(nil), lines[:contentRows]...)
+		lines[contentRows-1] = lipgloss.NewStyle().Foreground(ColorMuted).Render("  …")
+	}
+	for len(lines) < contentRows {
+		lines = append(lines, "")
+	}
+	for index := range lines {
+		lines[index] = truncateVisualWidth(lines[index], contentWidth)
+	}
+	return PanelStyle.Width(panelWidth).Height(contentRows).Render(strings.Join(lines, "\n"))
+}
+*/
 
 func formatContextEstimateScope(estimate core.VisibleContextEvidenceEstimate) string {
 	if estimate.HasSnapshotGeneratedStep {
@@ -1180,10 +1766,13 @@ func formatShortCache(e core.UnifiedAgentEvent) string {
 	if !e.IsCloudStep() || !e.Usage.Available {
 		return ""
 	}
-	if e.Usage.HasCachedContentTokens {
-		return lipgloss.NewStyle().Foreground(ColorSuccess).Render(fmt.Sprintf("[CACHE %s]", formatTokShort(e.Usage.CachedContentTokens)))
+	if e.Usage.HasCachedInputTokens {
+		return lipgloss.NewStyle().Foreground(ColorSuccess).Render(fmt.Sprintf("[CACHE %s]", formatTokShort(e.Usage.CachedInputTokens)))
 	}
-	return lipgloss.NewStyle().Foreground(ColorMuted).Render("[CACHE 0 DEFAULT]")
+	if e.Usage.HasUncachedInputTokens {
+		return lipgloss.NewStyle().Foreground(ColorMuted).Render("[CACHE 0 INFERRED]")
+	}
+	return ""
 }
 
 func (m Model) formatHistoryCard(

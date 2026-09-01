@@ -8,7 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"heimdall/internal/adapters/antigravity"
+	"heimdall/internal/agent_adapters/antigravity"
 	"heimdall/internal/core"
 )
 
@@ -545,10 +545,10 @@ func TestHistoryFilteringAndStepSearch(t *testing.T) {
 	// Seed with distinct types and cache field observations.
 	m.history = []core.UnifiedAgentEvent{
 		{StepIndex: 1, Type: core.StepTypeUserInput, Summary: "User question"},
-		{StepIndex: 2, Type: core.StepTypeModelResponse, Usage: core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: 100, HasCachedContentTokens: true, CachedContentTokens: 85}, Summary: "Model plan"},
-		{StepIndex: 3, Type: core.StepTypeToolCall, Usage: core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: 100, HasCachedContentTokens: true, CachedContentTokens: 90}, Summary: "Run command"},
-		{StepIndex: 4, Type: core.StepTypeToolCall, Usage: core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: 100}, Summary: "Command result"},
-		{StepIndex: 14, Type: core.StepTypeToolCall, Usage: core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: 100, HasCachedContentTokens: true, CachedContentTokens: 95}, Summary: "Write file"},
+		{StepIndex: 2, Type: core.StepTypeModelResponse, Usage: core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: 100, HasUncachedInputTokens: true, UncachedInputTokens: 15, HasCachedInputTokens: true, CachedInputTokens: 85}, Summary: "Model plan"},
+		{StepIndex: 3, Type: core.StepTypeToolCall, Usage: core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: 100, HasUncachedInputTokens: true, UncachedInputTokens: 10, HasCachedInputTokens: true, CachedInputTokens: 90}, Summary: "Run command"},
+		{StepIndex: 4, Type: core.StepTypeToolCall, Usage: core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: 100, HasUncachedInputTokens: true, UncachedInputTokens: 100}, Summary: "Command result"},
+		{StepIndex: 14, Type: core.StepTypeToolCall, Usage: core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: 100, HasUncachedInputTokens: true, UncachedInputTokens: 5, HasCachedInputTokens: true, CachedInputTokens: 95}, Summary: "Write file"},
 	}
 
 	// 1. Initial State: All 5 events and [T:All] [C:All] rendered
@@ -715,7 +715,7 @@ func TestHistoryThreePanelSplitAndZeroTruncation(t *testing.T) {
 			Summary:    "Model response with tool call",
 			RawContent: "Let me check the tools.",
 			Usage: core.PersistedUsageObservation{
-				Available: true, ModelName: "gemini-3.7-flash", HasObservedContextTokens: true, ObservedContextTokens: 151479, HasCachedContentTokens: true, CachedContentTokens: 150866,
+				Available: true, ModelName: "gemini-3.7-flash", HasObservedContextTokens: true, ObservedContextTokens: 151479, HasCachedInputTokens: true, CachedInputTokens: 150866,
 			},
 		},
 	}
@@ -1011,7 +1011,7 @@ func TestDirectSessionSwitchMsgState(t *testing.T) {
 			Summary:   "Hello! How can I help you?",
 			Timestamp: time.Now(),
 			Usage: core.PersistedUsageObservation{
-				Available: true, HasObservedContextTokens: true, ObservedContextTokens: 1500, HasCachedContentTokens: true, CachedContentTokens: 1200,
+				Available: true, HasObservedContextTokens: true, ObservedContextTokens: 1500, HasCachedInputTokens: true, CachedInputTokens: 1200,
 			},
 		},
 	}
@@ -1079,7 +1079,7 @@ func TestDashboardKpiRendering(t *testing.T) {
 		Scope:     core.ScopeCloudInference,
 		Type:      core.StepTypeModelResponse,
 		Usage: core.PersistedUsageObservation{
-			Available: true, ModelName: "gemini-3.7-flash", HasObservedContextTokens: true, ObservedContextTokens: 120000, HasMeteredInputTokens: true, MeteredInputTokens: 20000, HasCachedContentTokens: true, CachedContentTokens: 100000,
+			Available: true, ModelName: "gemini-3.7-flash", HasObservedContextTokens: true, ObservedContextTokens: 120000, HasUncachedInputTokens: true, UncachedInputTokens: 20000, HasCachedInputTokens: true, CachedInputTokens: 100000,
 		},
 	})
 	m.history = append(m.history, core.UnifiedAgentEvent{
@@ -1087,10 +1087,11 @@ func TestDashboardKpiRendering(t *testing.T) {
 		Scope:     core.ScopeCloudInference,
 		Type:      core.StepTypeModelResponse,
 		Usage: core.PersistedUsageObservation{
-			Available: true, ModelName: "claude-3.7-sonnet", HasObservedContextTokens: true, ObservedContextTokens: 80000, HasMeteredInputTokens: true, MeteredInputTokens: 10000, HasCachedContentTokens: true, CachedContentTokens: 70000,
+			Available: true, ModelName: "claude-3.7-sonnet", HasObservedContextTokens: true, ObservedContextTokens: 80000, HasUncachedInputTokens: true, UncachedInputTokens: 10000, HasCachedInputTokens: true, CachedInputTokens: 70000,
 		},
 	})
 	m.latestEvent = m.history[1]
+	attachDashboardReadModel(&m)
 
 	m.activeView = ViewDashboard
 	viewStr := m.View()
@@ -1118,10 +1119,11 @@ func TestDashboardHalfWidthResponsiveRendering(t *testing.T) {
 		Scope:     core.ScopeCloudInference,
 		Type:      core.StepTypeModelResponse,
 		Usage: core.PersistedUsageObservation{
-			Available: true, ModelName: "gemini-3.7-flash", HasObservedContextTokens: true, ObservedContextTokens: 120000, HasMeteredInputTokens: true, MeteredInputTokens: 20000, HasCachedContentTokens: true, CachedContentTokens: 100000,
+			Available: true, ModelName: "gemini-3.7-flash", HasObservedContextTokens: true, ObservedContextTokens: 120000, HasUncachedInputTokens: true, UncachedInputTokens: 20000, HasCachedInputTokens: true, CachedInputTokens: 100000,
 		},
 	})
 	m.latestEvent = m.history[0]
+	attachDashboardReadModel(&m)
 
 	m.activeView = ViewDashboard
 	viewStr := m.View()
@@ -1155,10 +1157,10 @@ func TestCacheFilterStrictCloudIsolation(t *testing.T) {
 
 	m.history = []core.UnifiedAgentEvent{
 		{StepIndex: 0, Type: core.StepTypeUserInput, Summary: "User prompt"},
-		{StepIndex: 1, Type: core.StepTypeModelResponse, Usage: core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: 1000, HasCachedContentTokens: true, CachedContentTokens: 900}, Summary: "Model Response 1"},
+		{StepIndex: 1, Type: core.StepTypeModelResponse, Usage: core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: 1000, HasUncachedInputTokens: true, UncachedInputTokens: 100, HasCachedInputTokens: true, CachedInputTokens: 900}, Summary: "Model Response 1"},
 		{StepIndex: 2, Type: core.StepTypeRunCommand, Summary: "cat file.go"},
 		{StepIndex: 3, Type: core.StepTypeCheckpoint, Summary: "Checkpoint 1"},
-		{StepIndex: 4, Type: core.StepTypeModelResponse, Usage: core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: 1000}, Summary: "Model Response 2"},
+		{StepIndex: 4, Type: core.StepTypeModelResponse, Usage: core.PersistedUsageObservation{Available: true, HasObservedContextTokens: true, ObservedContextTokens: 1000, HasUncachedInputTokens: true, UncachedInputTokens: 100}, Summary: "Model Response 2"},
 	}
 
 	// 1. Omitted Filter: should only match Step 4.

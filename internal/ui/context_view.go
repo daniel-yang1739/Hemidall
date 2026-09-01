@@ -90,20 +90,7 @@ func (m Model) renderContextTree(payload core.AgentContextPayload, width, height
 	totalContext := lipgloss.NewStyle().Foreground(ColorHighlight).Render(fmt.Sprintf(" [Total: %s Tok]", formatNumber(payload.TotalTokens)))
 
 	var treeLines []string
-	systemTokens := core.CountTokens(payload.SystemPrompt)
-	if systemTokens == 0 {
-		systemTokens = core.CountTokens(payload.IdentityPrompt) + core.CountTokens(payload.ConstitutionDoc)
-	}
-	toolsTokens := 0
-	for _, tool := range payload.NativeTools {
-		toolsTokens += core.CountTokens(tool.RawSchema)
-	}
-	toolsTokens += core.CountTokens(payload.SkillsSection)
-	historyTokens := core.CountTokens(payload.CheckpointSummary)
-	for _, event := range payload.ActiveHistoryTurns {
-		historyTokens += core.CountTokens(event.RawContent)
-	}
-	inboundTokens := core.CountTokens(payload.LatestPrompt) + core.CountTokens(payload.StagedBuffers)
+	systemTokens, toolsTokens, historyTokens, inboundTokens := m.contextTreeTokenCounts(payload)
 	treeLines = append(treeLines, title)
 	treeLines = append(treeLines, totalContext)
 	treeLines = append(treeLines, "")
@@ -151,6 +138,13 @@ func (m Model) renderContextTree(payload core.AgentContextPayload, width, height
 
 	content := strings.Join(treeLines, "\n")
 	return boxStyle.Render(content)
+}
+
+func (m Model) contextTreeTokenCounts(payload core.AgentContextPayload) (int, int, int, int) {
+	if m.contextEstimateHistoryCount == len(m.history) && m.contextEstimate.Available {
+		return m.contextEstimate.SystemTokens, m.contextEstimate.ToolsTokens, m.contextEstimate.HistoryTokens, m.contextEstimate.InboundTokens + m.contextEstimate.ToolBufferTokens
+	}
+	return 0, 0, 0, 0
 }
 
 func currentHistoryRecords(payload core.AgentContextPayload) []core.PersistedContextRecord {

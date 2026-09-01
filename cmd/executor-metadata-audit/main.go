@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"heimdall/internal/adapters/antigravity"
+	"heimdall/internal/agent_adapters/antigravity/forensics"
 )
 
 const (
@@ -26,7 +26,7 @@ func main() {
 	executorIndex := flag.Int("idx", executorAuditDefaultIndex, "executor_metadata index for printable-string detail")
 	flag.Parse()
 
-	audit, auditErr := antigravity.ReadExecutorMetadataAudit(*databasePath)
+	audit, auditErr := forensics.ReadExecutorMetadataAudit(*databasePath)
 	if auditErr != nil {
 		fmt.Fprintln(os.Stderr, auditErr)
 		os.Exit(1)
@@ -44,7 +44,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "executor_metadata idx %d was not found\n", *executorIndex)
 		os.Exit(1)
 	}
-	printableStrings, stringsErr := antigravity.ReadExecutorMetadataPrintableStrings(*databasePath, *executorIndex)
+	printableStrings, stringsErr := forensics.ReadExecutorMetadataPrintableStrings(*databasePath, *executorIndex)
 	if stringsErr != nil {
 		fmt.Fprintln(os.Stderr, stringsErr)
 		os.Exit(1)
@@ -55,7 +55,7 @@ func main() {
 	}
 }
 
-func writeExecutorMetadataAudit(output io.Writer, audit antigravity.ExecutorMetadataAudit) error {
+func writeExecutorMetadataAudit(output io.Writer, audit forensics.ExecutorMetadataAudit) error {
 	writer := tabwriter.NewWriter(output, executorAuditTabMinimumWidth, executorAuditTabWidth, executorAuditTabPadding, executorAuditTabPadCharacter, executorAuditTabFlags)
 	if _, err := fmt.Fprintln(writer, "EXECUTOR IDX\tOBSERVED UUIDS\tMODEL\tBYTES"); err != nil {
 		return err
@@ -71,7 +71,7 @@ func writeExecutorMetadataAudit(output io.Writer, audit antigravity.ExecutorMeta
 	return writer.Flush()
 }
 
-func writeExecutorMetadataDetail(output io.Writer, row antigravity.ExecutorMetadataAuditRow, printableStrings []string) error {
+func writeExecutorMetadataDetail(output io.Writer, row forensics.ExecutorMetadataAuditRow, printableStrings []string) error {
 	if _, err := fmt.Fprintf(output, "EXECUTOR METADATA IDX %d\n", row.Index); err != nil {
 		return err
 	}
@@ -89,13 +89,13 @@ func writeExecutorMetadataDetail(output io.Writer, row antigravity.ExecutorMetad
 	return nil
 }
 
-func findExecutorMetadataAuditRow(rows []antigravity.ExecutorMetadataAuditRow, targetIndex int) (antigravity.ExecutorMetadataAuditRow, bool) {
+func findExecutorMetadataAuditRow(rows []forensics.ExecutorMetadataAuditRow, targetIndex int) (forensics.ExecutorMetadataAuditRow, bool) {
 	for _, row := range rows {
 		if row.Index == targetIndex {
 			return row, true
 		}
 	}
-	return antigravity.ExecutorMetadataAuditRow{}, false
+	return forensics.ExecutorMetadataAuditRow{}, false
 }
 
 func executorAuditDisplayValue(value string) string {

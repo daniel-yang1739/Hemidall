@@ -8,16 +8,25 @@ import (
 	"io"
 	"os"
 	"strings"
+	"text/tabwriter"
 	"unicode"
 	"unicode/utf8"
 
 	_ "modernc.org/sqlite"
+
+	"heimdall/internal/agent_adapters/antigravity/wire"
 )
 
 const (
 	defaultSampleLimit       = 3
 	maximumDecodeDepth       = 4
 	maximumPrintableTextSize = 240
+	profileTabMinimumWidth   = 0
+	profileTabWidth          = 2
+	profileTabPadding        = 1
+	profileTabPadCharacter   = ' '
+	profileTabFlags          = 0
+	profileMissingValue      = "-"
 	wireTypeVarint           = 0
 	wireTypeFixed64          = 1
 	wireTypeBytes            = 2
@@ -27,13 +36,6 @@ const (
 type blobSource struct {
 	table  string
 	column string
-}
-
-type wireField struct {
-	number   int
-	wireType int
-	integer  uint64
-	bytes    []byte
 }
 
 var blobSources = []blobSource{
@@ -51,6 +53,8 @@ var blobSources = []blobSource{
 func main() {
 	databasePath := flag.String("db", "", "read-only path to an Antigravity conversation SQLite database")
 	sampleLimit := flag.Int("limit", defaultSampleLimit, "representative non-empty rows per BLOB column")
+	generationIndex := flag.Int("gen-idx", -1, "inspect one gen_metadata.idx row instead of representative samples")
+	usageProfile := flag.Bool("usage-profile", false, "list raw scalar paths from every gen_metadata usage-like envelope")
 	flag.Parse()
 
 	if *databasePath == "" {
@@ -68,11 +72,178 @@ func main() {
 		os.Exit(1)
 	}
 	defer database.Close()
+	if *generationIndex >= 0 {
+		if auditErr := writeGenerationAudit(os.Stdout, database, *generationIndex); auditErr != nil {
+			fmt.Fprintln(os.Stderr, auditErr)
+			os.Exit(1)
+		}
+		return
+	}
+	if *usageProfile {
+		if auditErr := writeUsageProfile(os.Stdout, database); auditErr != nil {
+			fmt.Fprintln(os.Stderr, auditErr)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if auditErr := writeAudit(os.Stdout, database, *sampleLimit); auditErr != nil {
 		fmt.Fprintln(os.Stderr, auditErr)
 		os.Exit(1)
 	}
+}
+
+type rawUsageProfile struct {
+	generationIndex int
+	modelID         string
+	lastStepIndex   string
+	usageScalars    map[int]uint64
+	contextScalars  map[int]uint64
+}
+
+func writeUsageProfile(output io.Writer, database *sql.DB) error {
+	rows, err := database.Query("SELECT idx, data FROM gen_metadata ORDER BY idx ASC")
+	if err != nil {
+		return fmt.Errorf("query generation usage profile: %w", err)
+	}
+	defer rows.Close()
+	writer := tabwriter.NewWriter(output, profileTabMinimumWidth, profileTabWidth, profileTabPadding, profileTabPadCharacter, profileTabFlags)
+	if _, err := fmt.Fprintln(writer, "GEN IDX\tLAST STEP\tMODEL\t1.4.1\t1.4.2\t1.4.3\t1.4.4\t1.4.5\t1.4.6\t1.4.8\t1.4.10\t1.9.10.1\t1.9.10.4"); err != nil {
+		return err
+	}
+	for rows.Next() {
+		var generationIndex int
+		var data []byte
+		if err := rows.Scan(&generationIndex, &data); err != nil {
+			return fmt.Errorf("scan generation usage profile: %w", err)
+		}
+		profile, found := decodeRawUsageProfile(generationIndex, data)
+		if !found {
+			continue
+		}
+		if _, err := fmt.Fprintf(writer, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			profile.generationIndex,
+			displayProfileString(profile.lastStepIndex),
+			displayProfileString(profile.modelID),
+			displayProfileScalar(profile.usageScalars, 1),
+			displayProfileScalar(profile.usageScalars, 2),
+			displayProfileScalar(profile.usageScalars, 3),
+			displayProfileScalar(profile.usageScalars, 4),
+			displayProfileScalar(profile.usageScalars, 5),
+			displayProfileScalar(profile.usageScalars, 6),
+			displayProfileScalar(profile.usageScalars, 8),
+			displayProfileScalar(profile.usageScalars, 10),
+			displayProfileScalar(profile.contextScalars, 1),
+			displayProfileScalar(profile.contextScalars, 4),
+		); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate generation usage profile: %w", err)
+	}
+	return writer.Flush()
+}
+
+func decodeRawUsageProfile(generationIndex int, data []byte) (rawUsageProfile, bool) {
+	root, err := wire.Decode(data)
+	if err != nil {
+		return rawUsageProfile{}, false
+	}
+	metadata, found := nestedFields(root, 1)
+	if !found {
+		return rawUsageProfile{}, false
+	}
+	profile := rawUsageProfile{
+		generationIndex: generationIndex,
+		modelID:         string(wire.FirstBytes(metadata, 19)),
+		lastStepIndex:   attributeString(metadata, "last_step_index"),
+		usageScalars:    scalarFields(metadata, 4),
+		contextScalars:  nestedScalarFields(metadata, 9, 10),
+	}
+	return profile, len(profile.usageScalars) > 0 || len(profile.contextScalars) > 0
+}
+
+func nestedFields(fields []wire.Field, number int) ([]wire.Field, bool) {
+	data := wire.FirstBytes(fields, number)
+	if len(data) == 0 {
+		return nil, false
+	}
+	nested, err := wire.Decode(data)
+	if err != nil {
+		return nil, false
+	}
+	return nested, true
+}
+
+func nestedScalarFields(fields []wire.Field, numbers ...int) map[int]uint64 {
+	current := fields
+	for _, number := range numbers {
+		nested, found := nestedFields(current, number)
+		if !found {
+			return map[int]uint64{}
+		}
+		current = nested
+	}
+	return scalarFieldMap(current)
+}
+
+func scalarFields(fields []wire.Field, number int) map[int]uint64 {
+	nested, found := nestedFields(fields, number)
+	if !found {
+		return map[int]uint64{}
+	}
+	return scalarFieldMap(nested)
+}
+
+func scalarFieldMap(fields []wire.Field) map[int]uint64 {
+	values := make(map[int]uint64)
+	for _, field := range fields {
+		if field.WireType == wireTypeVarint {
+			values[field.Number] = field.Integer
+		}
+	}
+	return values
+}
+
+func attributeString(fields []wire.Field, key string) string {
+	for _, field := range fields {
+		if field.Number != 20 {
+			continue
+		}
+		entry, err := wire.Decode(field.Bytes)
+		if err != nil || string(wire.FirstBytes(entry, 1)) != key {
+			continue
+		}
+		return string(wire.FirstBytes(entry, 2))
+	}
+	return ""
+}
+
+func displayProfileString(value string) string {
+	if value == "" {
+		return profileMissingValue
+	}
+	return value
+}
+
+func displayProfileScalar(values map[int]uint64, number int) string {
+	value, found := values[number]
+	if !found {
+		return profileMissingValue
+	}
+	return fmt.Sprintf("%d", value)
+}
+
+func writeGenerationAudit(output io.Writer, database *sql.DB, generationIndex int) error {
+	var data []byte
+	if err := database.QueryRow("SELECT data FROM gen_metadata WHERE idx = ?", generationIndex).Scan(&data); err != nil {
+		return fmt.Errorf("read gen_metadata.idx=%d: %w", generationIndex, err)
+	}
+	if _, err := fmt.Fprintf(output, "## gen_metadata.idx=%d BYTES=%d\n", generationIndex, len(data)); err != nil {
+		return err
+	}
+	return writeWireFields(output, data, 0)
 }
 
 func writeAudit(output io.Writer, database *sql.DB, sampleLimit int) error {
@@ -114,30 +285,30 @@ func writeSourceAudit(output io.Writer, database *sql.DB, source blobSource, sam
 }
 
 func writeWireFields(output io.Writer, data []byte, depth int) error {
-	fields, decodeErr := decodeFields(data)
+	fields, decodeErr := wire.Decode(data)
 	if decodeErr != nil {
 		return decodeErr
 	}
 	for _, field := range fields {
 		indent := strings.Repeat("  ", depth)
-		switch field.wireType {
+		switch field.WireType {
 		case wireTypeVarint:
-			if _, err := fmt.Fprintf(output, "%sFIELD=%d WIRE=varint VALUE=%d\n", indent, field.number, field.integer); err != nil {
+			if _, err := fmt.Fprintf(output, "%sFIELD=%d WIRE=varint VALUE=%d\n", indent, field.Number, field.Integer); err != nil {
 				return err
 			}
 		case wireTypeFixed64:
-			if _, err := fmt.Fprintf(output, "%sFIELD=%d WIRE=fixed64 HEX=%s\n", indent, field.number, hex.EncodeToString(field.bytes)); err != nil {
+			if _, err := fmt.Fprintf(output, "%sFIELD=%d WIRE=fixed64 HEX=%s\n", indent, field.Number, hex.EncodeToString(field.Bytes)); err != nil {
 				return err
 			}
 		case wireTypeFixed32:
-			if _, err := fmt.Fprintf(output, "%sFIELD=%d WIRE=fixed32 HEX=%s\n", indent, field.number, hex.EncodeToString(field.bytes)); err != nil {
+			if _, err := fmt.Fprintf(output, "%sFIELD=%d WIRE=fixed32 HEX=%s\n", indent, field.Number, hex.EncodeToString(field.Bytes)); err != nil {
 				return err
 			}
 		case wireTypeBytes:
-			if _, err := fmt.Fprintf(output, "%sFIELD=%d WIRE=bytes LEN=%d HEX_PREFIX=%s", indent, field.number, len(field.bytes), hex.EncodeToString(field.bytes[:min(len(field.bytes), maximumPrintableTextSize)])); err != nil {
+			if _, err := fmt.Fprintf(output, "%sFIELD=%d WIRE=bytes LEN=%d HEX_PREFIX=%s", indent, field.Number, len(field.Bytes), hex.EncodeToString(field.Bytes[:min(len(field.Bytes), maximumPrintableTextSize)])); err != nil {
 				return err
 			}
-			if text := printableText(field.bytes); text != "" {
+			if text := printableText(field.Bytes); text != "" {
 				if _, err := fmt.Fprintf(output, " TEXT=%q", text); err != nil {
 					return err
 				}
@@ -145,12 +316,12 @@ func writeWireFields(output io.Writer, data []byte, depth int) error {
 			if _, err := fmt.Fprintln(output); err != nil {
 				return err
 			}
-			if depth < maximumDecodeDepth && printableText(field.bytes) == "" {
-				if nested, nestedErr := decodeFields(field.bytes); nestedErr == nil && len(nested) > 0 {
+			if depth < maximumDecodeDepth && printableText(field.Bytes) == "" {
+				if nested, nestedErr := wire.Decode(field.Bytes); nestedErr == nil && len(nested) > 0 {
 					if _, err := fmt.Fprintf(output, "%sNESTED_MESSAGE\n", indent); err != nil {
 						return err
 					}
-					if err := writeWireFields(output, field.bytes, depth+1); err != nil {
+					if err := writeWireFields(output, field.Bytes, depth+1); err != nil {
 						return err
 					}
 				}
@@ -158,67 +329,6 @@ func writeWireFields(output io.Writer, data []byte, depth int) error {
 		}
 	}
 	return nil
-}
-
-func decodeFields(data []byte) ([]wireField, error) {
-	fields := make([]wireField, 0)
-	for offset := 0; offset < len(data); {
-		tag, consumed := readVarint(data[offset:])
-		if consumed == 0 || tag>>3 == 0 {
-			return nil, fmt.Errorf("invalid tag at byte %d", offset)
-		}
-		offset += consumed
-		field := wireField{number: int(tag >> 3), wireType: int(tag & 7)}
-		switch field.wireType {
-		case wireTypeVarint:
-			value, valueBytes := readVarint(data[offset:])
-			if valueBytes == 0 {
-				return nil, fmt.Errorf("invalid varint at byte %d", offset)
-			}
-			field.integer = value
-			offset += valueBytes
-		case wireTypeFixed64:
-			if offset+8 > len(data) {
-				return nil, fmt.Errorf("truncated fixed64 at byte %d", offset)
-			}
-			field.bytes = data[offset : offset+8]
-			offset += 8
-		case wireTypeBytes:
-			length, lengthBytes := readVarint(data[offset:])
-			if lengthBytes == 0 || length > uint64(len(data)-offset-lengthBytes) {
-				return nil, fmt.Errorf("invalid byte length at byte %d", offset)
-			}
-			offset += lengthBytes
-			field.bytes = data[offset : offset+int(length)]
-			offset += int(length)
-		case wireTypeFixed32:
-			if offset+4 > len(data) {
-				return nil, fmt.Errorf("truncated fixed32 at byte %d", offset)
-			}
-			field.bytes = data[offset : offset+4]
-			offset += 4
-		default:
-			return nil, fmt.Errorf("unsupported wire type %d", field.wireType)
-		}
-		fields = append(fields, field)
-	}
-	return fields, nil
-}
-
-func readVarint(data []byte) (uint64, int) {
-	var value uint64
-	var shift uint
-	for index, byteValue := range data {
-		value |= uint64(byteValue&0x7f) << shift
-		if byteValue&0x80 == 0 {
-			return value, index + 1
-		}
-		shift += 7
-		if shift >= 64 {
-			return 0, 0
-		}
-	}
-	return 0, 0
 }
 
 func printableText(data []byte) string {

@@ -4,7 +4,7 @@ import "sort"
 
 const cacheSharePercentageScale = 100.0
 
-// ComputeSessionAggregateMetrics groups observed metered input and cache-content
+// ComputeSessionAggregateMetrics groups schema-inferred uncached and cached input
 // fields by recorded model name. Both fields come from the same persisted usage
 // message. ObservedContextTokens remains a separate context-state diagnostic.
 func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregateMetrics {
@@ -12,7 +12,7 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 
 	for _, event := range history {
 		usage := event.Usage
-		if !usage.Available || !usage.HasMeteredInputTokens {
+		if !usage.Available || !usage.HasUncachedInputTokens {
 			continue
 		}
 		modelName := usage.ModelName
@@ -26,15 +26,15 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 		}
 
 		stats.TurnCount++
-		stats.MeteredInputTokenSum += usage.MeteredInputTokens
-		stats.TotalProcessedTokenSum += usage.MeteredInputTokens
-		if usage.HasCachedContentTokens {
+		stats.UncachedInputTokenSum += usage.UncachedInputTokens
+		stats.TotalProcessedTokenSum += usage.UncachedInputTokens
+		if usage.HasCachedInputTokens {
 			stats.ExplicitCacheValueTurnCount++
-			stats.CachedContentTokenSum += usage.CachedContentTokens
+			stats.CachedInputTokenSum += usage.CachedInputTokens
 		} else {
-			stats.DefaultZeroCacheTurnCount++
+			stats.InferredZeroCacheTurnCount++
 		}
-		stats.TotalProcessedTokenSum += usage.CachedContentTokens
+		stats.TotalProcessedTokenSum += usage.CachedInputTokens
 		if usage.HasObservedContextTokens {
 			stats.ObservedContextValueTurnCount++
 			stats.ObservedContextTokenSum += usage.ObservedContextTokens
@@ -45,30 +45,40 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 	total := ModelTokenStats{ModelName: "TOTAL OBSERVED"}
 	for _, stats := range byModel {
 		if stats.TotalProcessedTokenSum > 0 {
-			stats.CacheContentSharePercent = float64(stats.CachedContentTokenSum) / float64(stats.TotalProcessedTokenSum) * cacheSharePercentageScale
+			stats.CacheInputSharePercent = float64(stats.CachedInputTokenSum) / float64(stats.TotalProcessedTokenSum) * cacheSharePercentageScale
 		}
 		if projection, available := ProjectCacheAdjustedInput(*stats); available {
 			stats.EffectiveInputTokenSum = projection.EffectiveInputTokens
 			stats.EffectiveProjectionTurnCount = stats.TurnCount
+			stats.CachedSavedTokenSum = (float64(stats.TotalProcessedTokenSum) - projection.EffectiveInputTokens) * pricingSavingsMultiplier(stats.ModelName)
 		}
 		total.TurnCount += stats.TurnCount
-		total.MeteredInputTokenSum += stats.MeteredInputTokenSum
-		total.CachedContentTokenSum += stats.CachedContentTokenSum
+		total.UncachedInputTokenSum += stats.UncachedInputTokenSum
+		total.CachedInputTokenSum += stats.CachedInputTokenSum
 		total.TotalProcessedTokenSum += stats.TotalProcessedTokenSum
 		total.ExplicitCacheValueTurnCount += stats.ExplicitCacheValueTurnCount
-		total.DefaultZeroCacheTurnCount += stats.DefaultZeroCacheTurnCount
+		total.InferredZeroCacheTurnCount += stats.InferredZeroCacheTurnCount
 		total.EffectiveInputTokenSum += stats.EffectiveInputTokenSum
 		total.EffectiveProjectionTurnCount += stats.EffectiveProjectionTurnCount
+		total.CachedSavedTokenSum += stats.CachedSavedTokenSum
 		total.ObservedContextTokenSum += stats.ObservedContextTokenSum
 		total.ObservedContextValueTurnCount += stats.ObservedContextValueTurnCount
 		models = append(models, *stats)
 	}
 	if total.TotalProcessedTokenSum > 0 {
-		total.CacheContentSharePercent = float64(total.CachedContentTokenSum) / float64(total.TotalProcessedTokenSum) * cacheSharePercentageScale
+		total.CacheInputSharePercent = float64(total.CachedInputTokenSum) / float64(total.TotalProcessedTokenSum) * cacheSharePercentageScale
 	}
 
 	sort.Slice(models, func(i, j int) bool {
 		return models[i].TotalProcessedTokenSum > models[j].TotalProcessedTokenSum
 	})
 	return SessionAggregateMetrics{TotalStats: total, ModelStats: models}
+}
+
+func pricingSavingsMultiplier(modelID string) float64 {
+	spec, found := ResolveModelPricing(modelID)
+	if !found {
+		return 0
+	}
+	return spec.CachedSavingsMultiplier
 }
