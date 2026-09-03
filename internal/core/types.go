@@ -72,6 +72,13 @@ type PersistedUsageObservation struct {
 	CachedInputTokens        int  `json:"cached_input_tokens"`
 	HasContextLimit          bool `json:"has_context_limit"`
 	ContextLimit             int  `json:"context_limit"`
+
+	ThinkingOutputTokens int    `json:"thinking_output_tokens,omitempty"`
+	OutputContentTokens  int    `json:"output_content_tokens,omitempty"`
+	TotalTokens          int    `json:"total_tokens,omitempty"`
+	TimeToFirstTokenMs   int64  `json:"time_to_first_token_ms,omitempty"`
+	StreamingDurationMs  int64  `json:"streaming_duration_ms,omitempty"`
+	UpstreamRequestID    string `json:"upstream_request_id,omitempty"`
 }
 
 // StepScope defines the observed origin category of an agent event.

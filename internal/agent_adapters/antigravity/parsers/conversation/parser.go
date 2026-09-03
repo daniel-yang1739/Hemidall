@@ -14,31 +14,32 @@ import (
 )
 
 const (
-	generationRowsQuery           = "SELECT idx, data FROM gen_metadata ORDER BY idx ASC"
-	rootFieldNumber               = 1
-	modelFieldNumber              = 19
-	attributesFieldNumber         = 20
-	mapKeyFieldNumber             = 1
-	mapValueFieldNumber           = 2
-	contextUsageFieldNumber       = 9
-	contextUsageDetailFieldNumber = 10
-	inputUsageFieldNumber         = 4
-	contextTokenFieldNumber       = 1
-	uncachedInputFieldNumber      = 2
-	cachedInputFieldNumber        = 5
-	contextLimitFieldNumber       = 4
-	generatedStepOffset           = 1
-	modelEnumKey                  = "model_enum"
-	lastStepIndexKey              = "last_step_index"
-	lastExecutionIDKey            = "last_execution_id"
-	executorMetadataTable         = "executor_metadata"
-	executorMetadataTableQuery    = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'executor_metadata')"
-	executorMetadataRowsQuery     = "SELECT data FROM executor_metadata ORDER BY idx ASC"
-	executionIDLength             = 36
-	executionIDFirstHyphen        = 8
-	executionIDSecondHyphen       = 13
-	executionIDThirdHyphen        = 18
-	executionIDFourthHyphen       = 23
+	generationRowsQuery            = "SELECT idx, data FROM gen_metadata ORDER BY idx ASC"
+	generationIncrementalRowsQuery = "SELECT idx, data FROM gen_metadata WHERE idx > ? ORDER BY idx ASC"
+	rootFieldNumber                = 1
+	modelFieldNumber               = 19
+	attributesFieldNumber          = 20
+	mapKeyFieldNumber              = 1
+	mapValueFieldNumber            = 2
+	contextUsageFieldNumber        = 9
+	contextUsageDetailFieldNumber  = 10
+	inputUsageFieldNumber          = 4
+	contextTokenFieldNumber        = 1
+	uncachedInputFieldNumber       = 2
+	cachedInputFieldNumber         = 5
+	contextLimitFieldNumber        = 4
+	generatedStepOffset            = 1
+	modelEnumKey                   = "model_enum"
+	lastStepIndexKey               = "last_step_index"
+	lastExecutionIDKey             = "last_execution_id"
+	executorMetadataTable          = "executor_metadata"
+	executorMetadataTableQuery     = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'executor_metadata')"
+	executorMetadataRowsQuery      = "SELECT data FROM executor_metadata ORDER BY idx ASC"
+	executionIDLength              = 36
+	executionIDFirstHyphen         = 8
+	executionIDSecondHyphen        = 13
+	executionIDThirdHyphen         = 18
+	executionIDFourthHyphen        = 23
 )
 
 var (
@@ -62,6 +63,25 @@ func (Parser) ParseDatabase(databasePath string, source agents.SourceRef) ([]age
 		return nil, nil, fmt.Errorf("query generation metadata: %w", err)
 	}
 	defer rows.Close()
+	return parseDatabaseRows(database, rows, source)
+}
+
+// ParseDatabaseIncremental opens the database read-only and returns only generations with idx > afterIndex.
+func (Parser) ParseDatabaseIncremental(databasePath string, source agents.SourceRef, afterIndex int) ([]agents.Generation, []error, error) {
+	database, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=ro", databasePath))
+	if err != nil {
+		return nil, nil, fmt.Errorf("open conversation database: %w", err)
+	}
+	defer database.Close()
+	rows, err := database.Query(generationIncrementalRowsQuery, afterIndex)
+	if err != nil {
+		return nil, nil, fmt.Errorf("query incremental generation metadata: %w", err)
+	}
+	defer rows.Close()
+	return parseDatabaseRows(database, rows, source)
+}
+
+func parseDatabaseRows(database *sql.DB, rows *sql.Rows, source agents.SourceRef) ([]agents.Generation, []error, error) {
 	metadata := make([]generationMetadata, 0)
 	diagnostics := make([]error, 0)
 	for rows.Next() {
@@ -311,11 +331,49 @@ func decodeUsage(fields []wire.Field) agents.UsageObservation {
 	if inputUsageFound {
 		uncachedInput, inputObserved := wire.Varint(inputUsage, uncachedInputFieldNumber)
 		cachedInput, cacheObserved := wire.Varint(inputUsage, cachedInputFieldNumber)
+		thinkingOutput, thinkingObserved := wire.Varint(inputUsage, 3)
+		outputContent, outputObserved := wire.Varint(inputUsage, 9)
+		reqIDBytes := wire.FirstBytes(inputUsage, 11)
+
 		usage.UncachedInputTokens = int(uncachedInput)
 		usage.HasUncachedInputTokens = inputObserved
 		usage.CachedInputTokens = int(cachedInput)
 		usage.HasCachedInputTokens = cacheObserved
+		if thinkingObserved {
+			usage.ThinkingOutputTokens = int(thinkingOutput)
+		}
+		if outputObserved {
+			usage.OutputContentTokens = int(outputContent)
+		}
+		if len(reqIDBytes) > 0 {
+			usage.UpstreamRequestID = string(reqIDBytes)
+		}
 	}
+
+	// Authoritative input calculation:
+	// ObservedContextTokens is the true empirical prompt context: CachedInputTokens + UncachedInputTokens
+	if usage.UncachedInputTokens > 0 || usage.CachedInputTokens > 0 {
+		usage.ObservedContextTokens = usage.UncachedInputTokens + usage.CachedInputTokens
+		usage.HasObservedContextTokens = true
+	}
+
+	// Decode TTFT (F11)
+	if ttftFields, found := nested(fields, 11); found {
+		sec, _ := wire.Varint(ttftFields, 1)
+		nanos, _ := wire.Varint(ttftFields, 2)
+		usage.TimeToFirstTokenMs = int64(sec*1000 + nanos/1_000_000)
+	}
+
+	// Decode Streaming Duration (F12)
+	if durFields, found := nested(fields, 12); found {
+		sec, _ := wire.Varint(durFields, 1)
+		nanos, _ := wire.Varint(durFields, 2)
+		usage.StreamingDurationMs = int64(sec*1000 + nanos/1_000_000)
+	}
+
+	// Calculate TotalTokens = ObservedContextTokens (Input) + OutputTokens
+	outputTokens := usage.ThinkingOutputTokens + usage.OutputContentTokens
+	usage.TotalTokens = usage.ObservedContextTokens + outputTokens
 	return usage
 }
 

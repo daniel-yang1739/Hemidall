@@ -510,7 +510,6 @@ func (m Model) renderSessionDashboard(contentWidth int) string {
 
 func (m Model) dashboardReadModelReady() bool {
 	return m.dashboardReadModel.SessionID == m.sessionID &&
-		m.dashboardReadModelHistoryCount == len(m.history) &&
 		m.dashboardReadModel.Inspections != nil
 }
 
@@ -536,24 +535,30 @@ func (m Model) renderSelectedDashboardStep(contentWidth int) string {
 			lipgloss.NewStyle().Foreground(ColorMuted).Render("  Waiting for a session step..."),
 		}, "\n")
 	}
-	if !m.dashboardReadModelReady() {
-		return strings.Join([]string{
-			TitleStyle.Render(fmt.Sprintf("STEP #%d", event.StepIndex)),
-			lipgloss.NewStyle().Foreground(ColorMuted).Render("  Preparing cached step details..."),
-		}, "\n")
+	if m.dashboardReadModel.Inspections != nil {
+		if inspection, found := m.dashboardReadModel.Inspections[event.StepIndex]; found {
+			inspection.Event = event
+			if inspection.Kind == core.DashboardStepCloud {
+				return renderCloudStepInspection(inspection, contentWidth)
+			}
+			return renderNonCloudStepInspection(inspection, contentWidth)
+		}
 	}
-	inspection, found := m.dashboardReadModel.Inspections[event.StepIndex]
-	if !found {
-		return strings.Join([]string{
-			TitleStyle.Render(fmt.Sprintf("STEP #%d", event.StepIndex)),
-			lipgloss.NewStyle().Foreground(ColorMuted).Render("  No cached inspection data is available for this step."),
-		}, "\n")
+	// Direct empirical fallback: renders turn telemetry immediately from event facts without waiting for background cache
+	if event.IsCloudStep() {
+		telemetry := core.BuildEmpiricalTurnTelemetry(event)
+		fallback := core.StepInspectionReadModel{
+			Event:         event,
+			Kind:          core.DashboardStepCloud,
+			TurnTelemetry: &telemetry,
+		}
+		return renderCloudStepInspection(fallback, contentWidth)
 	}
-	inspection.Event = event
-	if inspection.Kind == core.DashboardStepCloud {
-		return renderCloudStepInspection(inspection, contentWidth)
+	fallback := core.StepInspectionReadModel{
+		Event: event,
+		Kind:  core.DashboardStepLocal,
 	}
-	return renderNonCloudStepInspection(inspection, contentWidth)
+	return renderNonCloudStepInspection(fallback, contentWidth)
 }
 
 func (m Model) selectedDashboardEvent() (core.UnifiedAgentEvent, bool) {
@@ -573,28 +578,176 @@ func (m Model) selectedDashboardEvent() (core.UnifiedAgentEvent, bool) {
 func renderCloudStepInspection(inspection core.StepInspectionReadModel, contentWidth int) string {
 	event := inspection.Event
 	usage := event.Usage
-	modelName := usage.ModelName
+	modelName := event.Usage.ModelName
 	if modelName == "" {
-		modelName = "unknown"
+		modelName = "resolving..."
 	}
-	composition := core.RequestContextComposition{}
-	if inspection.RequestContext != nil {
-		composition = *inspection.RequestContext
+
+	telemetry := inspection.TurnTelemetry
+	if telemetry == nil {
+		t := core.EmpiricalTurnTelemetry{
+			ObservedContextTokens: usage.ObservedContextTokens,
+			CachedContentTokens:   usage.CachedInputTokens,
+			UncachedPromptTokens:  usage.UncachedInputTokens,
+			ThinkingOutputTokens:  usage.ThinkingOutputTokens,
+			OutputContentTokens:   usage.OutputContentTokens,
+			OutputTokens:          usage.ThinkingOutputTokens + usage.OutputContentTokens,
+			ContextWindowLimit:    usage.ContextLimit,
+			TimeToFirstTokenMs:    usage.TimeToFirstTokenMs,
+			StreamingDurationMs:   usage.StreamingDurationMs,
+			UpstreamRequestID:     usage.UpstreamRequestID,
+		}
+		if t.CachedContentTokens > 0 || t.UncachedPromptTokens > 0 {
+			t.ObservedContextTokens = t.CachedContentTokens + t.UncachedPromptTokens
+		}
+		t.TotalTokens = t.ObservedContextTokens + t.OutputTokens
+		if t.ContextWindowLimit <= 0 {
+			t.ContextWindowLimit = 256_000
+		}
+		if t.ContextWindowLimit > 0 {
+			t.UtilizationPercentage = float64(t.ObservedContextTokens) / float64(t.ContextWindowLimit) * 100.0
+		}
+		if t.ObservedContextTokens > 0 {
+			t.CacheHitPercentage = float64(t.CachedContentTokens) / float64(t.ObservedContextTokens) * 100.0
+		}
+		telemetry = &t
 	}
+
 	lines := []string{
 		TitleStyle.Render(fmt.Sprintf("STEP #%d · CLOUD GENERATION", event.StepIndex)),
 		formatExperimentalDashboardMetadata("Agent / Model", fmt.Sprintf("[%s] %s", event.GetAgentRole(), modelName), contentWidth),
 		formatExperimentalDashboardMetadata("Status / Time", fmt.Sprintf("%s · %s", dashboardStatus(event.Status), dashboardTimestamp(event)), contentWidth),
-		formatExperimentalDashboardMetadata("Observed Context", formatObservedContext(event), contentWidth),
-		formatExperimentalDashboardMetadata("Input Usage", formatCacheFields(usage), contentWidth),
-		"",
-		TitleStyle.Render("REQUEST CONTEXT COMPOSITION " + requestContextEvidenceBadge(composition)),
-		formatRequestContextDimension("System Instruction", composition.SystemInstruction, composition.TotalVisibleTokens, contentWidth, ColorSecondary),
-		formatRequestContextDimension("Tool Schemas", composition.ToolSchemas, composition.TotalVisibleTokens, contentWidth, ColorHighlight),
-		formatRequestContextDimension("Conversation Context", composition.ConversationContext, composition.TotalVisibleTokens, contentWidth, ColorPrimary),
-		formatRequestContextDimension("Active Input", composition.ActiveInput, composition.TotalVisibleTokens, contentWidth, ColorSuccess),
-		formatExperimentalDashboardMetadata("Visible Evidence", fmt.Sprintf("%s Tokens · local estimate", formatTokShort(composition.TotalVisibleTokens)), contentWidth),
 	}
+
+	if !usage.Available && telemetry.ObservedContextTokens == 0 {
+		lines = append(lines,
+			TitleStyle.Render("TURN TOKEN TELEMETRY (100% EMPIRICAL METRICS)"),
+			"  ⏳ Telemetry synchronizing from cloud metadata...",
+			"  (Upstream usage will appear once generation commits to SQLite)",
+		)
+		return strings.Join(lines, "\n")
+	}
+
+	var perfParts []string
+	if telemetry.TimeToFirstTokenMs > 0 {
+		perfParts = append(perfParts, fmt.Sprintf("TTFT: %.2fs", float64(telemetry.TimeToFirstTokenMs)/1000.0))
+	}
+	if telemetry.StreamingDurationMs > 0 {
+		perfParts = append(perfParts, fmt.Sprintf("Duration: %.2fs", float64(telemetry.StreamingDurationMs)/1000.0))
+		if telemetry.OutputTokens > 0 {
+			speed := float64(telemetry.OutputTokens) / (float64(telemetry.StreamingDurationMs) / 1000.0)
+			perfParts = append(perfParts, fmt.Sprintf("Speed: %.1f tok/s", speed))
+		}
+	}
+	if telemetry.UpstreamRequestID != "" {
+		reqID := telemetry.UpstreamRequestID
+		if len(reqID) > 18 {
+			reqID = reqID[:18] + "..."
+		}
+		perfParts = append(perfParts, fmt.Sprintf("ID: %s", reqID))
+	}
+
+	if len(perfParts) > 0 {
+		lines = append(lines, formatExperimentalDashboardMetadata("Performance", strings.Join(perfParts, " · "), contentWidth))
+	}
+
+	barBlocks := 20
+	if contentWidth < 90 {
+		barBlocks = 12
+	}
+
+	loadColor := ColorPrimary
+	if telemetry.UtilizationPercentage > 95 {
+		loadColor = ColorDanger
+	} else if telemetry.UtilizationPercentage > 80 {
+		loadColor = ColorWarning
+	}
+	windowLoadBar := renderVisibleContentBar(telemetry.UtilizationPercentage, barBlocks, loadColor)
+
+	contextPercent := 0.0
+	outputPercent := 0.0
+	if telemetry.TotalTokens > 0 {
+		contextPercent = float64(telemetry.ObservedContextTokens) / float64(telemetry.TotalTokens) * 100.0
+		outputPercent = float64(telemetry.OutputTokens) / float64(telemetry.TotalTokens) * 100.0
+	}
+	contextBar := renderVisibleContentBar(contextPercent, barBlocks, ColorPrimary)
+	outputBar := renderVisibleContentBar(outputPercent, barBlocks, ColorSecondary)
+
+	cachedSubPercent := 0.0
+	uncachedSubPercent := 0.0
+	if telemetry.ObservedContextTokens > 0 {
+		cachedSubPercent = float64(telemetry.CachedContentTokens) / float64(telemetry.ObservedContextTokens) * 100.0
+		uncachedSubPercent = float64(telemetry.UncachedPromptTokens) / float64(telemetry.ObservedContextTokens) * 100.0
+	}
+	cachedBar := renderVisibleContentBar(cachedSubPercent, barBlocks, ColorSuccess)
+	uncachedBar := renderVisibleContentBar(uncachedSubPercent, barBlocks, ColorHighlight)
+
+	thinkingSubPercent := 0.0
+	contentSubPercent := 0.0
+	if telemetry.OutputTokens > 0 {
+		thinkingSubPercent = float64(telemetry.ThinkingOutputTokens) / float64(telemetry.OutputTokens) * 100.0
+		contentSubPercent = float64(telemetry.OutputContentTokens) / float64(telemetry.OutputTokens) * 100.0
+	}
+	thinkingBar := renderVisibleContentBar(thinkingSubPercent, barBlocks, ColorSecondary)
+	contentBar := renderVisibleContentBar(contentSubPercent, barBlocks, ColorLightText)
+
+	boldStyle := lipgloss.NewStyle().Bold(true)
+
+	lines = append(lines,
+		TitleStyle.Render("TURN TOKEN TELEMETRY (100% EMPIRICAL METRICS)"),
+		fmt.Sprintf("  %s %15s (%5.1f%%) [%s]",
+			boldStyle.Render(fmt.Sprintf("%-20s", "Context Window Load")),
+			fmt.Sprintf("%s / %s", formatTokShort(telemetry.ObservedContextTokens), formatTokShort(telemetry.ContextWindowLimit)),
+			telemetry.UtilizationPercentage,
+			windowLoadBar,
+		),
+		fmt.Sprintf("  %s %15s (%5.1f%%) [%s]",
+			boldStyle.Render(fmt.Sprintf("%-20s", "Context Tokens")),
+			fmt.Sprintf("%s Tokens", formatTokShort(telemetry.ObservedContextTokens)),
+			contextPercent,
+			contextBar,
+		),
+		fmt.Sprintf("  %-20s %15s (%5.1f%%) [%s] %s",
+			"- Cached Content",
+			fmt.Sprintf("%s Tokens", formatTokShort(telemetry.CachedContentTokens)),
+			cachedSubPercent,
+			cachedBar,
+			lipgloss.NewStyle().Foreground(ColorSuccess).Bold(true).Render("⚡ 90% OFF"),
+		),
+		fmt.Sprintf("  %-20s %15s (%5.1f%%) [%s]",
+			"- Uncached Prompt",
+			fmt.Sprintf("%s Tokens", formatTokShort(telemetry.UncachedPromptTokens)),
+			uncachedSubPercent,
+			uncachedBar,
+		),
+		fmt.Sprintf("  %s %15s (%5.1f%%) [%s]",
+			boldStyle.Render(fmt.Sprintf("%-20s", "Output Tokens")),
+			fmt.Sprintf("%s Tokens", formatTokShort(telemetry.OutputTokens)),
+			outputPercent,
+			outputBar,
+		),
+		fmt.Sprintf("  %-20s %15s (%5.1f%%) [%s] %s",
+			"- Thinking Output",
+			fmt.Sprintf("%s Tokens", formatTokShort(telemetry.ThinkingOutputTokens)),
+			thinkingSubPercent,
+			thinkingBar,
+			lipgloss.NewStyle().Foreground(ColorSecondary).Render("🧠 REASONING"),
+		),
+		fmt.Sprintf("  %-20s %15s (%5.1f%%) [%s] %s",
+			"- Content Output",
+			fmt.Sprintf("%s Tokens", formatTokShort(telemetry.OutputContentTokens)),
+			contentSubPercent,
+			contentBar,
+			lipgloss.NewStyle().Foreground(ColorLightText).Render("✍️ RESPONSE"),
+		),
+		fmt.Sprintf("  %s %15s  (In: %.1f%% · Out: %.1f%%)",
+			boldStyle.Render(fmt.Sprintf("%-20s", "Total Turn Tokens")),
+			fmt.Sprintf("%s Tokens", formatTokShort(telemetry.TotalTokens)),
+			contextPercent,
+			outputPercent,
+		),
+	)
+
 	return strings.Join(lines, "\n")
 }
 

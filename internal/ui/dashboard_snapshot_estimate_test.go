@@ -33,12 +33,19 @@ func TestDashboardCloudStep_Pos_RendersFourContextDimensionsWithBars(t *testing.
 		SessionID: "session-a",
 		Inspections: map[int]core.StepInspectionReadModel{dashboardSnapshotStep: {
 			Kind: core.DashboardStepCloud,
-			RequestContext: &core.RequestContextComposition{
-				SystemInstruction:   core.RequestContextSection{Tokens: dashboardSystemTokens, Evidence: core.ContextSectionSnapshot},
-				ToolSchemas:         core.RequestContextSection{Tokens: dashboardToolsTokens, Evidence: core.ContextSectionSnapshot},
-				ConversationContext: core.RequestContextSection{Tokens: dashboardHistoryTokens, Evidence: core.ContextSectionSnapshot},
-				ActiveInput:         core.RequestContextSection{Tokens: dashboardInboundTokens, Evidence: core.ContextSectionReconstructed},
-				TotalVisibleTokens:  dashboardSystemTokens + dashboardToolsTokens + dashboardHistoryTokens + dashboardInboundTokens,
+			TurnTelemetry: &core.EmpiricalTurnTelemetry{
+				ObservedContextTokens: 171_100,
+				CachedContentTokens:   155_449,
+				UncachedPromptTokens:  15_651,
+				ThinkingOutputTokens:  1_124,
+				OutputContentTokens:   162,
+				OutputTokens:          1_286,
+				TotalTokens:           172_386,
+				ContextWindowLimit:    256_000,
+				UtilizationPercentage: 66.8,
+				CacheHitPercentage:    90.8,
+				TimeToFirstTokenMs:    1620,
+				StreamingDurationMs:   3450,
 			},
 		}},
 	}
@@ -46,13 +53,42 @@ func TestDashboardCloudStep_Pos_RendersFourContextDimensionsWithBars(t *testing.
 
 	view := model.renderDashboardView()
 
-	requireViewContains(t, view, "REQUEST CONTEXT COMPOSITION")
-	requireViewContains(t, view, "System Instruction")
-	requireViewContains(t, view, "Tool Schemas")
-	requireViewContains(t, view, "Conversation Context")
-	requireViewContains(t, view, "Active Input")
-	requireViewDoesNotContain(t, view, "Tool buffers")
+	requireViewContains(t, view, "TURN TOKEN TELEMETRY (100% EMPIRICAL METRICS)")
+	requireViewContains(t, view, "Context Window Load")
+	requireViewContains(t, view, "Context Tokens")
+	requireViewContains(t, view, "Cached Content")
+	requireViewContains(t, view, "Uncached Prompt")
+	requireViewContains(t, view, "Output Tokens")
+	requireViewContains(t, view, "Thinking Output")
+	requireViewContains(t, view, "90% OFF")
+	requireViewContains(t, view, "REASONING")
+	requireViewContains(t, view, "In:")
+	requireViewContains(t, view, "Total Turn Tokens")
 	requireViewContains(t, view, "████")
+}
+
+func TestDashboardCloudStep_Neg_ShowsSynchronizingWhenTelemetryPending(t *testing.T) {
+	model := NewModel("session-a", false)
+	model.width = dashboardTestWidth
+	model.height = 40
+	model.history = []core.UnifiedAgentEvent{{StepIndex: dashboardSnapshotStep, Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference}}
+	model.dashboardIdx = 0
+	model.dashboardReadModel = core.DashboardReadModel{
+		SessionID: "session-a",
+		Inspections: map[int]core.StepInspectionReadModel{dashboardSnapshotStep: {
+			Kind: core.DashboardStepCloud,
+			TurnTelemetry: &core.EmpiricalTurnTelemetry{
+				ObservedContextTokens: 0,
+			},
+		}},
+	}
+	model.dashboardReadModelHistoryCount = len(model.history)
+
+	view := model.renderDashboardView()
+
+	requireViewContains(t, view, "TURN TOKEN TELEMETRY (100% EMPIRICAL METRICS)")
+	requireViewContains(t, view, "Telemetry synchronizing from cloud metadata")
+	requireViewContains(t, view, "resolving...")
 }
 
 func TestDashboardReadModel_Neg_ShowsPreparationWithoutCachedReadModel(t *testing.T) {

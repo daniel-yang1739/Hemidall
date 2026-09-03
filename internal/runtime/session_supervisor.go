@@ -82,7 +82,7 @@ func (supervisor *SessionSupervisor) startSession(sessionID, transcriptPath, dat
 	supervisor.analysis = core.NewAnalysisService(query)
 	supervisor.mu.Unlock()
 
-	supervisor.emitSession(query.Session())
+	supervisor.emitInitialSession(query.Session())
 	monitor := antigravity.NewMonitor(query)
 	deltas := make(chan core.SessionDelta, supervisorEventChannelCapacity)
 	go supervisor.forwardMonitor(activeContext, monitor, deltas, query, initialDelta.Revision)
@@ -116,7 +116,9 @@ func (supervisor *SessionSupervisor) forwardMonitor(ctx context.Context, monitor
 			if delta.Revision <= initialRevision {
 				continue
 			}
-			supervisor.emitSession(query.Session())
+			if len(delta.ChangedStepIndexes) > 0 {
+				supervisor.emitChangedSteps(query.Session(), delta.ChangedStepIndexes)
+			}
 		case <-monitorErrors:
 			return
 		}
@@ -137,12 +139,50 @@ func (supervisor *SessionSupervisor) Analysis() *core.AnalysisService {
 	return supervisor.analysis
 }
 
-func (supervisor *SessionSupervisor) emitSession(session core.Session) {
-	for _, event := range core.ProjectSessionEvents(session) {
+func (supervisor *SessionSupervisor) emitChangedSteps(session core.Session, changedStepIndexes []int) {
+	for _, event := range core.ProjectChangedSessionEvents(session, changedStepIndexes) {
 		select {
 		case supervisor.eventChannel <- event:
 		case <-supervisor.rootContext.Done():
 			return
 		}
 	}
+}
+
+const startupPreviewTailCount = 30
+
+func (supervisor *SessionSupervisor) emitInitialSession(session core.Session) {
+	allEvents := core.ProjectSessionEvents(session)
+	if len(allEvents) <= startupPreviewTailCount {
+		for _, event := range allEvents {
+			select {
+			case supervisor.eventChannel <- event:
+			case <-supervisor.rootContext.Done():
+				return
+			}
+		}
+		return
+	}
+
+	// 1. First emit the latest preview slice so the TUI immediately renders the active latest step and recent history.
+	tailEvents := allEvents[len(allEvents)-startupPreviewTailCount:]
+	for _, event := range tailEvents {
+		select {
+		case supervisor.eventChannel <- event:
+		case <-supervisor.rootContext.Done():
+			return
+		}
+	}
+
+	// 2. Then, in background, hydrate the older historical events without delaying initial paint.
+	go func() {
+		olderEvents := allEvents[:len(allEvents)-startupPreviewTailCount]
+		for _, event := range olderEvents {
+			select {
+			case supervisor.eventChannel <- event:
+			case <-supervisor.rootContext.Done():
+				return
+			}
+		}
+	}()
 }

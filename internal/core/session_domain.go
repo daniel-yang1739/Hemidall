@@ -90,6 +90,12 @@ type UsageObservation struct {
 	CachedInputTokens        int
 	HasContextLimit          bool
 	ContextLimit             int
+	ThinkingOutputTokens     int
+	OutputContentTokens      int
+	TotalTokens              int
+	TimeToFirstTokenMs       int64
+	StreamingDurationMs      int64
+	UpstreamRequestID        string
 }
 
 // Generation contains model and usage observations associated with one model turn.

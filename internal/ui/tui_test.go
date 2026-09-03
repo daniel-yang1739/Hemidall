@@ -123,20 +123,20 @@ func TestView3DocsPageRenderingAndSearch(t *testing.T) {
 
 	m = typeDocsQuery(m, "snapshot")
 	snapshotFilteredView := m.View()
-	requireViewContains(t, snapshotFilteredView, "Persisted context snapshot")
+	requireViewContains(t, snapshotFilteredView, "Snapshot Rolling Lifecycle")
 
-	// 5. Press Esc to clear search, then search for the local transcript estimate.
+	// 5. Press Esc to clear search, then search for Track 2 timeline evidence.
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/")})
 	m = updated.(Model)
-	m = typeDocsQuery(m, "local transcript")
-	if m.docsSearchQuery != "local transcript" {
-		t.Errorf("Expected docsSearchQuery='local transcript', got '%s'", m.docsSearchQuery)
+	m = typeDocsQuery(m, "track 2")
+	if m.docsSearchQuery != "track 2" {
+		t.Errorf("Expected docsSearchQuery='track 2', got '%s'", m.docsSearchQuery)
 	}
 
 	filteredView := m.View()
-	requireViewContains(t, filteredView, "Track 2 — Playback Context Evidence")
+	requireViewContains(t, filteredView, "Track 2 (Timeline Evidence)")
 
 	// 6. Press Esc to clear search
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})

@@ -21,6 +21,7 @@ const (
 	defaultSampleLimit       = 3
 	maximumDecodeDepth       = 4
 	maximumPrintableTextSize = 240
+	prettyTextTruncateAt     = 120
 	profileTabMinimumWidth   = 0
 	profileTabWidth          = 2
 	profileTabPadding        = 1
@@ -55,6 +56,7 @@ func main() {
 	sampleLimit := flag.Int("limit", defaultSampleLimit, "representative non-empty rows per BLOB column")
 	generationIndex := flag.Int("gen-idx", -1, "inspect one gen_metadata.idx row instead of representative samples")
 	usageProfile := flag.Bool("usage-profile", false, "list raw scalar paths from every gen_metadata usage-like envelope")
+	rawMode := flag.Bool("raw", false, "show raw wire format with hex prefixes (default: pretty key-value pairs)")
 	flag.Parse()
 
 	if *databasePath == "" {
@@ -73,7 +75,7 @@ func main() {
 	}
 	defer database.Close()
 	if *generationIndex >= 0 {
-		if auditErr := writeGenerationAudit(os.Stdout, database, *generationIndex); auditErr != nil {
+		if auditErr := writeGenerationAudit(os.Stdout, database, *generationIndex, *rawMode); auditErr != nil {
 			fmt.Fprintln(os.Stderr, auditErr)
 			os.Exit(1)
 		}
@@ -87,7 +89,7 @@ func main() {
 		return
 	}
 
-	if auditErr := writeAudit(os.Stdout, database, *sampleLimit); auditErr != nil {
+	if auditErr := writeAudit(os.Stdout, database, *sampleLimit, *rawMode); auditErr != nil {
 		fmt.Fprintln(os.Stderr, auditErr)
 		os.Exit(1)
 	}
@@ -235,7 +237,7 @@ func displayProfileScalar(values map[int]uint64, number int) string {
 	return fmt.Sprintf("%d", value)
 }
 
-func writeGenerationAudit(output io.Writer, database *sql.DB, generationIndex int) error {
+func writeGenerationAudit(output io.Writer, database *sql.DB, generationIndex int, rawMode bool) error {
 	var data []byte
 	if err := database.QueryRow("SELECT data FROM gen_metadata WHERE idx = ?", generationIndex).Scan(&data); err != nil {
 		return fmt.Errorf("read gen_metadata.idx=%d: %w", generationIndex, err)
@@ -243,19 +245,22 @@ func writeGenerationAudit(output io.Writer, database *sql.DB, generationIndex in
 	if _, err := fmt.Fprintf(output, "## gen_metadata.idx=%d BYTES=%d\n", generationIndex, len(data)); err != nil {
 		return err
 	}
-	return writeWireFields(output, data, 0)
+	if rawMode {
+		return writeWireFields(output, data, 0)
+	}
+	return writeWireFieldsPretty(output, data, 0)
 }
 
-func writeAudit(output io.Writer, database *sql.DB, sampleLimit int) error {
+func writeAudit(output io.Writer, database *sql.DB, sampleLimit int, rawMode bool) error {
 	for _, source := range blobSources {
-		if err := writeSourceAudit(output, database, source, sampleLimit); err != nil {
+		if err := writeSourceAudit(output, database, source, sampleLimit, rawMode); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func writeSourceAudit(output io.Writer, database *sql.DB, source blobSource, sampleLimit int) error {
+func writeSourceAudit(output io.Writer, database *sql.DB, source blobSource, sampleLimit int, rawMode bool) error {
 	query := fmt.Sprintf("SELECT rowid, %s FROM %s WHERE %s IS NOT NULL AND length(%s) > 0 ORDER BY length(%s) ASC, rowid ASC LIMIT ?", source.column, source.table, source.column, source.column, source.column)
 	rows, queryErr := database.Query(query, sampleLimit)
 	if queryErr != nil {
@@ -275,8 +280,14 @@ func writeSourceAudit(output io.Writer, database *sql.DB, source blobSource, sam
 		if _, err := fmt.Fprintf(output, "ROWID=%d BYTES=%d RAW_PREFIX=%s\n", rowID, len(data), hex.EncodeToString(data[:min(len(data), maximumPrintableTextSize)])); err != nil {
 			return err
 		}
-		if err := writeWireFields(output, data, 0); err != nil {
-			if _, writeErr := fmt.Fprintf(output, "WIRE_DECODE_ERROR=%v\n", err); writeErr != nil {
+		var decodeErr error
+		if rawMode {
+			decodeErr = writeWireFields(output, data, 0)
+		} else {
+			decodeErr = writeWireFieldsPretty(output, data, 0)
+		}
+		if decodeErr != nil {
+			if _, writeErr := fmt.Fprintf(output, "WIRE_DECODE_ERROR=%v\n", decodeErr); writeErr != nil {
 				return writeErr
 			}
 		}
@@ -341,6 +352,87 @@ func printableText(data []byte) string {
 		}
 	}
 	return string(data)
+}
+
+// isPrintableUTF8 returns true if data is non-empty valid UTF-8 containing only
+// printable or whitespace runes. Unlike printableText it has no size limit, so
+// it correctly classifies long system-prompt blobs as text in pretty mode.
+func isPrintableUTF8(data []byte) bool {
+	if len(data) == 0 || !utf8.Valid(data) {
+		return false
+	}
+	for _, r := range string(data) {
+		if !unicode.IsPrint(r) && !unicode.IsSpace(r) {
+			return false
+		}
+	}
+	return true
+}
+
+// writeWireFieldsPretty renders decoded fields as indented key-value pairs.
+// Text values are shown directly (truncated to prettyTextTruncateAt characters).
+// Non-text bytes fields are recursed into when possible; binary blobs are
+// labelled with their byte size. Hex prefixes are omitted.
+func writeWireFieldsPretty(output io.Writer, data []byte, depth int) error {
+	fields, decodeErr := wire.Decode(data)
+	if decodeErr != nil {
+		return decodeErr
+	}
+	indent := strings.Repeat("  ", depth)
+	for _, field := range fields {
+		switch field.WireType {
+		case wireTypeVarint:
+			if _, err := fmt.Fprintf(output, "%sFIELD[%d]: %d\n", indent, field.Number, field.Integer); err != nil {
+				return err
+			}
+		case wireTypeFixed64:
+			if _, err := fmt.Fprintf(output, "%sFIELD[%d]: (fixed64) %s\n", indent, field.Number, hex.EncodeToString(field.Bytes)); err != nil {
+				return err
+			}
+		case wireTypeFixed32:
+			if _, err := fmt.Fprintf(output, "%sFIELD[%d]: (fixed32) %s\n", indent, field.Number, hex.EncodeToString(field.Bytes)); err != nil {
+				return err
+			}
+		case wireTypeBytes:
+			if isPrintableUTF8(field.Bytes) {
+				text := string(field.Bytes)
+				display := text
+				truncated := false
+				if len([]rune(text)) > prettyTextTruncateAt {
+					display = string([]rune(text)[:prettyTextTruncateAt])
+					truncated = true
+				}
+				if truncated {
+					if _, err := fmt.Fprintf(output, "%sFIELD[%d]: %q ... (%d more chars)\n", indent, field.Number, display, len([]rune(text))-prettyTextTruncateAt); err != nil {
+						return err
+					}
+				} else {
+					if _, err := fmt.Fprintf(output, "%sFIELD[%d]: %q\n", indent, field.Number, display); err != nil {
+						return err
+					}
+				}
+			} else if depth < maximumDecodeDepth {
+				nested, nestedErr := wire.Decode(field.Bytes)
+				if nestedErr == nil && len(nested) > 0 {
+					if _, err := fmt.Fprintf(output, "%sFIELD[%d]: (%dB)\n", indent, field.Number, len(field.Bytes)); err != nil {
+						return err
+					}
+					if err := writeWireFieldsPretty(output, field.Bytes, depth+1); err != nil {
+						return err
+					}
+				} else {
+					if _, err := fmt.Fprintf(output, "%sFIELD[%d]: (binary, %dB)\n", indent, field.Number, len(field.Bytes)); err != nil {
+						return err
+					}
+				}
+			} else {
+				if _, err := fmt.Fprintf(output, "%sFIELD[%d]: (%dB, max depth)\n", indent, field.Number, len(field.Bytes)); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func min(left, right int) int {

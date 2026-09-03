@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"sync"
 
 	"heimdall/internal/agent_adapters"
@@ -24,6 +25,7 @@ type SessionStore struct {
 	pendingTranscript  string
 	stepsByIndex       map[int]agents.Step
 	generations        []agents.Generation
+	lastParsedGenIndex int
 	contextSnapshots   []agents.ContextSnapshot
 	conversationSource *agents.SourceRef
 	conversationState  sourceState
@@ -47,10 +49,11 @@ func NewSessionStore(ref agents.SessionRef, sources []agents.SourceRef) (*Sessio
 	}
 	conversationSource, conversationAvailable := findConversationSource(sources)
 	store := &SessionStore{
-		ref:              ref,
-		transcriptSource: transcriptSource,
-		transcriptOffset: initialTranscriptOffset,
-		stepsByIndex:     make(map[int]agents.Step),
+		ref:                ref,
+		transcriptSource:   transcriptSource,
+		transcriptOffset:   initialTranscriptOffset,
+		stepsByIndex:       make(map[int]agents.Step),
+		lastParsedGenIndex: -1,
 	}
 	if conversationAvailable {
 		store.conversationSource = &conversationSource
@@ -82,14 +85,15 @@ func (store *SessionStore) Refresh() (agents.SessionDelta, error) {
 		resetIndexes = store.resetTranscriptFacts()
 	}
 	if fileInfo.Size() == store.transcriptOffset {
-		conversationChanged, conversationErr := store.refreshConversation()
+		genSteps, conversationErr := store.refreshConversation()
 		if conversationErr != nil {
 			return agents.SessionDelta{}, conversationErr
 		}
-		if conversationChanged || transcriptReset {
+		if len(genSteps) > 0 || transcriptReset {
 			store.revision++
 		}
-		return store.currentDelta(resetIndexes), nil
+		changedIndexes := append(resetIndexes, genSteps...)
+		return store.currentDelta(changedIndexes), nil
 	}
 	file, err := os.Open(store.transcriptSource.Path)
 	if err != nil {
@@ -113,10 +117,11 @@ func (store *SessionStore) Refresh() (agents.SessionDelta, error) {
 		store.stepsByIndex[step.Index] = step
 		changedIndexes = append(changedIndexes, step.Index)
 	}
-	_, conversationErr := store.refreshConversation()
+	genSteps, conversationErr := store.refreshConversation()
 	if conversationErr != nil {
 		return agents.SessionDelta{}, conversationErr
 	}
+	changedIndexes = append(changedIndexes, genSteps...)
 	store.revision++
 	return store.currentDelta(changedIndexes), nil
 }
@@ -136,6 +141,8 @@ func (store *SessionStore) resetTranscriptFacts() []int {
 	store.transcriptOffset = initialTranscriptOffset
 	store.pendingTranscript = ""
 	store.stepsByIndex = make(map[int]agents.Step)
+	store.generations = nil
+	store.lastParsedGenIndex = -1
 	return changedIndexes
 }
 
@@ -165,31 +172,43 @@ func findConversationSource(sources []agents.SourceRef) (agents.SourceRef, bool)
 	return agents.SourceRef{}, false
 }
 
-func (store *SessionStore) refreshConversation() (bool, error) {
+func (store *SessionStore) refreshConversation() ([]int, error) {
 	if store.conversationSource == nil {
-		return false, nil
+		return nil, nil
 	}
 	state, err := readSourceState(store.conversationSource.Path)
 	if err != nil {
-		return false, fmt.Errorf("stat conversation database: %w", err)
+		return nil, fmt.Errorf("stat conversation database: %w", err)
 	}
 	if state == store.conversationState {
-		return false, nil
+		return nil, nil
 	}
-	generations, diagnostics, parseErr := (conversation.Parser{}).ParseDatabase(store.conversationSource.Path, *store.conversationSource)
+
+	generations, diagnostics, parseErr := (conversation.Parser{}).ParseDatabaseIncremental(store.conversationSource.Path, *store.conversationSource, store.lastParsedGenIndex)
 	if parseErr != nil {
-		return false, parseErr
+		return nil, parseErr
 	}
-	store.generations = generations
 	store.diagnostics = append(store.diagnostics, diagnostics...)
+
+	changedStepIndexes := make([]int, 0, len(generations))
+	if len(generations) > 0 {
+		store.generations = append(store.generations, generations...)
+		for _, gen := range generations {
+			changedStepIndexes = append(changedStepIndexes, gen.StepIndex)
+			if genIdx, err := strconv.Atoi(gen.ID); err == nil && genIdx > store.lastParsedGenIndex {
+				store.lastParsedGenIndex = genIdx
+			}
+		}
+	}
+
 	snapshot, snapshotErr := (contextparser.Parser{}).ParseLatest(store.conversationSource.Path, *store.conversationSource)
 	if snapshotErr == nil {
 		store.contextSnapshots = []agents.ContextSnapshot{snapshot}
-	} else {
+	} else if len(generations) == 0 && store.contextSnapshots == nil {
 		store.contextSnapshots = nil
 	}
 	store.conversationState = state
-	return true, nil
+	return changedStepIndexes, nil
 }
 
 func readSourceState(path string) (sourceState, error) {

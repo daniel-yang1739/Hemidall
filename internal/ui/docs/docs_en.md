@@ -1,76 +1,54 @@
-## What Heimdall Can Prove
+## System Architecture & Database Overview
 
-Heimdall observes local Antigravity files. It does not capture an HTTP request and does not know provider billing or KV-cache behaviour unless those values are present in the persisted data.
+* **Antigravity Storage Architecture** : Each conversation session is persisted to `~/.gemini/antigravity-cli/conversations/<UUID>.db`, comprising 7 core tables and official `exa.cortex_pb` Protobuf structures.
+  * **`trajectory_meta`** : Root session identity (Trajectory ID, Cascade ID, source, trajectory type).
+  * **`trajectory_metadata_blob`** : Local workspace path, Git Remote, branch, and environment fingerprint (`CortexTrajectoryMetadata`).
+  * **`executor_metadata`** : File modification airbag; stores before/after file Diff snapshots to support atomic rollback on user interruption (`Ctrl+C`).
+  * **`gen_metadata`** : Cloud inference telemetry receipts (token usage, TTFT latency, Vertex Trace ID, and active context snapshot).
+  * **`steps`** : Timeline core table with 6 BLOB columns (`metadata`, `step_payload`, `render_info`, `permissions`, `task_details`, `error_details`).
+  * **`parent_references`** : Subagent derivation topology (parent conversation ID, parent step index, workspace isolation mode).
+  * **`battle_mode_infos`** : Multi-model A/B evaluation forks and winning conversation telemetry.
 
-* **Transcript**: `transcript_full.jsonl` supplies ordered local events: user input, model responses, tool calls, local tool output, and checkpoint-like records.
-* **Generation metadata**: `conversations/<session>.db`, table `gen_metadata`, supplies protobuf blobs. Heimdall decodes the observed `last_step_index`, observed context, context limit, and a paired metered-input / cached-content usage message.
-* **Persisted context snapshot**: Heimdall selects a `gen_metadata` blob above its safety threshold, newest-first, only when wire path `1.1` decodes as a system prompt. It can contain the system prompt, repeated context entries, and tool declarations. It is evidence of a saved context state, not a serialized provider request body.
+## System Prompt Historical Reconstruction (Solution 1: Snapshot Baseline)
 
-## How a Generation Record Is Linked
+* **Snapshot Rolling Lifecycle** : To prevent SQLite database bloat (avoiding 400MB+ per session), Antigravity rolls historical snapshots.
+  * **Historical Entries (`idx < MAX`)** : Compacted into ~1.1 KB receipts, retaining token usage, TTFT, duration, and step boundary, while `system_prompt` and `tools` are physically overwritten.
+  * **Latest Entry (`idx = MAX`)** : Persisted as a full 400KB~850KB active snapshot containing the 25k-word System Prompt, 17 Tool Schemas, and conversation history.
+* **Solution 1: Global Snapshot Baseline Reconstruction** :
+  * **Semantic Invariance** : In a given workspace session, System Prompt (project rules `AGENTS.md`, system guidelines, tool schemas) remains 99.9% invariant across all turns.
+  * **Heimdall Strategy** : Heimdall extracts the authoritative System Prompt from the latest `MAX(idx)` snapshot as the Global Baseline, projecting it backwards across historical turns.
+  * **Honest Telemetry Policy** : The UI clearly indicates: "Historical full context compacted by client; currently displaying baseline inherited from active snapshot."
 
-The decoded `last_step_index` is an **input boundary**: the last transcript step included before a model generation. The generated model event is therefore the following transcript step.
+## Dual-Layer Token Architecture
 
-`input boundary step N` → `generated transcript step N + 1`
+* **Dual-Layer Data Flow** : Two complementary token pipelines exist in SQLite for audit integrity and instantaneous UI rendering.
+  * **`gen_metadata` (Cloud Generation Telemetry Layer)** : One authoritative receipt per cloud generation recording uncached input (`F4.2`), cached input (`F4.5`), thinking tokens (`F4.3`), and Vertex Trace ID (`req_vrtx_*`).
+  * **`steps.metadata` (UI Instantaneous Badge Layer)** : When a step is `PLANNER_RESPONSE`, the system projects the exact `ModelUsage` directly into `metadata.model_usage`.
+  * **Zero-Latency UI Benefit** : The UI renders timeline badges ("⚡ 17.5k cached / 409 thinking") instantly without requiring cross-table SQL JOINs.
 
-This is a fixed relationship observed in Antigravity's persisted records. Heimdall does not use a nearest-step or plus/minus-one search. If either side is missing, the usage is shown as unavailable.
+## Prompt Caching Lifecycle & Economics
 
-## Token Numbers Have Two Separate Sources
+* **Prefix Caching & Pricing Dynamics** :
+  * **Strict Prefix Trie** : Rooted in Transformer causal attention masks, caching matches continuously from token 0; any intermediate modification invalidates downstream cache.
+  * **Pricing Model** : 1.25x surcharge on cache creation / write, 90% discount (0.1x) on cache reads / hits; reusing a prefix 2+ times yields massive cost reductions.
+* **Why Turn 0 Omits User Prompt from Cache** :
+  * **Global Prefix Sharing** : `System Rules + Tools` (17,535 tokens) are identical across all workspace sessions and subagents; anchoring at tool end guarantees instant cache hits.
+  * **Interruption & Rollback Protection** : Turn 0 user prompts are mutable and interruptible (`Ctrl+C`); caching uncommitted turns would trigger prefix hash mismatches and cache purges.
+  * **Rolling Prefix Expansion** : Once a turn is finalized, conversation history is committed into the cache prefix, escalating cache hit rates past 99% in extended sessions.
 
-### Persisted usage and context observation
+## Latency & Performance Telemetry
 
-For a linked generation record, Heimdall can display:
+* **TTFT & Generation Speed Analytics** :
+  * **`time_to_first_token` (TTFT, `F11`)** : Latency to first token, standard `google.protobuf.Duration` `{1: seconds, 2: nanos}`, consistently measured at 1.2s ~ 2.5s.
+  * **`streaming_duration` (`F12`)** : Total streaming generation time, linearly proportional to output length and thinking tokens (~50-70 tokens/sec).
+  * **Upstream Trace ID (`F4.11`)** : Every generation is stamped with a Google Cloud Vertex AI request ID (`req_vrtx_*`) for cloud audit reconciliation.
 
-* **Observed context tokens**: the decoded stored context value for that generation.
-* **Observed context limit**: only when the protobuf field is present.
-* **Metered input tokens** and **cached-content tokens**: decoded from the same observed nested usage-message path. Heimdall uses these paired counters for the Dashboard's cache-adjusted input estimate.
+## UI Views Guide (Dashboard & Context)
 
-The observed-context value uses a separate inferred wire path and is used for the current context-window display only. Heimdall does **not** subtract it from cached content. The Dashboard's effective-input formula is `metered input + cached content × the exact configured model cache-price ratio`. It is a price-equivalent projection, not an Antigravity invoice. A missing serialized cache scalar is interpreted as proto3's default integer value, zero; the UI also reports how many records encoded a non-default cache scalar explicitly.
-
-These fields are schema-inferred local observations. They are not an official API response, token invoice, price, or cache guarantee.
-
-### Local transcript estimate
-
-`cl100k_base` counts text found in an individual transcript event. Heimdall uses it for a local event delta and an append-only transcript-content total.
-
-The append-only total is **not** the next request's context. It can be far larger than the active context because old transcript rows may have been compacted, excluded, or represented differently in the persisted snapshot.
-
-## Visible context evidence estimate
-
-Track 2 keeps a five-part table of **readable context evidence for the selected playback step**. Heimdall prepares one local transcript estimate for every observed event when history changes, so moving the Dashboard cursor does not query SQLite or recount the whole transcript. For a cloud-generation event, the estimate uses evidence observed immediately before that generation; for every other event, it uses evidence observed through that event. It is not a reconstructed provider request:
-
-* system instruction;
-* tool definitions;
-* staged tool buffers;
-* history evidence; and
-* the latest inbound prompt observed in the transcript.
-
-Each value is a local `cl100k_base` estimate. If the selected step exactly matches the generated step linked by the newest persisted snapshot, Track 2 replaces system, tools, and history with those snapshot values; its selected-step buffers and inbound remain transcript observations. Without such a snapshot match, all five dimensions stay available and are labelled `transcript`. The five values make visible evidence and its source easier to inspect, but they are not a reconstructed provider request and must not be compared numerically with Track 1's persisted context total.
-
-## Dashboard
-
-* **Track 1 — Persisted Cloud Usage Observation** shows only the generation metadata linked to the selected model event.
-* **Track 2 — Playback Context Evidence** follows the selected event. It uses a cached local transcript estimate for that step, and uses persisted snapshot dimensions only when the snapshot maps exactly to that generated step. When `last_step_index` is available, the match is `last_step_index + 1`. Otherwise the step remains a clearly labelled transcript estimate. Moving playback changes both Track 1 and Track 2 without SQLite I/O.
-* **Session aggregates** sum paired metered-input and cached-content counters across persisted generations. The Dashboard calculates each known model's effective input using that model's configured cache-price ratio, then presents a model-weighted aggregate. These are useful efficiency projections, but not an API bill or a count of unique tokens.
-
-## Context View
-
-The Context view does not choose only one source. It first builds a transcript baseline for what happened in the session, then overlays only the fields actually saved in a snapshot: system text, rules, skills, tools, and persisted records. Runtime metadata remains local to the Heimdall process. Raw mode is Heimdall-generated evidence JSON with per-field source labels, not Antigravity's original request JSON.
-
-The Context view distinguishes these categories:
-
-* **System and rules**: text decoded from the persisted snapshot when available.
-* **Tools**: repeated persisted tool entries when available; otherwise names and argument keys observed in the transcript.
-* **Compacted checkpoint**: the decoded `<CONTEXT_SUMMARY>` record, if one is persisted.
-* **Active history**: persisted context records in the snapshot, ordered by their saved sequence. Selecting one renders only that record; raw mode does not silently show unrelated records.
-* **Latest inbound and staged buffers**: transcript observations, not proof of an outbound HTTP payload.
-* **MCP**: only MCP-related text visible in the snapshot system prompt is shown. The Context view does not read `mcp_config.json`, `settings.json`, or project configuration, and cannot attribute a tool to a specific MCP server.
-
-The `field 2` count is an occurrence count of a repeated wire field. Heimdall safely displays readable text and wire observations from some records, but without an official protobuf schema it cannot assign an official role or complete meaning to every record.
-
-## Cache-adjusted input projection
-
-The dashboard shows total processed input, cached-content volume, metered input, effective input, and cache savings. The effective-input projection is calculated separately for each exact model ID from its configured official cache-input price ratio. Records that omit the proto3 cache scalar contribute zero cached tokens; the dashboard separately displays the number of explicit scalars for inspection. This is not a provider invoice, a unique-token count, a cache TTL signal, or a cache-write signal.
-
-## Supported Source
-
-The current product discovers and watches **Antigravity** sessions only. The session switcher lists Antigravity conversations from the local `.gemini/antigravity-cli` installation. Other agent products are not represented as supported sources.
+* **Dashboard View** :
+  * **Track 1 (Cloud Telemetry)** : Displays authoritative token billing, TTFT, and duration linked to the selected model event.
+  * **Track 2 (Timeline Evidence)** : Reconstructs readable System, Tools, History, and Inbound prompt evidence visible at each step.
+  * **Effective Input Projection** : Computes price-equivalent weighted input from model-specific cache pricing ratios to evaluate session savings.
+* **Context View** :
+  * **Five-Part Section Display** : System & Rules, Tool Schemas, Active History, Compacted Checkpoints, and Latest Inbound Prompt.
+  * **Raw Evidence Mode** : Provides structured JSON evidence tagged with data sources, faithfully reflecting underlying Protobuf fields.

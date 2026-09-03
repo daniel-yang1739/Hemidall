@@ -4,6 +4,7 @@ import "strings"
 
 const (
 	gemini37FlashModelID                     = "gemini-3.7-flash"
+	gemini38FlashModelID                     = "gemini-3.8-flash"
 	gemini37FlashStandardInputUSDPerMillion  = 0.75
 	gemini37FlashCachedInputUSDPerMillion    = 0.075
 	freeInputUSDPerMillion                   = 0.0
@@ -56,9 +57,13 @@ func (spec ModelPricingSpec) StandardInputMultiplier() (float64, bool) {
 // differ across model revisions, endpoint tiers, and providers.
 func ResolveModelPricing(modelID string) (ModelPricingSpec, bool) {
 	switch strings.ToLower(strings.TrimSpace(modelID)) {
-	case gemini37FlashModelID:
+	case gemini37FlashModelID, gemini38FlashModelID:
+		resolvedID := gemini37FlashModelID
+		if strings.ToLower(strings.TrimSpace(modelID)) == gemini38FlashModelID {
+			resolvedID = gemini38FlashModelID
+		}
 		return ModelPricingSpec{
-			ModelID:                    gemini37FlashModelID,
+			ModelID:                    resolvedID,
 			StandardInputUSDPerMillion: gemini37FlashStandardInputUSDPerMillion,
 			CachedInputUSDPerMillion:   gemini37FlashCachedInputUSDPerMillion,
 			CachedSavingsMultiplier:    1,

@@ -16,6 +16,18 @@ func TestModelPricing_Pos_ResolvesExactVerifiedGeminiModel(t *testing.T) {
 	requireModelSpecFloatEqual(t, modelSpecCacheMultiplier, multiplier)
 }
 
+func TestModelPricing_Pos_ResolvesExactVerifiedGemini38Model(t *testing.T) {
+	spec, available := ResolveModelPricing(gemini38FlashModelID)
+	multiplier, multiplierAvailable := spec.CacheInputMultiplier()
+
+	requireModelSpecEqual(t, true, available)
+	requireModelSpecEqual(t, gemini38FlashModelID, spec.ModelID)
+	requireModelSpecEqual(t, true, multiplierAvailable)
+	requireModelSpecFloatEqual(t, modelSpecCacheMultiplier, multiplier)
+	requireModelSpecFloatEqual(t, gemini37FlashStandardInputUSDPerMillion, spec.StandardInputUSDPerMillion)
+	requireModelSpecFloatEqual(t, gemini37FlashCachedInputUSDPerMillion, spec.CachedInputUSDPerMillion)
+}
+
 func TestModelPricing_Pos_ResolvesExactVerifiedClaudeModel(t *testing.T) {
 	spec, available := ResolveModelPricing(claudeSonnet46ModelID)
 	multiplier, multiplierAvailable := spec.CacheInputMultiplier()

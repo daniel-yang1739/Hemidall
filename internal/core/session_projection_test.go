@@ -40,6 +40,27 @@ func TestProjectSessionEvents_UsesUnknownForMissingStepKind(t *testing.T) {
 	requireProjectionEqual(t, events[0].Type, StepTypeUnknown)
 }
 
+func TestProjectChangedSessionEvents_Pos_ProjectsOnlyRequestedSteps(t *testing.T) {
+	session := Session{
+		Ref: SessionRef{SessionID: "session-a"},
+		Steps: []Step{
+			{Index: 1, Source: "USER", Kind: string(StepTypeUserInput), Status: "DONE"},
+			{Index: 2, Source: "MODEL", Kind: string(StepTypeModelResponse), Status: "DONE"},
+			{Index: 3, Source: "USER", Kind: string(StepTypeUserInput), Status: "DONE"},
+		},
+		Generations: []Generation{
+			{ID: "1", StepIndex: 2, ModelID: "gemini-3.8-flash", Usage: UsageObservation{HasUncachedInputTokens: true, UncachedInputTokens: 50}},
+		},
+	}
+
+	events := ProjectChangedSessionEvents(session, []int{2})
+
+	requireProjectionEqual(t, len(events), 1)
+	requireProjectionEqual(t, events[0].StepIndex, 2)
+	requireProjectionEqual(t, events[0].Usage.ModelName, "gemini-3.8-flash")
+	requireProjectionEqual(t, events[0].Usage.UncachedInputTokens, 50)
+}
+
 func requireProjectionEqual[T comparable](t *testing.T, actual, expected T) {
 	t.Helper()
 	if actual != expected {
