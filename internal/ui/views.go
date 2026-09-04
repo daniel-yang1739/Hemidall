@@ -22,7 +22,7 @@ const (
 	dashboardContextTokenWidth        = 8
 	dashboardContextPercentageWidth   = 5
 	dashboardPanelOuterHeight         = 15
-	selectedStepPanelOuterHeight      = 16
+	selectedStepPanelOuterHeight      = 18
 	dashboardMinimumOuterHeight       = 8
 	selectedStepMinimumOuterHeight    = 10
 	dashboardPanelBorderRows          = 2
@@ -613,10 +613,21 @@ func renderCloudStepInspection(inspection core.StepInspectionReadModel, contentW
 		telemetry = &t
 	}
 
+	boldStyle := lipgloss.NewStyle().Bold(true)
+
+	statusTimeStr := fmt.Sprintf("%s · %s", dashboardStatus(event.Status), dashboardTimestamp(event))
+	if telemetry.UpstreamRequestID != "" {
+		reqID := telemetry.UpstreamRequestID
+		if len(reqID) > 18 {
+			reqID = reqID[:18] + "..."
+		}
+		statusTimeStr += fmt.Sprintf(" · ID: %s", reqID)
+	}
+
 	lines := []string{
 		TitleStyle.Render(fmt.Sprintf("STEP #%d · CLOUD GENERATION", event.StepIndex)),
 		formatExperimentalDashboardMetadata("Agent / Model", fmt.Sprintf("[%s] %s", event.GetAgentRole(), modelName), contentWidth),
-		formatExperimentalDashboardMetadata("Status / Time", fmt.Sprintf("%s · %s", dashboardStatus(event.Status), dashboardTimestamp(event)), contentWidth),
+		formatExperimentalDashboardMetadata("Status / Time", statusTimeStr, contentWidth),
 	}
 
 	if !usage.Available && telemetry.ObservedContextTokens == 0 {
@@ -628,27 +639,25 @@ func renderCloudStepInspection(inspection core.StepInspectionReadModel, contentW
 		return strings.Join(lines, "\n")
 	}
 
-	var perfParts []string
+	lines = append(lines,
+		fmt.Sprintf("  %s", boldStyle.Render(fmt.Sprintf("%-20s", "Performance"))),
+	)
 	if telemetry.TimeToFirstTokenMs > 0 {
-		perfParts = append(perfParts, fmt.Sprintf("TTFT: %.2fs", float64(telemetry.TimeToFirstTokenMs)/1000.0))
+		lines = append(lines, fmt.Sprintf("  %-20s %15s", "- TTFT (First Token)", fmt.Sprintf("%.2fs", float64(telemetry.TimeToFirstTokenMs)/1000.0)))
+	} else {
+		lines = append(lines, fmt.Sprintf("  %-20s %15s", "- TTFT (First Token)", "unavailable"))
 	}
 	if telemetry.StreamingDurationMs > 0 {
-		perfParts = append(perfParts, fmt.Sprintf("Duration: %.2fs", float64(telemetry.StreamingDurationMs)/1000.0))
+		lines = append(lines, fmt.Sprintf("  %-20s %15s", "- Streaming Duration", fmt.Sprintf("%.2fs", float64(telemetry.StreamingDurationMs)/1000.0)))
 		if telemetry.OutputTokens > 0 {
 			speed := float64(telemetry.OutputTokens) / (float64(telemetry.StreamingDurationMs) / 1000.0)
-			perfParts = append(perfParts, fmt.Sprintf("Speed: %.1f tok/s", speed))
+			lines = append(lines, fmt.Sprintf("  %-20s %15s", "- Generation Speed", fmt.Sprintf("%.1f tok/s", speed)))
+		} else {
+			lines = append(lines, fmt.Sprintf("  %-20s %15s", "- Generation Speed", "unavailable"))
 		}
-	}
-	if telemetry.UpstreamRequestID != "" {
-		reqID := telemetry.UpstreamRequestID
-		if len(reqID) > 18 {
-			reqID = reqID[:18] + "..."
-		}
-		perfParts = append(perfParts, fmt.Sprintf("ID: %s", reqID))
-	}
-
-	if len(perfParts) > 0 {
-		lines = append(lines, formatExperimentalDashboardMetadata("Performance", strings.Join(perfParts, " · "), contentWidth))
+	} else {
+		lines = append(lines, fmt.Sprintf("  %-20s %15s", "- Streaming Duration", "unavailable"))
+		lines = append(lines, fmt.Sprintf("  %-20s %15s", "- Generation Speed", "unavailable"))
 	}
 
 	barBlocks := 20
@@ -690,8 +699,6 @@ func renderCloudStepInspection(inspection core.StepInspectionReadModel, contentW
 	}
 	thinkingBar := renderVisibleContentBar(thinkingSubPercent, barBlocks, ColorSecondary)
 	contentBar := renderVisibleContentBar(contentSubPercent, barBlocks, ColorLightText)
-
-	boldStyle := lipgloss.NewStyle().Bold(true)
 
 	lines = append(lines,
 		TitleStyle.Render("TURN TOKEN TELEMETRY (100% EMPIRICAL METRICS)"),
