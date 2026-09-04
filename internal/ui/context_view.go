@@ -607,11 +607,13 @@ func (m Model) buildRefinedInspectorLines(payload core.AgentContextPayload, widt
 		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("🔄 ACTIVE CONVERSATION TURNS (Sliding Window):"))
 		lines = append(lines, "")
 		for _, t := range payload.ActiveHistoryTurns {
-			role := "👤 User"
+			role := "👤 USER"
 			if t.IsCloudStep() {
-				role = "🤖 Model"
+				role = "🤖 ASSISTANT"
 			} else if t.IsLocalStep() {
-				role = "💻 Local"
+				role = "🛠️ TOOL_RESULT"
+			} else if t.IsCompactionStep() {
+				role = "⚙️ SYSTEM"
 			}
 			summary := t.Summary
 			if summary == "" {

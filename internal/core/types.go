@@ -162,6 +162,39 @@ func (e UnifiedAgentEvent) IsCloudStep() bool {
 		(e.Scope == ScopeCloudInference || e.Type == StepTypeModelResponse || e.Type == StepTypeToolCall)
 }
 
+// GetMessageRole returns the authoritative conversational role (USER, ASSISTANT, TOOL_RESULT, or SYSTEM)
+func (e UnifiedAgentEvent) GetMessageRole() string {
+	if e.IsCloudStep() {
+		return "ASSISTANT"
+	}
+	if e.IsLocalStep() {
+		return "TOOL_RESULT"
+	}
+	if e.Type == StepTypeUserInput || e.Scope == ScopeUserInteraction {
+		return "USER"
+	}
+	if e.IsCompactionStep() {
+		return "SYSTEM (CHECKPOINT)"
+	}
+	return "SYSTEM"
+}
+
+// GetMessageRoleDescription returns a human-friendly description of the role in the LLM conversation lifecycle.
+func (e UnifiedAgentEvent) GetMessageRoleDescription() string {
+	switch e.GetMessageRole() {
+	case "ASSISTANT":
+		return "Model Turn / Tool Call"
+	case "TOOL_RESULT":
+		return "Tool Execution Output"
+	case "USER":
+		return "Inbound User Prompt"
+	case "SYSTEM (CHECKPOINT)":
+		return "Compacted Context Checkpoint"
+	default:
+		return "System Guidelines / Bootstrap"
+	}
+}
+
 // ModelTokenStats holds aggregates from one schema-inferred input-usage message.
 // CachedInputTokenSum is a cached-input counter, not a provider invoice.
 type ModelTokenStats struct {

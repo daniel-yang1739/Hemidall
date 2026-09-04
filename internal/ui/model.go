@@ -921,6 +921,7 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 		// ==================== COMPACT MODE (STRUCTURED SUB-BULLETS, ZERO TRUNCATION) ====================
 		if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Role  : %s (%s)", e.GetMessageRole(), e.GetMessageRoleDescription()), maxWidth))
 			toolName := m.getLocalToolName(e)
 			if toolName == "" {
 				toolName = string(e.Type)
@@ -942,6 +943,7 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 			lines = append(lines, truncateVisualWidth("• Origin: Local machine process", maxWidth))
 		} else if e.IsCloudStep() || e.Scope == core.ScopeCloudInference {
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Role  : %s (%s)", e.GetMessageRole(), e.GetMessageRoleDescription()), maxWidth))
 			modelName := m.getStepModelName(e)
 			if modelName == "" {
 				modelName = "unknown"
@@ -958,6 +960,7 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 			}
 		} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Role  : %s (%s)", e.GetMessageRole(), e.GetMessageRoleDescription()), maxWidth))
 			lines = append(lines, truncateVisualWidth("• Origin: Human Client Prompt", maxWidth))
 			promptTok := core.CountTokens(e.RawContent)
 			if promptTok == 0 {
@@ -971,6 +974,7 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 			}
 		} else if e.IsCompactionStep() || e.Scope == core.ScopeSystemCompaction {
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Role  : %s (%s)", e.GetMessageRole(), e.GetMessageRoleDescription()), maxWidth))
 			lines = append(lines, truncateVisualWidth("• Event : Context Compaction (Checkpoint)", maxWidth))
 			lines = append(lines, truncateVisualWidth("• Scope : Transcript compaction record", maxWidth))
 			summaryTok := core.CountTokens(e.RawContent)
@@ -978,6 +982,7 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 			lines = append(lines, truncateVisualWidth("• Status: Previous history was compacted", maxWidth))
 		} else {
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step  : #%04d (%s) at %s", e.StepIndex, e.Status, timeStr), maxWidth))
+			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Role  : %s (%s)", e.GetMessageRole(), e.GetMessageRoleDescription()), maxWidth))
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Type  : %s", e.Type), maxWidth))
 			lines = append(lines, truncateVisualWidth("• Scope : System Bootstrap & Rules", maxWidth))
 		}
@@ -987,6 +992,7 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 	// ==================== FULL-WIDTH MODE (DETAILED TELEMETRY) ====================
 	if e.IsLocalStep() || e.Scope == core.ScopeLocalExecution {
 		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step #%04d (%s) at %s | 💻 LOCAL EXECUTION STEP", e.StepIndex, e.Status, timeStr), maxWidth))
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Role   : %s (%s)", e.GetMessageRole(), e.GetMessageRoleDescription()), maxWidth))
 		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Origin : Local Host Process (%s)", e.Type), maxWidth))
 		if e.ParentStepIdx > 0 {
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Parent : Triggered by Tool Call in Step #%04d", e.ParentStepIdx), maxWidth))
@@ -1006,6 +1012,7 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 			modelName = "unknown"
 		}
 		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step #%04d (%s) at %s | ☁️ CLOUD INFERENCE TURN", e.StepIndex, e.Status, timeStr), maxWidth))
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Role   : %s (%s)", e.GetMessageRole(), e.GetMessageRoleDescription()), maxWidth))
 		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Model  : %s (persisted metadata)", modelName), maxWidth))
 		if e.ParentStepIdx > 0 {
 			lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Parent : User Request in Step #%04d", e.ParentStepIdx), maxWidth))
@@ -1021,6 +1028,7 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Local text (cl100k_base): +%d this event | %d accumulated transcript", t.StepDelta, t.RawLocalAccumulated), maxWidth))
 	} else if e.Scope == core.ScopeUserInteraction || e.Type == core.StepTypeUserInput {
 		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step #%04d (%s) at %s | 👤 USER INPUT", e.StepIndex, e.Status, timeStr), maxWidth))
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Role   : %s (%s)", e.GetMessageRole(), e.GetMessageRoleDescription()), maxWidth))
 		lines = append(lines, truncateVisualWidth("• Origin : Human client prompt", maxWidth))
 		promptTok := core.CountTokens(e.RawContent)
 		if promptTok == 0 {
@@ -1034,6 +1042,7 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 		}
 	} else if e.IsCompactionStep() || e.Scope == core.ScopeSystemCompaction {
 		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step #%04d (%s) at %s | ⚙️ CONTEXT COMPACTION (CHECKPOINT)", e.StepIndex, e.Status, timeStr), maxWidth))
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Role   : %s (%s)", e.GetMessageRole(), e.GetMessageRoleDescription()), maxWidth))
 		lines = append(lines, truncateVisualWidth("• Event  : Observed compaction checkpoint", maxWidth))
 		lines = append(lines, truncateVisualWidth("• Scope  : Transcript record", maxWidth))
 		summaryTok := core.CountTokens(e.RawContent)
@@ -1041,6 +1050,7 @@ func (m Model) buildTelemetryPanelLines(e core.UnifiedAgentEvent, maxWidth int, 
 		lines = append(lines, truncateVisualWidth("• Scope  : The exact retained and omitted context is unavailable", maxWidth))
 	} else {
 		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Step #%04d (%s) at %s | 📜 SYSTEM BOOTSTRAP", e.StepIndex, e.Status, timeStr), maxWidth))
+		lines = append(lines, truncateVisualWidth(fmt.Sprintf("• Role   : %s (%s)", e.GetMessageRole(), e.GetMessageRoleDescription()), maxWidth))
 		lines = append(lines, truncateVisualWidth("• Scope  : Static Rules, Identity & Environment Configuration", maxWidth))
 	}
 
@@ -1070,7 +1080,7 @@ func (m Model) buildContentPayloadLines(e core.UnifiedAgentEvent, maxWidth int) 
 		lines = append(lines, strings.Repeat("─", sepWidth))
 	}
 
-	lines = append(lines, "Content Payload:")
+	lines = append(lines, fmt.Sprintf("Content Payload (Role: %s):", e.GetMessageRole()))
 	if strings.TrimSpace(e.RawContent) != "" {
 		wrappedPayload := wrapVisualLines(e.RawContent, maxWidth)
 		lines = append(lines, wrappedPayload...)
