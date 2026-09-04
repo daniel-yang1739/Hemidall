@@ -2255,6 +2255,22 @@ func (m Model) renderHeader() string {
 	return lipgloss.NewStyle().MaxWidth(m.width).Render(headerLine)
 }
 
+func renderToast(msg string) string {
+	bgColor := ColorSuccess
+	fgColor := lipgloss.Color("#FFFFFF")
+
+	if strings.HasPrefix(msg, "⚠️") {
+		bgColor = ColorWarning
+		fgColor = ColorDarkBg
+	} else if strings.HasPrefix(msg, "💡") {
+		bgColor = ColorPrimary
+	} else if strings.HasPrefix(msg, "🔴") || strings.HasPrefix(msg, "❌") {
+		bgColor = ColorDanger
+	}
+
+	return lipgloss.NewStyle().Bold(true).Foreground(fgColor).Background(bgColor).Padding(0, 1).Render(msg)
+}
+
 func (m Model) renderFooter() string {
 	if m.isCommandMode {
 		prompt := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(":" + m.commandInput + "█")
@@ -2263,12 +2279,12 @@ func (m Model) renderFooter() string {
 	}
 
 	if m.statusMessage != "" && time.Since(m.statusMessageTime) < statusMessageDuration {
-		alert := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorSuccess).Padding(0, 1).Render(m.statusMessage)
+		alert := renderToast(m.statusMessage)
 		return lipgloss.NewStyle().MaxWidth(m.width).Render(alert)
 	}
 
 	if m.clipboardStatus != "" && time.Since(m.clipboardStatusTime) < statusMessageDuration {
-		alert := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorSuccess).Padding(0, 1).Render(m.clipboardStatus)
+		alert := renderToast(m.clipboardStatus)
 		return lipgloss.NewStyle().MaxWidth(m.width).Render(alert)
 	}
 
