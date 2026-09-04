@@ -105,3 +105,14 @@ func Varint(fields []Field, number int) (uint64, bool) {
 	}
 	return 0, false
 }
+
+// AllBytes returns all length-delimited fields with the requested number.
+func AllBytes(fields []Field, number int) [][]byte {
+	var result [][]byte
+	for _, field := range fields {
+		if field.Number == number && field.WireType == lengthDelimitedWireType {
+			result = append(result, field.Bytes)
+		}
+	}
+	return result
+}

@@ -10,7 +10,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"heimdall/internal/agent_adapters"
-	"heimdall/internal/agent_adapters/antigravity/wire"
+	"heimdall/internal/agent_adapters/antigravity/schema"
 )
 
 const (
@@ -116,17 +116,20 @@ type generationMetadata struct {
 }
 
 func decodeGenerationMetadata(index int, data []byte, source agents.SourceRef) (generationMetadata, error) {
-	root, err := wire.Decode(data)
+	env, err := schema.DecodeRootEnvelope(data)
 	if err != nil {
 		return generationMetadata{}, fmt.Errorf("decode generation %d: %w", index, err)
 	}
-	metadataFields, found := nested(root, rootFieldNumber)
-	if !found {
+	if len(env.ChatModelData) == 0 {
 		return generationMetadata{}, fmt.Errorf("generation %d has no observed root message", index)
 	}
-	modelID := directModelID(metadataFields)
-	inputBoundary, hasInputBoundary := inputBoundary(metadataFields)
-	usage := decodeUsage(metadataFields)
+	meta, err := schema.DecodeChatModelMetadata(env.ChatModelData)
+	if err != nil {
+		return generationMetadata{}, fmt.Errorf("decode ChatModelMetadata %d: %w", index, err)
+	}
+	modelID := directModelID(meta.ResponseModel)
+	inputBoundary, hasInputBoundary := extractInputBoundary(meta.CustomMetadata)
+	usage := decodeUsage(meta)
 	stepIndex := inputBoundary
 	if hasInputBoundary {
 		stepIndex += generatedStepOffset
@@ -138,8 +141,8 @@ func decodeGenerationMetadata(index int, data []byte, source agents.SourceRef) (
 	}
 	return generationMetadata{
 		generation:  agents.Generation{ID: strconv.Itoa(index), StepIndex: stepIndex, ModelID: modelID, Usage: usage, Evidence: evidence},
-		modelEnum:   attributeValue(metadataFields, modelEnumKey),
-		executionID: attributeValue(metadataFields, lastExecutionIDKey),
+		modelEnum:   meta.CustomMetadata[modelEnumKey],
+		executionID: meta.CustomMetadata[lastExecutionIDKey],
 	}, nil
 }
 
@@ -277,77 +280,54 @@ func resolveUniqueEnumModels(metadata []generationMetadata) {
 	}
 }
 
-func directModelID(fields []wire.Field) string {
-	modelID := strings.ToLower(string(wire.FirstBytes(fields, modelFieldNumber)))
+func directModelID(responseModel string) string {
+	modelID := strings.ToLower(responseModel)
 	if !exactModelPattern.MatchString(modelID) {
 		return ""
 	}
 	return modelID
 }
 
-func inputBoundary(fields []wire.Field) (int, bool) {
-	value, err := strconv.Atoi(attributeValue(fields, lastStepIndexKey))
+func extractInputBoundary(customMetadata map[string]string) (int, bool) {
+	val, exists := customMetadata[lastStepIndexKey]
+	if !exists {
+		return 0, false
+	}
+	intVal, err := strconv.Atoi(strings.TrimSpace(val))
 	if err != nil {
 		return 0, false
 	}
-	return value, true
+	return intVal, true
 }
 
-func attributeValue(fields []wire.Field, key string) string {
-	for _, field := range fields {
-		if field.Number != attributesFieldNumber {
-			continue
-		}
-		entry, err := wire.Decode(field.Bytes)
-		if err != nil || string(wire.FirstBytes(entry, mapKeyFieldNumber)) != key {
-			continue
-		}
-		return string(wire.FirstBytes(entry, mapValueFieldNumber))
-	}
-	return ""
-}
-
-func decodeUsage(fields []wire.Field) agents.UsageObservation {
+func decodeUsage(meta schema.ChatModelMetadata) agents.UsageObservation {
 	usage := agents.UsageObservation{}
-	contextUsage, contextFound := nested(fields, contextUsageFieldNumber)
-	if contextFound {
-		contextDetail, detailFound := nested(contextUsage, contextUsageDetailFieldNumber)
-		if detailFound {
-			observedTokens, observed := wire.Varint(contextDetail, contextTokenFieldNumber)
-			contextLimit, limitObserved := wire.Varint(contextDetail, contextLimitFieldNumber)
-			usage.ObservedContextTokens = int(observedTokens)
-			usage.HasObservedContextTokens = observed
-			usage.ContextLimit = int(contextLimit)
-			usage.HasContextLimit = limitObserved
-		}
+	if meta.ChatStart.ObservedContextTokens > 0 {
+		usage.ObservedContextTokens = int(meta.ChatStart.ObservedContextTokens)
+		usage.HasObservedContextTokens = true
 	}
-	inputUsage, inputUsageFound := nested(fields, inputUsageFieldNumber)
-	if !inputUsageFound {
-		fallbackEnvelope, fallbackFound := nested(fields, 17)
-		if fallbackFound {
-			inputUsage, inputUsageFound = nested(fallbackEnvelope, 2)
-		}
+	if meta.ChatStart.ContextLimitTokens > 0 {
+		usage.ContextLimit = int(meta.ChatStart.ContextLimitTokens)
+		usage.HasContextLimit = true
 	}
-	if inputUsageFound {
-		uncachedInput, inputObserved := wire.Varint(inputUsage, uncachedInputFieldNumber)
-		cachedInput, cacheObserved := wire.Varint(inputUsage, cachedInputFieldNumber)
-		thinkingOutput, thinkingObserved := wire.Varint(inputUsage, 3)
-		outputContent, outputObserved := wire.Varint(inputUsage, 9)
-		reqIDBytes := wire.FirstBytes(inputUsage, 11)
 
-		usage.UncachedInputTokens = int(uncachedInput)
-		usage.HasUncachedInputTokens = inputObserved
-		usage.CachedInputTokens = int(cachedInput)
-		usage.HasCachedInputTokens = cacheObserved
-		if thinkingObserved {
-			usage.ThinkingOutputTokens = int(thinkingOutput)
-		}
-		if outputObserved {
-			usage.OutputContentTokens = int(outputContent)
-		}
-		if len(reqIDBytes) > 0 {
-			usage.UpstreamRequestID = string(reqIDBytes)
-		}
+	u := meta.Usage
+	if u.UncachedPromptTokens > 0 {
+		usage.UncachedInputTokens = int(u.UncachedPromptTokens)
+		usage.HasUncachedInputTokens = true
+	}
+	if u.CachedContentTokens > 0 {
+		usage.CachedInputTokens = int(u.CachedContentTokens)
+		usage.HasCachedInputTokens = true
+	}
+	if u.ThinkingOutputTokens > 0 {
+		usage.ThinkingOutputTokens = int(u.ThinkingOutputTokens)
+	}
+	if u.OutputContentTokens > 0 {
+		usage.OutputContentTokens = int(u.OutputContentTokens)
+	}
+	if u.UpstreamRequestID != "" {
+		usage.UpstreamRequestID = u.UpstreamRequestID
 	}
 
 	// Authoritative input calculation:
@@ -357,34 +337,15 @@ func decodeUsage(fields []wire.Field) agents.UsageObservation {
 		usage.HasObservedContextTokens = true
 	}
 
-	// Decode TTFT (F11)
-	if ttftFields, found := nested(fields, 11); found {
-		sec, _ := wire.Varint(ttftFields, 1)
-		nanos, _ := wire.Varint(ttftFields, 2)
-		usage.TimeToFirstTokenMs = int64(sec*1000 + nanos/1_000_000)
+	if meta.TimeToFirstToken > 0 {
+		usage.TimeToFirstTokenMs = meta.TimeToFirstToken.Milliseconds()
 	}
-
-	// Decode Streaming Duration (F12)
-	if durFields, found := nested(fields, 12); found {
-		sec, _ := wire.Varint(durFields, 1)
-		nanos, _ := wire.Varint(durFields, 2)
-		usage.StreamingDurationMs = int64(sec*1000 + nanos/1_000_000)
+	if meta.StreamingDuration > 0 {
+		usage.StreamingDurationMs = meta.StreamingDuration.Milliseconds()
 	}
 
 	// Calculate TotalTokens = ObservedContextTokens (Input) + OutputTokens
 	outputTokens := usage.ThinkingOutputTokens + usage.OutputContentTokens
 	usage.TotalTokens = usage.ObservedContextTokens + outputTokens
 	return usage
-}
-
-func nested(fields []wire.Field, fieldNumber int) ([]wire.Field, bool) {
-	data := wire.FirstBytes(fields, fieldNumber)
-	if len(data) == 0 {
-		return nil, false
-	}
-	nestedFields, err := wire.Decode(data)
-	if err != nil {
-		return nil, false
-	}
-	return nestedFields, true
 }

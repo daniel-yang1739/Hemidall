@@ -11,29 +11,15 @@ import (
 	_ "modernc.org/sqlite"
 
 	"heimdall/internal/agent_adapters"
-	"heimdall/internal/agent_adapters/antigravity/wire"
+	"heimdall/internal/agent_adapters/antigravity/schema"
 	"heimdall/internal/core"
 )
 
 const (
-	minimumSnapshotBytes      = 10_000
-	snapshotRowsQuery         = "SELECT idx, data FROM gen_metadata WHERE length(data) >= ? ORDER BY idx DESC"
-	snapshotRootField         = 1
-	snapshotSystemPromptField = 1
-	snapshotRecordField       = 2
-	snapshotToolField         = 8
-	recordKindField           = 2
-	recordTextField           = 3
-	recordPrivateContentField = 11
-	recordSequenceField       = 18
-	toolNameField             = 1
-	toolDescriptionField      = 2
-	toolSchemaField           = 3
-	metadataAttributeField    = 20
-	metadataMapKeyField       = 1
-	metadataMapValueField     = 2
-	lastStepIndexKey          = "last_step_index"
-	compactedSummaryPrefix    = "<CONTEXT_SUMMARY>"
+	minimumSnapshotBytes   = 10_000
+	snapshotRowsQuery      = "SELECT idx, data FROM gen_metadata WHERE length(data) >= ? ORDER BY idx DESC"
+	lastStepIndexKey       = "last_step_index"
+	compactedSummaryPrefix = "<CONTEXT_SUMMARY>"
 )
 
 // Parser reads persisted context snapshots from generation metadata. It labels
@@ -69,17 +55,17 @@ func (Parser) ParseLatest(databasePath string, source agents.SourceRef) (core.Co
 	return core.ContextSnapshot{}, fmt.Errorf("no parseable persisted context snapshot found")
 }
 
-// ParseSnapshot decodes one observed persisted snapshot blob.
+// ParseSnapshot decodes one observed persisted snapshot blob using authoritative proto schema.
 func ParseSnapshot(generationIndex int, data []byte, source agents.SourceRef) (core.ContextSnapshot, error) {
-	root, err := wire.Decode(data)
+	env, err := schema.DecodeRootEnvelope(data)
 	if err != nil {
 		return core.ContextSnapshot{}, fmt.Errorf("decode context snapshot root: %w", err)
 	}
-	contextFields, err := wire.Decode(wire.FirstBytes(root, snapshotRootField))
+	meta, err := schema.DecodeChatModelMetadata(env.ChatModelData)
 	if err != nil {
 		return core.ContextSnapshot{}, fmt.Errorf("decode context snapshot field 1: %w", err)
 	}
-	systemPrompt := printableText(wire.FirstBytes(contextFields, snapshotSystemPromptField))
+	systemPrompt := printableText([]byte(meta.SystemPrompt))
 	if systemPrompt == "" {
 		return core.ContextSnapshot{}, fmt.Errorf("snapshot system prompt unavailable")
 	}
@@ -97,69 +83,39 @@ func ParseSnapshot(generationIndex int, data []byte, source agents.SourceRef) (c
 			Level: core.EvidenceWireStructure, Source: source, Locator: fmt.Sprintf("gen_metadata.idx=%d", generationIndex), Note: "context snapshot",
 		}},
 	}
-	if inputBoundary, found := snapshotInputBoundary(contextFields); found {
-		snapshot.InputBoundaryStepIndex = inputBoundary
-		snapshot.HasInputBoundary = true
-	}
-	for _, field := range contextFields {
-		if field.Number == snapshotRecordField && field.WireType == 2 {
-			snapshot.PersistedContextRecords = append(snapshot.PersistedContextRecords, parseRecord(field.Bytes, len(snapshot.PersistedContextRecords)+1))
+	if lastStepStr, found := meta.CustomMetadata[lastStepIndexKey]; found {
+		if inputBoundary, convertErr := strconv.Atoi(strings.TrimSpace(lastStepStr)); convertErr == nil {
+			snapshot.InputBoundaryStepIndex = inputBoundary
+			snapshot.HasInputBoundary = true
 		}
-		if field.Number == snapshotToolField && field.WireType == 2 {
-			if tool, found := parseTool(field.Bytes); found {
-				snapshot.NativeTools = append(snapshot.NativeTools, tool)
-			}
+	}
+	for i, prompt := range meta.MessagePrompts {
+		record := core.PersistedContextRecord{
+			Position:              i + 1,
+			ByteSize:              prompt.RawByteSize,
+			ObservedKind:          uint64(prompt.Role),
+			RoleName:              prompt.Role.String(),
+			RoleDescription:       prompt.Role.Description(),
+			ObservedSequence:      uint64(prompt.SequenceIndex),
+			PrimaryText:           prompt.Content,
+			HasPrivateContent:     false,
+			IsCompactedCheckpoint: (i == 0) && strings.HasPrefix(prompt.Content, compactedSummaryPrefix),
+		}
+		snapshot.PersistedContextRecords = append(snapshot.PersistedContextRecords, record)
+	}
+	for _, tool := range meta.Tools {
+		if tool.Name != "" {
+			snapshot.NativeTools = append(snapshot.NativeTools, core.ToolSignature{
+				Name:        tool.Name,
+				Signature:   tool.Name,
+				Description: tool.Description,
+				RawSchema:   tool.InputSchema,
+			})
 		}
 	}
 	return snapshot, nil
 }
 
-func snapshotInputBoundary(fields []wire.Field) (int, bool) {
-	for _, field := range fields {
-		if field.Number != metadataAttributeField || field.WireType != 2 {
-			continue
-		}
-		entry, err := wire.Decode(field.Bytes)
-		if err != nil || string(wire.FirstBytes(entry, metadataMapKeyField)) != lastStepIndexKey {
-			continue
-		}
-		inputBoundary, convertErr := strconv.Atoi(strings.TrimSpace(string(wire.FirstBytes(entry, metadataMapValueField))))
-		if convertErr == nil {
-			return inputBoundary, true
-		}
-	}
-	return 0, false
-}
-
-func parseRecord(data []byte, position int) core.PersistedContextRecord {
-	record := core.PersistedContextRecord{Position: position, ByteSize: len(data)}
-	fields, err := wire.Decode(data)
-	if err != nil {
-		return record
-	}
-	if kind, found := wire.Varint(fields, recordKindField); found {
-		record.ObservedKind = kind
-	}
-	if sequence, found := wire.Varint(fields, recordSequenceField); found {
-		record.ObservedSequence = sequence
-	}
-	record.PrimaryText = printableText(wire.FirstBytes(fields, recordTextField))
-	record.HasPrivateContent = len(wire.FirstBytes(fields, recordPrivateContentField)) > 0
-	record.IsCompactedCheckpoint = position == 1 && strings.HasPrefix(record.PrimaryText, compactedSummaryPrefix)
-	return record
-}
-
-func parseTool(data []byte) (core.ToolSignature, bool) {
-	fields, err := wire.Decode(data)
-	if err != nil {
-		return core.ToolSignature{}, false
-	}
-	name := printableText(wire.FirstBytes(fields, toolNameField))
-	if name == "" {
-		return core.ToolSignature{}, false
-	}
-	return core.ToolSignature{Name: name, Signature: name, Description: printableText(wire.FirstBytes(fields, toolDescriptionField)), RawSchema: printableText(wire.FirstBytes(fields, toolSchemaField))}, true
-}
 
 func printableText(data []byte) string {
 	if len(data) == 0 || !utf8.Valid(data) {

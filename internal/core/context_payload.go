@@ -76,12 +76,13 @@ type AgentContextPayload struct {
 	StagedBuffers string
 }
 
-// PersistedContextRecord is a safely decoded, schema-agnostic snapshot entry.
-// ObservedKind and ObservedSequence are wire observations, not official field names.
+// PersistedContextRecord is a decoded snapshot entry with authoritative proto semantics.
 type PersistedContextRecord struct {
 	Position              int
 	ByteSize              int
 	ObservedKind          uint64
+	RoleName              string
+	RoleDescription       string
 	ObservedSequence      uint64
 	PrimaryText           string
 	HasPrivateContent     bool

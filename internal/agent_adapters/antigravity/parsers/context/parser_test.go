@@ -13,13 +13,23 @@ const (
 	fixtureVarintWire      = 0
 	fixtureVarintThreshold = 0x80
 	fixtureVarintShift     = 7
+
+	// Proto field numbers according to cortex.proto
+	protoRootPayloadField      = 1
+	protoSystemPromptField     = 1
+	protoMessagePromptsField   = 2
+	protoMessageRoleField      = 2
+	protoMessageContentField   = 3
+	protoToolsField            = 8
+	protoToolNameField         = 1
+	protoToolDescriptionField  = 2
 )
 
 func TestParseSnapshot_DecodesSystemRecordsAndTools(t *testing.T) {
-	data := bytesField(snapshotRootField, concatenateFields(
-		bytesField(snapshotSystemPromptField, []byte("<identity>agent</identity><user_rules>rules</user_rules>")),
-		bytesField(snapshotRecordField, concatenateFields(varintField(recordKindField, 2), bytesField(recordTextField, []byte("<CONTEXT_SUMMARY>summary")))),
-		bytesField(snapshotToolField, concatenateFields(bytesField(toolNameField, []byte("read_file")), bytesField(toolDescriptionField, []byte("read a file")))),
+	data := bytesField(protoRootPayloadField, concatenateFields(
+		bytesField(protoSystemPromptField, []byte("<identity>agent</identity><user_rules>rules</user_rules>")),
+		bytesField(protoMessagePromptsField, concatenateFields(varintField(protoMessageRoleField, 2), bytesField(protoMessageContentField, []byte("<CONTEXT_SUMMARY>summary")))),
+		bytesField(protoToolsField, concatenateFields(bytesField(protoToolNameField, []byte("read_file")), bytesField(protoToolDescriptionField, []byte("read a file")))),
 	))
 
 	snapshot, parseErr := ParseSnapshot(fixtureGenerationIndex, data, agents.SourceRef{Kind: agents.SourceKindConversation, Path: "fixture.db"})
@@ -29,11 +39,12 @@ func TestParseSnapshot_DecodesSystemRecordsAndTools(t *testing.T) {
 	requireContextEqual(t, snapshot.ConstitutionDoc, "rules")
 	requireContextEqual(t, len(snapshot.PersistedContextRecords), 1)
 	requireContextEqual(t, snapshot.PersistedContextRecords[0].IsCompactedCheckpoint, true)
+	requireContextEqual(t, snapshot.PersistedContextRecords[0].RoleName, "ASSISTANT")
 	requireContextEqual(t, snapshot.NativeTools[0].Name, "read_file")
 }
 
 func TestParseSnapshot_RejectsMissingSystemPrompt(t *testing.T) {
-	data := bytesField(snapshotRootField, bytesField(snapshotRecordField, []byte("record")))
+	data := bytesField(protoRootPayloadField, bytesField(protoMessagePromptsField, []byte("record")))
 
 	_, parseErr := ParseSnapshot(fixtureGenerationIndex, data, agents.SourceRef{})
 

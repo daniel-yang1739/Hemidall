@@ -583,7 +583,19 @@ func (m Model) buildRefinedInspectorLines(payload core.AgentContextPayload, widt
 			index = 0
 		}
 		record := records[index]
-		lines = append(lines, fmt.Sprintf("  • Snapshot position: #%d", record.Position), fmt.Sprintf("  • Record size: %s bytes", formatNumber(record.ByteSize)), fmt.Sprintf("  • Observed kind: %d (schema meaning unknown)", record.ObservedKind), "")
+		roleDisplay := record.RoleName
+		if roleDisplay == "" {
+			roleDisplay = fmt.Sprintf("KIND_%d", record.ObservedKind)
+		}
+		if record.RoleDescription != "" {
+			roleDisplay = fmt.Sprintf("%s (%s)", roleDisplay, record.RoleDescription)
+		}
+		lines = append(lines,
+			fmt.Sprintf("  • Snapshot position: #%d", record.Position),
+			fmt.Sprintf("  • Record size: %s bytes", formatNumber(record.ByteSize)),
+			fmt.Sprintf("  • Message role: %s", roleDisplay),
+			"",
+		)
 		for _, l := range strings.Split(record.PrimaryText, "\n") {
 			lines = append(lines, wrapText("  "+l, width)...)
 		}
