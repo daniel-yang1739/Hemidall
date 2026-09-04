@@ -1,0 +1,3 @@
+## 2025-03-11 - [Optimize String Allocations in UUID Scan]
+**Learning:** [Scanning large byte arrays for UUID-like strings by repeatedly allocating a new string `string(data[start : start+36])` for every single byte offset creates a massive O(N * 36) allocation overhead in Go.]
+**Action:** [When searching for rigid byte patterns (like UUIDs) in large binary blobs, operate entirely on the raw `[]byte` slice first. Only allocate the final `string()` once the full byte pattern is confirmed valid. Furthermore, take advantage of the validation failure to implement skip-ahead jumps to bypass characters that mathematically cannot be part of the target pattern, vastly reducing iterations.]

@@ -211,38 +211,58 @@ func embeddedModelID(data []byte) string {
 }
 
 func observedExecutionIDs(data []byte) []string {
-	executionIDs := make([]string, 0)
-	seen := make(map[string]struct{})
-	for start := 0; start+executionIDLength <= len(data); start++ {
-		candidate := string(data[start : start+executionIDLength])
-		if !isCanonicalExecutionID(candidate) {
+	var executionIDs []string
+	var seen map[string]struct{}
+
+	limit := len(data) - executionIDLength
+	for start := 0; start <= limit; {
+		slice := data[start : start+executionIDLength]
+		valid := true
+		jump := 1
+
+		for i, c := range slice {
+			if i == executionIDFirstHyphen || i == executionIDSecondHyphen || i == executionIDThirdHyphen || i == executionIDFourthHyphen {
+				if c != '-' {
+					valid = false
+					if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+						jump = i + 1
+					} else {
+						jump = 1
+					}
+					break
+				}
+				continue
+			}
+			if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
+				valid = false
+				if c == '-' {
+					jump = 1
+				} else {
+					jump = i + 1
+				}
+				break
+			}
+		}
+
+		if !valid {
+			start += jump
 			continue
 		}
-		if _, exists := seen[candidate]; exists {
-			continue
+
+		candidate := string(slice)
+		if seen == nil {
+			seen = make(map[string]struct{})
 		}
-		seen[candidate] = struct{}{}
-		executionIDs = append(executionIDs, candidate)
+		if _, exists := seen[candidate]; !exists {
+			seen[candidate] = struct{}{}
+			executionIDs = append(executionIDs, candidate)
+		}
+		start += executionIDLength
+	}
+	if executionIDs == nil {
+		return []string{}
 	}
 	return executionIDs
-}
-
-func isCanonicalExecutionID(value string) bool {
-	if len(value) != executionIDLength {
-		return false
-	}
-	for index, character := range value {
-		if index == executionIDFirstHyphen || index == executionIDSecondHyphen || index == executionIDThirdHyphen || index == executionIDFourthHyphen {
-			if character != '-' {
-				return false
-			}
-			continue
-		}
-		if (character < '0' || character > '9') && (character < 'a' || character > 'f') && (character < 'A' || character > 'F') {
-			return false
-		}
-	}
-	return true
 }
 
 func resolveUniqueEnumModels(metadata []generationMetadata) {

@@ -55,14 +55,14 @@ type EmpiricalTurnTelemetry struct {
 	UncachedPromptTokens  int     `json:"uncached_prompt_tokens"`  // F4.2
 	ThinkingOutputTokens  int     `json:"thinking_output_tokens"`  // F4.3
 	OutputContentTokens   int     `json:"output_content_tokens"`   // F4.9
-	OutputTokens          int     `json:"output_tokens"`          // Thinking + Content
-	TotalTokens           int     `json:"total_tokens"`           // ObservedContextTokens + OutputTokens
-	ContextWindowLimit    int     `json:"context_window_limit"`   // F9.10.4 or model default
-	UtilizationPercentage float64 `json:"utilization_percentage"` // ObservedContextTokens / ContextWindowLimit * 100
-	CacheHitPercentage    float64 `json:"cache_hit_percentage"`   // CachedContentTokens / ObservedContextTokens * 100
-	TimeToFirstTokenMs    int64   `json:"time_to_first_token_ms"` // F11
-	StreamingDurationMs   int64   `json:"streaming_duration_ms"`  // F12
-	UpstreamRequestID     string  `json:"upstream_request_id"`    // F4.11
+	OutputTokens          int     `json:"output_tokens"`           // Thinking + Content
+	TotalTokens           int     `json:"total_tokens"`            // ObservedContextTokens + OutputTokens
+	ContextWindowLimit    int     `json:"context_window_limit"`    // F9.10.4 or model default
+	UtilizationPercentage float64 `json:"utilization_percentage"`  // ObservedContextTokens / ContextWindowLimit * 100
+	CacheHitPercentage    float64 `json:"cache_hit_percentage"`    // CachedContentTokens / ObservedContextTokens * 100
+	TimeToFirstTokenMs    int64   `json:"time_to_first_token_ms"`  // F11
+	StreamingDurationMs   int64   `json:"streaming_duration_ms"`   // F12
+	UpstreamRequestID     string  `json:"upstream_request_id"`     // F4.11
 }
 
 // StepInspectionReadModel contains all data necessary to render the lower
