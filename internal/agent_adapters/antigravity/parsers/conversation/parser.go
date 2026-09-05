@@ -214,10 +214,15 @@ func observedExecutionIDs(data []byte) []string {
 	executionIDs := make([]string, 0)
 	seen := make(map[string]struct{})
 	for start := 0; start+executionIDLength <= len(data); start++ {
-		candidate := string(data[start : start+executionIDLength])
-		if !isCanonicalExecutionID(candidate) {
+		// ⚡ Bolt Optimization:
+		// Sliced the raw `[]byte` directly instead of casting it to a string inside the loop.
+		// We pass this zero-allocation slice to `isCanonicalExecutionID()`.
+		// Impact: Drops string allocations per binary payload from O(N) (length of payload) to O(Matches).
+		candidateBytes := data[start : start+executionIDLength]
+		if !isCanonicalExecutionID(candidateBytes) {
 			continue
 		}
+		candidate := string(candidateBytes)
 		if _, exists := seen[candidate]; exists {
 			continue
 		}
@@ -227,7 +232,7 @@ func observedExecutionIDs(data []byte) []string {
 	return executionIDs
 }
 
-func isCanonicalExecutionID(value string) bool {
+func isCanonicalExecutionID(value []byte) bool {
 	if len(value) != executionIDLength {
 		return false
 	}
