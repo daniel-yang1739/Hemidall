@@ -50,6 +50,13 @@ func TestParseTranscriptLine_Pos_NormalizesPlannerResponseToCloudModelResponse(t
 	requireEqual(t, step.Kind, string(core.StepTypeModelResponse))
 }
 
+func TestParseTranscriptLine_Pos_NormalizesPlannerResponseWithToolCallsToCloudToolCall(t *testing.T) {
+	step, parseErr := ParseTranscriptLine(`{"step_index":9,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-09-01T01:02:03Z","content":"executing","tool_calls":[{"name":"run_command","args":{"command":"ls"}}]}`, testSource())
+
+	requireEqual(t, parseErr == nil, true)
+	requireEqual(t, step.Kind, string(core.StepTypeToolCall))
+}
+
 func TestParseTranscriptFragment_PreservesTrailingIncompleteLine(t *testing.T) {
 	firstFragment := `{"step_index":7,"source":"USER","type":"USER_INPUT","status":"DONE","created_at":"2026-09-01T01:02:03Z","content":"hello"}` + "\n" + `{"step_index":8`
 	firstSteps, firstDiagnostics, trailingFragment := ParseTranscriptFragment(firstFragment, testSource())

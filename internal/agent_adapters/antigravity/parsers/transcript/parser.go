@@ -76,11 +76,16 @@ func ParseTranscriptLine(line string, source agents.SourceRef) (agents.Step, err
 	for index, toolCall := range raw.ToolCalls {
 		toolCalls[index] = agents.ToolCall{Name: toolCall.Name, Args: toolCall.Args}
 	}
+	kind := canonicalStepKind(raw.Type)
+	if raw.Type == antigravityPlannerResponse && len(toolCalls) > 0 {
+		kind = string(core.StepTypeToolCall)
+	}
+
 	return agents.Step{
 		Index:     raw.StepIndex,
 		Timestamp: parsedTime,
 		Source:    raw.Source,
-		Kind:      canonicalStepKind(raw.Type),
+		Kind:      kind,
 		Status:    raw.Status,
 		Content:   raw.Content,
 		Thinking:  raw.Thinking,

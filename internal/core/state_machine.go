@@ -27,7 +27,7 @@ func (t *StepLinkageTracker) ProcessEvent(e *UnifiedAgentEvent) {
 		e.Scope = ScopeLocalExecution
 		e.ParentStepIdx = t.lastParentToolCallIdx
 		t.pendingStagedSteps = append(t.pendingStagedSteps, e.StepIndex)
-	} else if e.Type == StepTypeToolCall {
+	} else if e.Type == StepTypeToolCall || (e.Type == StepTypeModelResponse && len(e.ToolCalls) > 0) {
 		e.Scope = ScopeCloudInference
 		e.ParentStepIdx = t.lastUserPromptIdx
 		if len(t.pendingStagedSteps) > 0 {

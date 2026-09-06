@@ -76,6 +76,30 @@ func TestSessionStore_RefreshClassifiesPlannerResponseAsCloudStep(t *testing.T) 
 	requireEqual(t, session.Steps[0].Scope, core.ScopeCloudInference)
 }
 
+func TestSessionStore_RefreshLinksLocalStepToTriggeringPlannerResponseToolCall(t *testing.T) {
+	lines := `{"step_index":0,"source":"USER","type":"USER_INPUT","status":"DONE","created_at":"` + fixtureTimestamp + `","content":"run it"}` + "\n" +
+		`{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"` + fixtureTimestamp + `","content":"calling tool","tool_calls":[{"name":"run_command","args":{"command":"ls"}}]}` + "\n" +
+		`{"step_index":2,"source":"MODEL","type":"GENERIC","status":"DONE","created_at":"` + fixtureTimestamp + `","content":"total 0"}` + "\n"
+	transcriptPath := writeFixtureTranscript(t, lines)
+	store := newFixtureStore(t, transcriptPath)
+
+	_, refreshErr := store.Refresh()
+	session := store.Session()
+
+	requireNoError(t, refreshErr)
+	requireEqual(t, len(session.Steps), 3)
+	requireEqual(t, session.Steps[1].Kind, string(core.StepTypeToolCall))
+	requireEqual(t, session.Steps[1].Scope, core.ScopeCloudInference)
+	requireEqual(t, session.Steps[2].Kind, string(core.StepTypeGeneric))
+	requireEqual(t, session.Steps[2].Scope, core.ScopeLocalExecution)
+	requireEqual(t, session.Steps[2].ParentStepIndex, 1)
+
+	readModel := core.BuildDashboardReadModel(session)
+	requireEqual(t, readModel.Inspections[2].TriggeredCloudStep, 1)
+	requireEqual(t, readModel.Inspections[2].LocalAction, "run_command")
+}
+
+
 func TestNewSessionStore_RequiresTranscriptSource(t *testing.T) {
 	store, err := NewSessionStore(agents.SessionRef{SessionID: fixtureSessionID}, nil)
 

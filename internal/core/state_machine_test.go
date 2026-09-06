@@ -32,6 +32,29 @@ func TestLinkage_Pos_SingleToolCallToResult(t *testing.T) {
 	}
 }
 
+func TestLinkage_Pos_ModelResponseWithToolCallsToResult(t *testing.T) {
+	tracker := NewStepLinkageTracker()
+
+	events := []UnifiedAgentEvent{
+		{StepIndex: 1, Type: StepTypeUserInput},
+		{StepIndex: 2, Type: StepTypeModelResponse, ToolCalls: []ToolCallInfo{{ToolName: "run_command"}}},
+		{StepIndex: 3, Type: StepTypeRunCommand},
+		{StepIndex: 4, Type: StepTypeModelResponse},
+	}
+
+	for i := range events {
+		tracker.ProcessEvent(&events[i])
+	}
+	BackfillPackagedIn(events)
+
+	if events[2].ParentStepIdx != 2 {
+		t.Errorf("Step 3 RunCommand parent should be 2 (ModelResponse with tool calls), got %d", events[2].ParentStepIdx)
+	}
+	if events[2].PackagedInStepIdx != 4 {
+		t.Errorf("Step 3 RunCommand packaged in should be 4 (ModelResponse), got %d", events[2].PackagedInStepIdx)
+	}
+}
+
 func TestLinkage_Pos_ParallelToolCallsParent(t *testing.T) {
 	tracker := NewStepLinkageTracker()
 

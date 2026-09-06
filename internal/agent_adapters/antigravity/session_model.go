@@ -91,7 +91,16 @@ func cloneArguments(arguments map[string]any) map[string]any {
 func assembleStepLifecycle(steps []agents.Step) {
 	events := make([]core.UnifiedAgentEvent, len(steps))
 	for index, step := range steps {
-		events[index] = core.UnifiedAgentEvent{StepIndex: step.Index, Type: core.StepType(step.Kind), Source: step.Source}
+		toolCalls := make([]core.ToolCallInfo, len(step.ToolCalls))
+		for tcIdx, tc := range step.ToolCalls {
+			toolCalls[tcIdx] = core.ToolCallInfo{ToolName: tc.Name, Arguments: tc.Args}
+		}
+		events[index] = core.UnifiedAgentEvent{
+			StepIndex: step.Index,
+			Type:      core.StepType(step.Kind),
+			Source:    step.Source,
+			ToolCalls: toolCalls,
+		}
 	}
 	tracker := core.NewStepLinkageTracker()
 	for index := range events {
