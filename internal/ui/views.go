@@ -617,8 +617,8 @@ func renderCloudStepInspection(inspection core.StepInspectionReadModel, contentW
 
 	lines := []string{
 		TitleStyle.Render(fmt.Sprintf("STEP #%d · CLOUD GENERATION", event.StepIndex)),
-		formatExperimentalDashboardMetadata("Agent / Model", fmt.Sprintf("[%s] %s", event.GetAgentRole(), modelName), contentWidth),
 		formatExperimentalDashboardMetadata("Event / Time", formatDashboardEventTime(event), contentWidth),
+		formatExperimentalDashboardMetadata("Agent / Model", fmt.Sprintf("[%s] %s", event.GetAgentRole(), modelName), contentWidth),
 	}
 
 	if !usage.Available && telemetry.ObservedContextTokens == 0 {
@@ -1269,8 +1269,8 @@ func renderCloudStepPanelLines(inspection core.StepInspectionReadModel, contentW
 	}
 	lines := []string{
 		TitleStyle.Render(fmt.Sprintf("STEP #%d · CLOUD GENERATION", event.StepIndex)),
-		formatDashboardMetadata("Agent / Model", fmt.Sprintf("[%s] %s", event.GetAgentRole(), modelName)),
 		formatDashboardMetadata("Event / Time", formatDashboardEventTime(event)),
+		formatDashboardMetadata("Agent / Model", fmt.Sprintf("[%s] %s", event.GetAgentRole(), modelName)),
 	}
 	if usage.HasObservedContextTokens {
 		observed := formatTokShort(usage.ObservedContextTokens) + " Tokens"
