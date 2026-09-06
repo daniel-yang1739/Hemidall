@@ -314,7 +314,7 @@ func formatSpaceBetweenRow(cols []string, minWidths []int, leftAlign []bool, tar
 
 func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTokenStats, width int) string {
 	var sb strings.Builder
-	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("  MULTI-MODEL PERSISTED USAGE & WEIGHTED TOKEN EFFICIENCY:") + "\n")
+	sb.WriteString("\n" + TitleStyle.Render("MULTI-MODEL PERSISTED USAGE & WEIGHTED TOKEN EFFICIENCY:") + "\n")
 
 	targetWidth := width - 4
 	if targetWidth < 30 {
