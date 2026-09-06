@@ -64,7 +64,44 @@ func TestDashboardCloudStep_Pos_RendersFourContextDimensionsWithBars(t *testing.
 	requireViewContains(t, view, "REASONING")
 	requireViewContains(t, view, "In:")
 	requireViewContains(t, view, "Total Turn Tokens")
+	requireViewContains(t, view, "Event / Time")
+	requireViewContains(t, view, "MODEL_RESPONSE")
 	requireViewContains(t, view, "████")
+}
+
+func TestDashboardLocalStep_Pos_RendersEventTimeAndTriggeredCloudStep(t *testing.T) {
+	model := NewModel("session-a", false)
+	model.width = dashboardTestWidth
+	model.height = 40
+	model.history = []core.UnifiedAgentEvent{
+		{StepIndex: 1, Type: core.StepTypeToolCall, Scope: core.ScopeCloudInference},
+		{StepIndex: 2, Type: core.StepTypeGeneric, Scope: core.ScopeLocalExecution, ParentStepIdx: 1, RawContent: "command result output"},
+	}
+	model.dashboardIdx = 1
+	model.dashboardReadModel = core.DashboardReadModel{
+		SessionID: "session-a",
+		Inspections: map[int]core.StepInspectionReadModel{
+			2: {
+				Kind:               core.DashboardStepLocal,
+				LocalAction:        "run_cmd",
+				TriggeredCloudStep: 1,
+				ResultPreview:      "command result output",
+			},
+		},
+	}
+	model.dashboardReadModelHistoryCount = len(model.history)
+
+	view := model.renderDashboardView()
+
+	requireViewContains(t, view, "STEP #2 · LOCAL EXECUTION")
+	requireViewContains(t, view, "Event / Time")
+	requireViewContains(t, view, "GENERIC")
+	requireViewContains(t, view, "Tool / Action")
+	requireViewContains(t, view, "run_cmd")
+	requireViewContains(t, view, "Triggered Cloud Step")
+	requireViewContains(t, view, "#1")
+	requireViewContains(t, view, "RESULT")
+	requireViewContains(t, view, "command result output")
 }
 
 func TestDashboardCloudStep_Neg_ShowsSynchronizingWhenTelemetryPending(t *testing.T) {

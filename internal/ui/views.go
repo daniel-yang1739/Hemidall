@@ -615,12 +615,10 @@ func renderCloudStepInspection(inspection core.StepInspectionReadModel, contentW
 
 	boldStyle := lipgloss.NewStyle().Bold(true)
 
-	statusTimeStr := fmt.Sprintf("%s · %s", dashboardStatus(event.Status), dashboardTimestamp(event))
-
 	lines := []string{
 		TitleStyle.Render(fmt.Sprintf("STEP #%d · CLOUD GENERATION", event.StepIndex)),
 		formatExperimentalDashboardMetadata("Agent / Model", fmt.Sprintf("[%s] %s", event.GetAgentRole(), modelName), contentWidth),
-		formatExperimentalDashboardMetadata("Status / Time", statusTimeStr, contentWidth),
+		formatExperimentalDashboardMetadata("Event / Time", formatDashboardEventTime(event), contentWidth),
 	}
 
 	if !usage.Available && telemetry.ObservedContextTokens == 0 {
@@ -755,9 +753,8 @@ func renderNonCloudStepInspection(inspection core.StepInspectionReadModel, conte
 	event := inspection.Event
 	lines := []string{
 		TitleStyle.Render(fmt.Sprintf("STEP #%d · %s", event.StepIndex, dashboardStepTitle(inspection.Kind))) + lipgloss.NewStyle().Foreground(ColorMuted).Render(" (NO CLOUD REQUEST)"),
-		formatExperimentalDashboardMetadata("Event Type", string(event.Type), contentWidth),
+		formatExperimentalDashboardMetadata("Event / Time", formatDashboardEventTime(event), contentWidth),
 		formatExperimentalDashboardMetadata("Tool / Action", inspection.LocalAction, contentWidth),
-		formatExperimentalDashboardMetadata("Status / Time", fmt.Sprintf("%s · %s", dashboardStatus(event.Status), dashboardTimestamp(event)), contentWidth),
 	}
 	if inspection.Kind == core.DashboardStepLocal {
 		trigger := "unavailable"
@@ -807,6 +804,26 @@ func dashboardTimestamp(event core.UnifiedAgentEvent) string {
 		return "unavailable"
 	}
 	return event.Timestamp.Local().Format("2006-01-02 15:04:05")
+}
+
+func formatDashboardEventTime(event core.UnifiedAgentEvent) string {
+	eventType := string(event.Type)
+	if eventType == "" {
+		if event.IsCloudStep() {
+			eventType = string(core.StepTypeModelResponse)
+		} else {
+			eventType = string(core.StepTypeGeneric)
+		}
+	}
+	ts := dashboardTimestamp(event)
+	status := strings.ToUpper(strings.TrimSpace(event.Status))
+	if status == "ERROR" {
+		return fmt.Sprintf("%s %s · %s", eventType, lipgloss.NewStyle().Foreground(ColorDanger).Bold(true).Render("[ERROR]"), ts)
+	}
+	if status == "RUNNING" {
+		return fmt.Sprintf("%s %s · %s", eventType, lipgloss.NewStyle().Foreground(ColorWarning).Bold(true).Render("[RUNNING]"), ts)
+	}
+	return fmt.Sprintf("%s · %s", eventType, ts)
 }
 
 func formatObservedContext(event core.UnifiedAgentEvent) string {
@@ -1253,7 +1270,7 @@ func renderCloudStepPanelLines(inspection core.StepInspectionReadModel, contentW
 	lines := []string{
 		TitleStyle.Render(fmt.Sprintf("STEP #%d · CLOUD GENERATION", event.StepIndex)),
 		formatDashboardMetadata("Agent / Model", fmt.Sprintf("[%s] %s", event.GetAgentRole(), modelName)),
-		formatDashboardMetadata("Status / Time", fmt.Sprintf("%s · %s", event.Status, formatDashboardTime(event))),
+		formatDashboardMetadata("Event / Time", formatDashboardEventTime(event)),
 	}
 	if usage.HasObservedContextTokens {
 		observed := formatTokShort(usage.ObservedContextTokens) + " Tokens"
@@ -1284,9 +1301,8 @@ func renderNonCloudStepPanelLines(inspection core.StepInspectionReadModel, conte
 	title := fmt.Sprintf("STEP #%d · %s", event.StepIndex, dashboardStepKindTitle(inspection.Kind))
 	lines := []string{
 		TitleStyle.Render(title),
-		formatDashboardMetadata("Event Type", string(event.Type)),
+		formatDashboardMetadata("Event / Time", formatDashboardEventTime(event)),
 		formatDashboardMetadata("Action", inspection.LocalAction),
-		formatDashboardMetadata("Status / Time", fmt.Sprintf("%s · %s", event.Status, formatDashboardTime(event))),
 	}
 	if inspection.Kind == core.DashboardStepLocal {
 		trigger := "unavailable"
