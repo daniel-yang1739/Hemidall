@@ -243,7 +243,7 @@ func formatSpaceBetweenRow(cols []string, minWidths []int, leftAlign []bool, tar
 
 func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTokenStats, width int) string {
 	var sb strings.Builder
-	sb.WriteString("\n" + TitleStyle.Render("MULTI-MODEL USAGE & COST BREAKDOWN:") + "\n")
+	sb.WriteString("\n" + TitleStyle.Render("MULTI-MODEL USAGE & COST BREAKDOWN") + "\n")
 
 	targetWidth := width - 4
 	if targetWidth < 30 {
@@ -284,19 +284,19 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 
 		return sb.String()
 	} else if width < 105 {
-		// Tier 2: 5-Column Compact Table for Medium Terminals (75 <= width < 105)
-		minWidths := []int{16, 5, 10, 10, 12}
+		// Tier 2: 5-Column Compact Table for Medium Terminals / Half-Screen (75 <= width < 105)
+		minWidths := []int{16, 10, 8, 10, 12}
 		leftAligns := []bool{true, false, false, false, false}
 
-		headers := []string{"Model Name", "Turns", "Input", "Output", "Est. Cost"}
+		headers := []string{"Model Name", "Input", "Cached", "Output", "Est. Cost"}
 		headerStr := "  " + formatSpaceBetweenRow(headers, minWidths, leftAligns, targetWidth)
 		sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(headerStr) + "\n")
 
 		for _, m := range models {
 			rowCols := []string{
 				truncateVisualWidth(m.ModelName, 16),
-				fmt.Sprintf("%d", m.TurnCount),
 				formatTokShort(m.TotalProcessedTokenSum),
+				fmt.Sprintf("%.1f%%", m.CacheInputSharePercent),
 				formatTokShort(m.TotalOutputTokenSum),
 				formatEstimatedCostCell(m),
 			}
@@ -309,8 +309,8 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 
 		totCols := []string{
 			"TOTAL SUMMARY",
-			fmt.Sprintf("%d", total.TurnCount),
 			formatTokShort(total.TotalProcessedTokenSum),
+			fmt.Sprintf("%.1f%%", total.CacheInputSharePercent),
 			formatTokShort(total.TotalOutputTokenSum),
 			formatEstimatedCostCell(total),
 		}

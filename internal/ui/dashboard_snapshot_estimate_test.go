@@ -11,6 +11,7 @@ import (
 
 const (
 	dashboardTestWidth          = 160
+	dashboardTestHalfWidth      = 90
 	dashboardSystemTokens       = 10
 	dashboardToolsTokens        = 20
 	dashboardBufferTokens       = 30
@@ -240,6 +241,8 @@ func TestDashboardAggregate_Pos_ShowsUsageAndCostTotals(t *testing.T) {
 
 	table := renderModelBreakdownTable(metrics.ModelStats, metrics.TotalStats, dashboardTestWidth)
 
+	requireViewContains(t, table, "MULTI-MODEL USAGE & COST BREAKDOWN")
+	requireViewDoesNotContain(t, table, "MULTI-MODEL USAGE & COST BREAKDOWN:")
 	requireViewContains(t, table, "Model Name")
 	requireViewContains(t, table, "Turns")
 	requireViewContains(t, table, "Input")
@@ -251,6 +254,28 @@ func TestDashboardAggregate_Pos_ShowsUsageAndCostTotals(t *testing.T) {
 	requireViewDoesNotContain(t, table, "Effective Input")
 	requireViewDoesNotContain(t, table, "Cached Saved (%)")
 	requireViewDoesNotContain(t, table, "NT$")
+}
+
+func TestDashboardAggregate_Pos_HalfWidthColumns(t *testing.T) {
+	history := []core.UnifiedAgentEvent{
+		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardKnownModel, HasUncachedInputTokens: true, UncachedInputTokens: dashboardGeminiUncachedInputTokens, HasCachedInputTokens: true, CachedInputTokens: dashboardGeminiCachedInputTokens, ThinkingOutputTokens: 50, OutputContentTokens: 50}},
+		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardClaudeModel, HasUncachedInputTokens: true, UncachedInputTokens: dashboardClaudeUncachedInputTokens, HasCachedInputTokens: true, CachedInputTokens: dashboardClaudeCachedInputTokens, ThinkingOutputTokens: 100, OutputContentTokens: 100}},
+	}
+	metrics := core.ComputeSessionAggregateMetrics(history)
+
+	table := renderModelBreakdownTable(metrics.ModelStats, metrics.TotalStats, dashboardTestHalfWidth)
+
+	requireViewContains(t, table, "MULTI-MODEL USAGE & COST BREAKDOWN")
+	requireViewDoesNotContain(t, table, "MULTI-MODEL USAGE & COST BREAKDOWN:")
+	requireViewContains(t, table, "Model Name")
+	requireViewContains(t, table, "Input")
+	requireViewContains(t, table, "Cached")
+	requireViewContains(t, table, "Output")
+	requireViewContains(t, table, "Est. Cost")
+	requireViewDoesNotContain(t, table, "Turns")
+	requireViewContains(t, table, "TOTAL SUMMARY")
+	requireViewContains(t, table, "USD")
+	requireRenderedLinesWithinWidth(t, table, dashboardTestHalfWidth)
 }
 
 func requireViewDoesNotContain(t *testing.T, view, unexpected string) {
