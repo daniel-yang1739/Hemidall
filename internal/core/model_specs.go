@@ -2,35 +2,6 @@ package core
 
 import "strings"
 
-const (
-	gemini37FlashModelID                     = string(ModelGemini37Flash)
-	gemini38FlashModelID                     = string(ModelGemini38Flash)
-	gemini37FlashStandardInputUSDPerMillion  = 0.75
-	gemini37FlashCachedInputUSDPerMillion    = 0.075
-	gemini37FlashOutputUSDPerMillion         = 3.00
-	freeInputUSDPerMillion                   = 0.0
-	freeOutputUSDPerMillion                  = 0.0
-	gemini37FlashHighModelID                 = string(ModelGemini37FlashHigh)
-	gemini37FlashSafetyLEModelID             = string(ModelGemini37FlashSafety)
-	claudeSonnet46ModelID                    = string(ModelClaudeSonnet46)
-	claudeSonnet46StandardInputUSDPerMillion = 3.30
-	claudeSonnet46CachedInputUSDPerMillion   = 0.33
-	claudeSonnet46OutputUSDPerMillion        = 15.00
-
-	gemini25ProModelID                    = string(ModelGemini25Pro)
-	gemini25ProStandardInputUSDPerMillion = 1.25
-	gemini25ProCachedInputUSDPerMillion   = 0.3125
-	gemini25ProOutputUSDPerMillion        = 5.00
-
-	gemini25FlashModelID                    = string(ModelGemini25Flash)
-	gemini25FlashStandardInputUSDPerMillion = 0.075
-	gemini25FlashCachedInputUSDPerMillion   = 0.01875
-	gemini25FlashOutputUSDPerMillion        = 0.30
-
-	claude37SonnetModelID = string(ModelClaude37Sonnet)
-	claude35SonnetModelID = string(ModelClaude35Sonnet)
-)
-
 // ModelInfo represents canonical vendor specifications, hosting provider, and pricing metrics.
 type ModelInfo struct {
 	Provider            ProviderName
@@ -120,8 +91,8 @@ var modelCatalog = map[ProviderName]map[ModelID]ModelInfo{
 			Vendor:              "Google",
 			Name:                "Gemini 2.5 Pro",
 			ID:                  ModelGemini25Pro,
-			InputUSDPerMillion:  gemini25ProStandardInputUSDPerMillion,
-			OutputUSDPerMillion: gemini25ProOutputUSDPerMillion,
+			InputUSDPerMillion:  1.25,
+			OutputUSDPerMillion: 5.00,
 			CacheDiscountRate:   0.75, // 75% OFF
 			SourceLabel:         "Google Gemini 2.5 Pro pricing",
 			SourceURL:           "https://ai.google.dev/gemini-api/docs/pricing",
@@ -131,8 +102,8 @@ var modelCatalog = map[ProviderName]map[ModelID]ModelInfo{
 			Vendor:              "Google",
 			Name:                "Gemini 2.5 Flash",
 			ID:                  ModelGemini25Flash,
-			InputUSDPerMillion:  gemini25FlashStandardInputUSDPerMillion,
-			OutputUSDPerMillion: gemini25FlashOutputUSDPerMillion,
+			InputUSDPerMillion:  0.075,
+			OutputUSDPerMillion: 0.30,
 			CacheDiscountRate:   0.75, // 75% OFF
 			SourceLabel:         "Google Gemini 2.5 Flash pricing",
 			SourceURL:           "https://ai.google.dev/gemini-api/docs/pricing",
@@ -142,8 +113,8 @@ var modelCatalog = map[ProviderName]map[ModelID]ModelInfo{
 			Vendor:              "Google",
 			Name:                "Gemini 3.7 Flash",
 			ID:                  ModelGemini37Flash,
-			InputUSDPerMillion:  gemini37FlashStandardInputUSDPerMillion,
-			OutputUSDPerMillion: gemini37FlashOutputUSDPerMillion,
+			InputUSDPerMillion:  0.75,
+			OutputUSDPerMillion: 3.00,
 			CacheDiscountRate:   0.90, // 90% OFF
 			SourceLabel:         "Google Gemini Developer API paid standard pricing",
 			SourceURL:           "https://ai.google.dev/gemini-api/docs/pricing",
@@ -153,8 +124,8 @@ var modelCatalog = map[ProviderName]map[ModelID]ModelInfo{
 			Vendor:              "Google",
 			Name:                "Gemini 3.8 Flash",
 			ID:                  ModelGemini38Flash,
-			InputUSDPerMillion:  gemini37FlashStandardInputUSDPerMillion,
-			OutputUSDPerMillion: gemini37FlashOutputUSDPerMillion,
+			InputUSDPerMillion:  0.75,
+			OutputUSDPerMillion: 3.00,
 			CacheDiscountRate:   0.90,
 			SourceLabel:         "Google Gemini Developer API paid standard pricing",
 			SourceURL:           "https://ai.google.dev/gemini-api/docs/pricing",
@@ -164,8 +135,8 @@ var modelCatalog = map[ProviderName]map[ModelID]ModelInfo{
 			Vendor:              "Google",
 			Name:                "Gemini 3.7 Flash High",
 			ID:                  ModelGemini37FlashHigh,
-			InputUSDPerMillion:  gemini37FlashStandardInputUSDPerMillion,
-			OutputUSDPerMillion: gemini37FlashOutputUSDPerMillion,
+			InputUSDPerMillion:  0.75,
+			OutputUSDPerMillion: 3.00,
 			CacheDiscountRate:   0.90,
 			SourceLabel:         "Gemini Flash High pricing policy",
 		},
@@ -182,8 +153,8 @@ var modelCatalog = map[ProviderName]map[ModelID]ModelInfo{
 			Vendor:              "Anthropic",
 			Name:                "Claude Sonnet 4.6",
 			ID:                  ModelClaudeSonnet46,
-			InputUSDPerMillion:  claudeSonnet46StandardInputUSDPerMillion,
-			OutputUSDPerMillion: claudeSonnet46OutputUSDPerMillion,
+			InputUSDPerMillion:  3.30,
+			OutputUSDPerMillion: 15.00,
 			CacheDiscountRate:   0.90, // 90% OFF
 			SourceLabel:         "Claude Sonnet standard pricing",
 			SourceURL:           "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
@@ -293,10 +264,10 @@ func CalculateModelCost(spec ModelPricingSpec, uncachedInput, cachedInput, outpu
 // CacheInputMultiplier returns the cached-input price as a fraction of the
 // standard input price. A zero ratio is also valid for an explicitly free model.
 func (spec ModelPricingSpec) CacheInputMultiplier() (float64, bool) {
-	if spec.StandardInputUSDPerMillion == freeInputUSDPerMillion && spec.CachedInputUSDPerMillion == freeInputUSDPerMillion {
-		return freeInputUSDPerMillion, true
+	if spec.StandardInputUSDPerMillion == 0 && spec.CachedInputUSDPerMillion == 0 {
+		return 0, true
 	}
-	if spec.StandardInputUSDPerMillion <= freeInputUSDPerMillion || spec.CachedInputUSDPerMillion < freeInputUSDPerMillion {
+	if spec.StandardInputUSDPerMillion <= 0 || spec.CachedInputUSDPerMillion < 0 {
 		return 0, false
 	}
 	return spec.CachedInputUSDPerMillion / spec.StandardInputUSDPerMillion, true
@@ -305,13 +276,13 @@ func (spec ModelPricingSpec) CacheInputMultiplier() (float64, bool) {
 // StandardInputMultiplier returns one for metered models and zero for an
 // explicitly free model.
 func (spec ModelPricingSpec) StandardInputMultiplier() (float64, bool) {
-	if spec.StandardInputUSDPerMillion == freeInputUSDPerMillion && spec.CachedInputUSDPerMillion == freeInputUSDPerMillion {
-		return freeInputUSDPerMillion, true
+	if spec.StandardInputUSDPerMillion == 0 && spec.CachedInputUSDPerMillion == 0 {
+		return 0, true
 	}
-	if spec.StandardInputUSDPerMillion > freeInputUSDPerMillion {
+	if spec.StandardInputUSDPerMillion > 0 {
 		return 1, true
 	}
-	return freeInputUSDPerMillion, false
+	return 0, false
 }
 
 // ResolveModelPricing maintains backward compatibility with older callers and tests.

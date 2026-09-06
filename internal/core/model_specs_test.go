@@ -7,40 +7,40 @@ const (
 )
 
 func TestModelPricing_Pos_ResolvesExactVerifiedGeminiModel(t *testing.T) {
-	spec, available := ResolveModelPricing(gemini37FlashModelID)
+	spec, available := ResolveModelPricing(string(ModelGemini37Flash))
 	multiplier, multiplierAvailable := spec.CacheInputMultiplier()
 
 	requireModelSpecEqual(t, true, available)
-	requireModelSpecEqual(t, gemini37FlashModelID, spec.ModelID)
+	requireModelSpecEqual(t, string(ModelGemini37Flash), spec.ModelID)
 	requireModelSpecEqual(t, true, multiplierAvailable)
 	requireModelSpecFloatEqual(t, modelSpecCacheMultiplier, multiplier)
 }
 
 func TestModelPricing_Pos_ResolvesExactVerifiedGemini38Model(t *testing.T) {
-	spec, available := ResolveModelPricing(gemini38FlashModelID)
+	spec, available := ResolveModelPricing(string(ModelGemini38Flash))
 	multiplier, multiplierAvailable := spec.CacheInputMultiplier()
 
 	requireModelSpecEqual(t, true, available)
-	requireModelSpecEqual(t, gemini38FlashModelID, spec.ModelID)
+	requireModelSpecEqual(t, string(ModelGemini38Flash), spec.ModelID)
 	requireModelSpecEqual(t, true, multiplierAvailable)
 	requireModelSpecFloatEqual(t, modelSpecCacheMultiplier, multiplier)
-	requireModelSpecFloatEqual(t, gemini37FlashStandardInputUSDPerMillion, spec.StandardInputUSDPerMillion)
-	requireModelSpecFloatEqual(t, gemini37FlashCachedInputUSDPerMillion, spec.CachedInputUSDPerMillion)
+	requireModelSpecFloatEqual(t, 0.75, spec.StandardInputUSDPerMillion)
+	requireModelSpecFloatEqual(t, 0.075, spec.CachedInputUSDPerMillion)
 }
 
 func TestModelPricing_Pos_ResolvesExactVerifiedClaudeModel(t *testing.T) {
-	spec, available := ResolveModelPricing(claudeSonnet46ModelID)
+	spec, available := ResolveModelPricing(string(ModelClaudeSonnet46))
 	multiplier, multiplierAvailable := spec.CacheInputMultiplier()
 
 	requireModelSpecEqual(t, true, available)
-	requireModelSpecEqual(t, claudeSonnet46ModelID, spec.ModelID)
+	requireModelSpecEqual(t, string(ModelClaudeSonnet46), spec.ModelID)
 	requireModelSpecEqual(t, true, multiplierAvailable)
 	requireModelSpecFloatEqual(t, modelSpecCacheMultiplier, multiplier)
 }
 
 func TestModelPricing_Pos_UsesFreeSavingsPolicyOnlyForSafetyModel(t *testing.T) {
-	highSpec, highAvailable := ResolveModelPricing(gemini37FlashHighModelID)
-	safetySpec, safetyAvailable := ResolveModelPricing(gemini37FlashSafetyLEModelID)
+	highSpec, highAvailable := ResolveModelPricing(string(ModelGemini37FlashHigh))
+	safetySpec, safetyAvailable := ResolveModelPricing(string(ModelGemini37FlashSafety))
 
 	requireModelSpecEqual(t, true, highAvailable)
 	requireModelSpecFloatEqual(t, 1, highSpec.CachedSavingsMultiplier)
@@ -55,7 +55,7 @@ func TestModelPricing_Pos_UsesFreeSavingsPolicyOnlyForSafetyModel(t *testing.T) 
 
 func TestCacheAdjustedInputProjection_Pos_UsesZeroEquivalentForFreeSafetyModel(t *testing.T) {
 	stats := ModelTokenStats{
-		ModelName:              gemini37FlashSafetyLEModelID,
+		ModelName:              string(ModelGemini37FlashSafety),
 		TurnCount:              1,
 		UncachedInputTokenSum:  1_000,
 		CachedInputTokenSum:    9_000,
@@ -77,7 +77,7 @@ func TestModelPricing_Neg_DoesNotResolveUnknownModel(t *testing.T) {
 
 func TestCacheAdjustedInputProjection_UsesPairedMeteredUsageCounters(t *testing.T) {
 	stats := ModelTokenStats{
-		ModelName:              gemini37FlashModelID,
+		ModelName:              string(ModelGemini37Flash),
 		TurnCount:              1,
 		UncachedInputTokenSum:  1_000,
 		CachedInputTokenSum:    9_000,
