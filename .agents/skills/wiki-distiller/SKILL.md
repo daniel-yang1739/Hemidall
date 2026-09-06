@@ -25,6 +25,10 @@ description: >-
 >    * 審查結束後，**由「秘書長 (Chief Secretary)」執行智能去重、標註 ACCEPTED/REJECTED 與累犯記錄**，沉澱入 `feedbacks/`！
 > 9. **📜 強制輸出全景審查報告書 (Mandatory Audit Report Output)**：每次雙輪審查後，**必須在 `docs/reviews/YYYY-MM-DD_HH-MM-SS_<topic>_audit_report.md` 產出全景審查報告書**（檔名精確至秒，開頭強制標註 `> **建立時間**：YYYY-MM-DD HH:MM:SS`）。
 > 10. **🔍 代碼真相溯源鐵律 (Codebase Truth-Tracing)**：必須主動 Trace 專案當前的實際代碼（`agent-observer/`）核驗事實。
+> 11. **🧱 微批次地毯式遞增提煉鐵律 (Incremental Micro-Batch Carpet Distillation - 嚴禁 Big-Bang 批量更新)**：
+>     * 提煉原始素材池時，必須以「單一檔案」或「1~3 個高度相關檔案」為單位進行微批次 (Micro-batch) 循環；
+>     * 每批次必須嚴格落實「深入精讀 $\to$ 源碼 Trace 核實 $\to$ 編譯產出/更新 Wiki 卡片 $\to$ 雙輪審查驗收 $\to$ 消化即刪 (Digest & Delete) $\to$ MOC 同步」完整閉環，確定該批次 100% 沉澱扎實後，方可進入下一批或下一個檔案；
+>     * **嚴禁試圖一次性讀完所有 Raw 素材後做大雜燴式的大規模更新 (Strict Prohibition of Big-Bang Distillation)**，杜絕遺漏二進位欄位、底層取證細節與實測數據！
 
 ---
 
@@ -34,7 +38,7 @@ description: >-
 flowchart TD
     Start["0. ⚡ 【強制前置步驟 Step 0: Pre-Flight Checklist】<br/>讀取 feedbacks/ 下 5 大記憶庫的所有 🟢 ACCEPTED 規範與 🔴 REJECTED 駁回警示<br/>(預先裝載避坑抗體，主動杜絕所有已知錯誤與偏離主題的提案)"] --> A
     
-    A["1. 掃描 docs/01_raw/ 素材池<br/>+ 🔍 Trace 專案最新源碼 (agent-observer/)"] --> B["2. 規劃認知演進編號、初版二次提煉<br/>(含核心概念卡片與四段式排查/Runbook 卡片)"]
+    A["1. 鎖定 docs/01_raw/ 單一檔案或 1~3 篇高度相關微批次<br/>+ 🔍 Trace 專案最新源碼 (agent-observer/)"] --> B["2. 規劃認知演進編號、初版二次提煉<br/>(含核心概念卡片與四段式排查/Runbook 卡片)"]
     
     subgraph Round1 ["🔄 【Round 1：19 位世界前 1% 專家與讀者深層地毯式審查】"]
         direction TB
@@ -67,8 +71,11 @@ flowchart TD
     
     H --> I["8. 📋 【秘書長智能沉澱】更新 feedbacks/ 5 大記憶庫<br/>(分類記錄 🟢 ACCEPTED / 🔴 REJECTED 與 ⚠️ 累犯標註)"]
     
-    I --> J["9. 🗑️ 【垃圾清理】刪除已 100% 提煉完畢的 docs/01_raw/ 檔案"]
+    I --> J["9. 🗑️ 【垃圾清理】刪除該微批次已 100% 提煉完畢的 docs/01_raw/ 檔案"]
     J --> K["10. 追加 docs/log.md 變更日誌"]
+    K --> LoopCheck{"還有未消化的 Raw 素材？"}
+    LoopCheck -- "是 (微批次迴圈)" --> A
+    LoopCheck -- "否 (素材池清空)" --> Done(["🏁 完成全域知識庫蒸餾"])
 ```
 
 ---

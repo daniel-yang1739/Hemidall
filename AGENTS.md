@@ -44,6 +44,10 @@
    - Reviewer names belong strictly to `.agents/skills/wiki-distiller/roles/` and `docs/reviews/`. Wiki body text must remain 100% objective, authoritative, and persona-free.
 5. **Mandatory 4-Dimension Diagram Walkthrough**:
    - Every Mermaid diagram must be followed by a walkthrough detailing Core View, Step-by-Step path, Color/Physical semantics, and Underlying engineering details.
+6. **Incremental Micro-Batch Carpet Distillation (Strict Prohibition of Big-Bang Distillation)**:
+   - Raw materials must be processed incrementally in single files or small coherent micro-batches (1 to 3 files at a time).
+   - Each batch must complete the full lifecycle: thorough reading -> codebase truth verification -> wiki card drafting/updating -> cross-verification -> Digest & Delete -> MOC sync, before moving to the next batch or file.
+   - Attempting to ingest or process all raw files in a single pass ("Big-Bang Distillation") is STRICTLY PROHIBITED, as it inevitably leads to hallucinated abstractions, loss of critical forensics/engineering details, and superficial coverage.
 
 ---
 
