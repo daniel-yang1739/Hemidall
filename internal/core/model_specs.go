@@ -2,61 +2,6 @@ package core
 
 import "strings"
 
-// ModelInfo represents canonical vendor specifications, hosting provider, and pricing metrics.
-type ModelInfo struct {
-	Provider            ProviderName
-	Vendor              string
-	Name                string
-	ID                  ModelID
-	InputUSDPerMillion  float64
-	OutputUSDPerMillion float64
-	CacheDiscountRate   float64
-	IsFree              bool
-	SourceLabel         string
-	SourceURL           string
-}
-
-// CachedInputUSDPerMillion computes the cached input rate derived from the discount rate.
-func (m ModelInfo) CachedInputUSDPerMillion() float64 {
-	if m.IsFree {
-		return 0
-	}
-	return m.InputUSDPerMillion * (1.0 - m.CacheDiscountRate)
-}
-
-// CacheInputMultiplier returns the cached-input price as a fraction of standard input price.
-func (m ModelInfo) CacheInputMultiplier() (float64, bool) {
-	if m.IsFree {
-		return 0, true
-	}
-	if m.InputUSDPerMillion <= 0 {
-		return 0, false
-	}
-	return (1.0 - m.CacheDiscountRate), true
-}
-
-// StandardInputMultiplier returns 1 for metered models and 0 for explicitly free models.
-func (m ModelInfo) StandardInputMultiplier() (float64, bool) {
-	if m.IsFree {
-		return 0, true
-	}
-	if m.InputUSDPerMillion > 0 {
-		return 1, true
-	}
-	return 0, false
-}
-
-// CalculateCost computes the estimated USD cost based on uncached input, cached input, and output tokens.
-func (m ModelInfo) CalculateCost(uncachedInput, cachedInput, outputTokens int) float64 {
-	if m.IsFree {
-		return 0
-	}
-	costUncached := (float64(uncachedInput) / 1_000_000.0) * m.InputUSDPerMillion
-	costCached := (float64(cachedInput) / 1_000_000.0) * m.CachedInputUSDPerMillion()
-	costOutput := (float64(outputTokens) / 1_000_000.0) * m.OutputUSDPerMillion
-	return costUncached + costCached + costOutput
-}
-
 // NormalizeModelID normalizes a raw model string or alias into a canonical ModelID.
 func NormalizeModelID(raw string) ModelID {
 	s := strings.ToLower(strings.TrimSpace(raw))
