@@ -72,9 +72,12 @@ const (
 	ModelGemini38Flash       ModelID = "gemini-3.8-flash"
 	ModelGemini37FlashHigh   ModelID = "gemini-3.7-flash-high"
 	ModelGemini37FlashSafety ModelID = "gemini-3.7-flash-safety-le"
+	ModelClaudeSonnet5       ModelID = "claude-sonnet-5"
 	ModelClaudeSonnet46      ModelID = "claude-sonnet-4-6"
 	ModelClaude37Sonnet      ModelID = "claude-3-7-sonnet"
 	ModelClaude35Sonnet      ModelID = "claude-3-5-sonnet"
+	ModelClaudeHaiku45       ModelID = "claude-haiku-4-5"
+	ModelClaudeOpus5         ModelID = "claude-opus-5"
 	ModelUnknown             ModelID = "unknown"
 )
 

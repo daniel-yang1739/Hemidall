@@ -107,6 +107,34 @@ func TestModelInfo_Pos_CalculatesCostCorrectly(t *testing.T) {
 	requireModelSpecFloatEqual(t, 3.825, cost)
 }
 
+func TestResolveModelInfo_Pos_AnthropicOfficialCatalogAndPrefixes(t *testing.T) {
+	// Anthropic direct Claude Sonnet 4.6 ($3.00 / $0.30 / $15.00)
+	sonnet46, found46 := ResolveModelInfo(ProviderAnthropic, ModelClaudeSonnet46)
+	requireModelSpecEqual(t, true, found46)
+	requireModelSpecEqual(t, ProviderAnthropic, sonnet46.Provider)
+	requireModelSpecFloatEqual(t, 3.00, sonnet46.InputUSDPerMillion)
+	requireModelSpecFloatEqual(t, 0.30, sonnet46.CachedInputUSDPerMillion())
+	requireModelSpecFloatEqual(t, 15.00, sonnet46.OutputUSDPerMillion)
+	requireModelSpecEqual(t, "https://platform.claude.com/docs/en/about-claude/pricing", sonnet46.SourceURL)
+
+	// Vertex AI hosted Claude Sonnet 4.6 has 10% premium ($3.30)
+	vertexSonnet46, vertexFound := ResolveModelInfo(ProviderVertexAI, ModelClaudeSonnet46)
+	requireModelSpecEqual(t, true, vertexFound)
+	requireModelSpecFloatEqual(t, 3.30, vertexSonnet46.InputUSDPerMillion)
+
+	// Anthropic direct Claude Sonnet 5 ($2.00 / $0.20 / $10.00)
+	sonnet5, found5 := ResolveModelInfo(ProviderAnthropic, ModelClaudeSonnet5)
+	requireModelSpecEqual(t, true, found5)
+	requireModelSpecFloatEqual(t, 2.00, sonnet5.InputUSDPerMillion)
+	requireModelSpecFloatEqual(t, 0.20, sonnet5.CachedInputUSDPerMillion())
+	requireModelSpecFloatEqual(t, 10.00, sonnet5.OutputUSDPerMillion)
+
+	// Provider-prefixed alias string resolution
+	prefixed, foundPrefixed := ResolveModelInfoByString(ProviderAnthropic, "anthropic/claude-sonnet-4-6")
+	requireModelSpecEqual(t, true, foundPrefixed)
+	requireModelSpecEqual(t, ModelClaudeSonnet46, prefixed.ID)
+}
+
 
 func requireModelSpecEqual[T comparable](t *testing.T, want, got T) {
 	t.Helper()

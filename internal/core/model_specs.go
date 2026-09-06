@@ -59,7 +59,12 @@ func (m ModelInfo) CalculateCost(uncachedInput, cachedInput, outputTokens int) f
 
 // NormalizeModelID normalizes a raw model string or alias into a canonical ModelID.
 func NormalizeModelID(raw string) ModelID {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	s = strings.TrimPrefix(s, "anthropic/")
+	s = strings.TrimPrefix(s, "google/")
+	s = strings.TrimPrefix(s, "openai/")
+
+	switch s {
 	case string(ModelGemini25Pro), "gemini-pro":
 		return ModelGemini25Pro
 	case string(ModelGemini25Flash), "gemini-flash":
@@ -72,12 +77,18 @@ func NormalizeModelID(raw string) ModelID {
 		return ModelGemini37FlashHigh
 	case string(ModelGemini37FlashSafety):
 		return ModelGemini37FlashSafety
-	case string(ModelClaudeSonnet46):
+	case string(ModelClaudeSonnet5), "claude-sonnet-5.0", "claude-5-sonnet":
+		return ModelClaudeSonnet5
+	case string(ModelClaudeSonnet46), "claude-sonnet-4.6", "claude-4-6-sonnet":
 		return ModelClaudeSonnet46
-	case string(ModelClaude37Sonnet):
+	case string(ModelClaude37Sonnet), "claude-3.7-sonnet":
 		return ModelClaude37Sonnet
-	case string(ModelClaude35Sonnet):
+	case string(ModelClaude35Sonnet), "claude-3.5-sonnet":
 		return ModelClaude35Sonnet
+	case string(ModelClaudeHaiku45), "claude-haiku-4.5", "claude-4-5-haiku":
+		return ModelClaudeHaiku45
+	case string(ModelClaudeOpus5), "claude-opus-5.0", "claude-5-opus":
+		return ModelClaudeOpus5
 	default:
 		return ModelUnknown
 	}
@@ -183,6 +194,28 @@ var modelCatalog = map[ProviderName]map[ModelID]ModelInfo{
 		},
 	},
 	ProviderAnthropic: {
+		ModelClaudeSonnet5: {
+			Provider:            ProviderAnthropic,
+			Vendor:              "Anthropic",
+			Name:                "Claude Sonnet 5",
+			ID:                  ModelClaudeSonnet5,
+			InputUSDPerMillion:  2.00,
+			OutputUSDPerMillion: 10.00,
+			CacheDiscountRate:   0.90, // 90% OFF
+			SourceLabel:         "Anthropic Claude API pricing",
+			SourceURL:           "https://platform.claude.com/docs/en/about-claude/pricing",
+		},
+		ModelClaudeSonnet46: {
+			Provider:            ProviderAnthropic,
+			Vendor:              "Anthropic",
+			Name:                "Claude Sonnet 4.6",
+			ID:                  ModelClaudeSonnet46,
+			InputUSDPerMillion:  3.00,
+			OutputUSDPerMillion: 15.00,
+			CacheDiscountRate:   0.90, // 90% OFF
+			SourceLabel:         "Anthropic Claude API pricing",
+			SourceURL:           "https://platform.claude.com/docs/en/about-claude/pricing",
+		},
 		ModelClaude37Sonnet: {
 			Provider:            ProviderAnthropic,
 			Vendor:              "Anthropic",
@@ -192,7 +225,7 @@ var modelCatalog = map[ProviderName]map[ModelID]ModelInfo{
 			OutputUSDPerMillion: 15.00,
 			CacheDiscountRate:   0.90,
 			SourceLabel:         "Anthropic Claude API pricing",
-			SourceURL:           "https://www.anthropic.com/pricing",
+			SourceURL:           "https://platform.claude.com/docs/en/about-claude/pricing",
 		},
 		ModelClaude35Sonnet: {
 			Provider:            ProviderAnthropic,
@@ -203,7 +236,29 @@ var modelCatalog = map[ProviderName]map[ModelID]ModelInfo{
 			OutputUSDPerMillion: 15.00,
 			CacheDiscountRate:   0.90,
 			SourceLabel:         "Anthropic Claude API pricing",
-			SourceURL:           "https://www.anthropic.com/pricing",
+			SourceURL:           "https://platform.claude.com/docs/en/about-claude/pricing",
+		},
+		ModelClaudeHaiku45: {
+			Provider:            ProviderAnthropic,
+			Vendor:              "Anthropic",
+			Name:                "Claude Haiku 4.5",
+			ID:                  ModelClaudeHaiku45,
+			InputUSDPerMillion:  1.00,
+			OutputUSDPerMillion: 5.00,
+			CacheDiscountRate:   0.90,
+			SourceLabel:         "Anthropic Claude API pricing",
+			SourceURL:           "https://platform.claude.com/docs/en/about-claude/pricing",
+		},
+		ModelClaudeOpus5: {
+			Provider:            ProviderAnthropic,
+			Vendor:              "Anthropic",
+			Name:                "Claude Opus 5",
+			ID:                  ModelClaudeOpus5,
+			InputUSDPerMillion:  5.00,
+			OutputUSDPerMillion: 25.00,
+			CacheDiscountRate:   0.90,
+			SourceLabel:         "Anthropic Claude API pricing",
+			SourceURL:           "https://platform.claude.com/docs/en/about-claude/pricing",
 		},
 	},
 	ProviderOpenAI: {},
