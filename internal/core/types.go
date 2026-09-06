@@ -52,43 +52,6 @@ type TokenBreakdown struct {
 
 }
 
-// ProviderName identifies the hosting/execution infrastructure.
-type ProviderName string
-
-const (
-	ProviderVertexAI  ProviderName = "vertex_ai"
-	ProviderAnthropic ProviderName = "anthropic"
-	ProviderOpenAI    ProviderName = "openai"
-	ProviderUnknown   ProviderName = "unknown"
-)
-
-// ModelID identifies the canonical model revision.
-type ModelID string
-
-const (
-	ModelGemini25Pro         ModelID = "gemini-2.5-pro"
-	ModelGemini25Flash       ModelID = "gemini-2.5-flash"
-	ModelGemini37Flash       ModelID = "gemini-3.7-flash"
-	ModelGemini38Flash       ModelID = "gemini-3.8-flash"
-	ModelGemini37FlashHigh   ModelID = "gemini-3.7-flash-high"
-	ModelGemini37FlashSafety ModelID = "gemini-3.7-flash-safety-le"
-	ModelClaudeSonnet5       ModelID = "claude-sonnet-5"
-	ModelClaudeSonnet46      ModelID = "claude-sonnet-4-6"
-	ModelClaude37Sonnet      ModelID = "claude-3-7-sonnet"
-	ModelClaude35Sonnet      ModelID = "claude-3-5-sonnet"
-	ModelClaudeHaiku45       ModelID = "claude-haiku-4-5"
-	ModelClaudeOpus5         ModelID = "claude-opus-5"
-	ModelGPT5                ModelID = "gpt-5"
-	ModelGPT5Mini            ModelID = "gpt-5-mini"
-	ModelGPT4o               ModelID = "gpt-4o"
-	ModelGPT4oMini           ModelID = "gpt-4o-mini"
-	ModelGPT41               ModelID = "gpt-4.1"
-	ModelO1                  ModelID = "o1"
-	ModelO3                  ModelID = "o3"
-	ModelO3Mini              ModelID = "o3-mini"
-	ModelO4Mini              ModelID = "o4-mini"
-	ModelUnknown             ModelID = "unknown"
-)
 
 // PersistedUsageObservation contains schema-inferred observations decoded from
 // a local Antigravity generation record. UncachedInputTokens and
