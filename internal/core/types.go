@@ -235,11 +235,8 @@ type ModelTokenStats struct {
 	TotalProcessedTokenSum        int     `json:"total_processed_token_sum"`
 	ExplicitCacheValueTurnCount   int     `json:"explicit_cache_value_turn_count"`
 	InferredZeroCacheTurnCount    int     `json:"inferred_zero_cache_turn_count"`
-	CacheInputSharePercent        float64 `json:"cache_input_share_percent"`
-	EffectiveInputTokenSum        float64 `json:"effective_input_token_sum"`
-	EffectiveProjectionTurnCount  int     `json:"effective_projection_turn_count"`
-	CachedSavedTokenSum           float64 `json:"cached_saved_token_sum"`
-	ObservedContextTokenSum       int     `json:"observed_context_token_sum"`
+	CacheInputSharePercent        float64      `json:"cache_input_share_percent"`
+	ObservedContextTokenSum       int          `json:"observed_context_token_sum"`
 	ObservedContextValueTurnCount int     `json:"observed_context_value_turn_count"`
 	TotalOutputTokenSum           int     `json:"total_output_token_sum"`
 	ThinkingOutputTokenSum        int     `json:"thinking_output_token_sum"`

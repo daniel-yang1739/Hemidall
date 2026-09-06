@@ -65,14 +65,9 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 		if info, found := ResolveModelInfo(stats.Provider, stats.Model); found {
 			stats.EstimatedCostUSD = info.CalculateCost(stats.UncachedInputTokenSum, stats.CachedInputTokenSum, stats.TotalOutputTokenSum)
 			stats.HasEstimatedCost = true
-		} else if spec, found := ResolveModelPricing(stats.ModelName); found {
-			stats.EstimatedCostUSD = CalculateModelCost(spec, stats.UncachedInputTokenSum, stats.CachedInputTokenSum, stats.TotalOutputTokenSum)
+		} else if info, found := ResolveModelInfoByString(stats.Provider, stats.ModelName); found {
+			stats.EstimatedCostUSD = info.CalculateCost(stats.UncachedInputTokenSum, stats.CachedInputTokenSum, stats.TotalOutputTokenSum)
 			stats.HasEstimatedCost = true
-		}
-		if projection, available := ProjectCacheAdjustedInput(*stats); available {
-			stats.EffectiveInputTokenSum = projection.EffectiveInputTokens
-			stats.EffectiveProjectionTurnCount = stats.TurnCount
-			stats.CachedSavedTokenSum = (float64(stats.TotalProcessedTokenSum) - projection.EffectiveInputTokens) * pricingSavingsMultiplier(stats.ModelName)
 		}
 		total.TurnCount += stats.TurnCount
 		total.UncachedInputTokenSum += stats.UncachedInputTokenSum
@@ -87,9 +82,6 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 		}
 		total.ExplicitCacheValueTurnCount += stats.ExplicitCacheValueTurnCount
 		total.InferredZeroCacheTurnCount += stats.InferredZeroCacheTurnCount
-		total.EffectiveInputTokenSum += stats.EffectiveInputTokenSum
-		total.EffectiveProjectionTurnCount += stats.EffectiveProjectionTurnCount
-		total.CachedSavedTokenSum += stats.CachedSavedTokenSum
 		total.ObservedContextTokenSum += stats.ObservedContextTokenSum
 		total.ObservedContextValueTurnCount += stats.ObservedContextValueTurnCount
 		models = append(models, *stats)
@@ -102,12 +94,4 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 		return models[i].TotalProcessedTokenSum > models[j].TotalProcessedTokenSum
 	})
 	return SessionAggregateMetrics{TotalStats: total, ModelStats: models}
-}
-
-func pricingSavingsMultiplier(modelID string) float64 {
-	spec, found := ResolveModelPricing(modelID)
-	if !found {
-		return 0
-	}
-	return spec.CachedSavingsMultiplier
 }

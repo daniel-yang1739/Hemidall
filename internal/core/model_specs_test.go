@@ -2,108 +2,60 @@ package core
 
 import "testing"
 
-const (
-	modelSpecCacheMultiplier = 0.10
-)
-
-func TestModelPricing_Pos_ResolvesExactVerifiedGeminiModel(t *testing.T) {
-	spec, available := ResolveModelPricing(string(ModelGemini37Flash))
-	multiplier, multiplierAvailable := spec.CacheInputMultiplier()
-
-	requireModelSpecEqual(t, true, available)
-	requireModelSpecEqual(t, string(ModelGemini37Flash), spec.ModelID)
-	requireModelSpecEqual(t, true, multiplierAvailable)
-	requireModelSpecFloatEqual(t, modelSpecCacheMultiplier, multiplier)
+func TestModelInfo_Pos_ResolvesExactVerifiedGemini37Model(t *testing.T) {
+	info, found := ResolveModelInfo(ProviderVertexAI, ModelGemini37Flash)
+	requireModelSpecEqual(t, true, found)
+	requireModelSpecEqual(t, ModelGemini37Flash, info.ID)
+	requireModelSpecFloatEqual(t, 0.75, info.InputUSDPerMillion)
+	requireModelSpecFloatEqual(t, 0.075, info.CachedInputUSDPerMillion())
+	requireModelSpecFloatEqual(t, 3.00, info.OutputUSDPerMillion)
+	multiplier, ok := info.CacheInputMultiplier()
+	requireModelSpecEqual(t, true, ok)
+	requireModelSpecFloatEqual(t, 0.10, multiplier)
 }
 
-func TestModelPricing_Pos_ResolvesExactVerifiedGemini38Model(t *testing.T) {
-	spec, available := ResolveModelPricing(string(ModelGemini38Flash))
-	multiplier, multiplierAvailable := spec.CacheInputMultiplier()
-
-	requireModelSpecEqual(t, true, available)
-	requireModelSpecEqual(t, string(ModelGemini38Flash), spec.ModelID)
-	requireModelSpecEqual(t, true, multiplierAvailable)
-	requireModelSpecFloatEqual(t, modelSpecCacheMultiplier, multiplier)
-	requireModelSpecFloatEqual(t, 0.75, spec.StandardInputUSDPerMillion)
-	requireModelSpecFloatEqual(t, 0.075, spec.CachedInputUSDPerMillion)
+func TestModelInfo_Pos_ResolvesExactVerifiedGemini38Model(t *testing.T) {
+	info, found := ResolveModelInfo(ProviderVertexAI, ModelGemini38Flash)
+	requireModelSpecEqual(t, true, found)
+	requireModelSpecEqual(t, ModelGemini38Flash, info.ID)
+	requireModelSpecFloatEqual(t, 0.75, info.InputUSDPerMillion)
+	requireModelSpecFloatEqual(t, 0.075, info.CachedInputUSDPerMillion())
+	requireModelSpecFloatEqual(t, 3.00, info.OutputUSDPerMillion)
+	multiplier, ok := info.CacheInputMultiplier()
+	requireModelSpecEqual(t, true, ok)
+	requireModelSpecFloatEqual(t, 0.10, multiplier)
 }
 
-func TestModelPricing_Pos_ResolvesExactVerifiedClaudeModel(t *testing.T) {
-	spec, available := ResolveModelPricing(string(ModelClaudeSonnet46))
-	multiplier, multiplierAvailable := spec.CacheInputMultiplier()
-
-	requireModelSpecEqual(t, true, available)
-	requireModelSpecEqual(t, string(ModelClaudeSonnet46), spec.ModelID)
-	requireModelSpecEqual(t, true, multiplierAvailable)
-	requireModelSpecFloatEqual(t, modelSpecCacheMultiplier, multiplier)
+func TestModelInfo_Pos_ResolvesExactVerifiedClaudeModel(t *testing.T) {
+	info, found := ResolveModelInfo(ProviderVertexAI, ModelClaudeSonnet46)
+	requireModelSpecEqual(t, true, found)
+	requireModelSpecEqual(t, ModelClaudeSonnet46, info.ID)
+	requireModelSpecFloatEqual(t, 3.30, info.InputUSDPerMillion)
+	requireModelSpecFloatEqual(t, 0.33, info.CachedInputUSDPerMillion())
+	requireModelSpecFloatEqual(t, 15.00, info.OutputUSDPerMillion)
+	multiplier, ok := info.CacheInputMultiplier()
+	requireModelSpecEqual(t, true, ok)
+	requireModelSpecFloatEqual(t, 0.10, multiplier)
 }
 
-func TestModelPricing_Pos_UsesFreeSavingsPolicyOnlyForSafetyModel(t *testing.T) {
-	highSpec, highAvailable := ResolveModelPricing(string(ModelGemini37FlashHigh))
-	safetySpec, safetyAvailable := ResolveModelPricing(string(ModelGemini37FlashSafety))
+func TestModelInfo_Pos_UsesFreePolicyOnlyForSafetyModel(t *testing.T) {
+	highInfo, highFound := ResolveModelInfo(ProviderVertexAI, ModelGemini37FlashHigh)
+	safetyInfo, safetyFound := ResolveModelInfo(ProviderVertexAI, ModelGemini37FlashSafety)
 
-	requireModelSpecEqual(t, true, highAvailable)
-	requireModelSpecFloatEqual(t, 1, highSpec.CachedSavingsMultiplier)
-	requireModelSpecEqual(t, true, safetyAvailable)
-	requireModelSpecFloatEqual(t, 0, safetySpec.StandardInputUSDPerMillion)
-	requireModelSpecFloatEqual(t, 0, safetySpec.CachedInputUSDPerMillion)
-	requireModelSpecFloatEqual(t, 0, safetySpec.CachedSavingsMultiplier)
-	safetyMultiplier, multiplierAvailable := safetySpec.CacheInputMultiplier()
+	requireModelSpecEqual(t, true, highFound)
+	requireModelSpecEqual(t, false, highInfo.IsFree)
+
+	requireModelSpecEqual(t, true, safetyFound)
+	requireModelSpecEqual(t, true, safetyInfo.IsFree)
+	requireModelSpecFloatEqual(t, 0, safetyInfo.InputUSDPerMillion)
+	requireModelSpecFloatEqual(t, 0, safetyInfo.CachedInputUSDPerMillion())
+	requireModelSpecFloatEqual(t, 0, safetyInfo.OutputUSDPerMillion)
+	safetyMultiplier, multiplierAvailable := safetyInfo.CacheInputMultiplier()
 	requireModelSpecEqual(t, true, multiplierAvailable)
 	requireModelSpecFloatEqual(t, 0, safetyMultiplier)
-}
 
-func TestCacheAdjustedInputProjection_Pos_UsesZeroEquivalentForFreeSafetyModel(t *testing.T) {
-	stats := ModelTokenStats{
-		ModelName:              string(ModelGemini37FlashSafety),
-		TurnCount:              1,
-		UncachedInputTokenSum:  1_000,
-		CachedInputTokenSum:    9_000,
-		TotalProcessedTokenSum: 10_000,
-	}
-
-	projection, available := ProjectCacheAdjustedInput(stats)
-
-	requireModelSpecEqual(t, true, available)
-	requireModelSpecFloatEqual(t, 0, projection.CacheInputMultiplier)
-	requireModelSpecFloatEqual(t, 0, projection.EffectiveInputTokens)
-}
-
-func TestModelPricing_Neg_DoesNotResolveUnknownModel(t *testing.T) {
-	_, available := ResolveModelPricing("unknown")
-
-	requireModelSpecEqual(t, false, available)
-}
-
-func TestCacheAdjustedInputProjection_UsesPairedMeteredUsageCounters(t *testing.T) {
-	stats := ModelTokenStats{
-		ModelName:              string(ModelGemini37Flash),
-		TurnCount:              1,
-		UncachedInputTokenSum:  1_000,
-		CachedInputTokenSum:    9_000,
-		TotalProcessedTokenSum: 10_000,
-	}
-
-	projection, available := ProjectCacheAdjustedInput(stats)
-
-	requireModelSpecEqual(t, true, available)
-	requireModelSpecEqual(t, 1_000, projection.UncachedInputTokens)
-	requireModelSpecEqual(t, 9_000, projection.CachedTokens)
-	requireModelSpecFloatEqual(t, 1_900, projection.EffectiveInputTokens)
-}
-
-func TestCacheAdjustedInputProjection_Neg_RejectsUnpricedModel(t *testing.T) {
-	stats := ModelTokenStats{
-		ModelName:              "unknown",
-		TurnCount:              1,
-		UncachedInputTokenSum:  1_000,
-		CachedInputTokenSum:    9_000,
-		TotalProcessedTokenSum: 10_000,
-	}
-
-	_, available := ProjectCacheAdjustedInput(stats)
-
-	requireModelSpecEqual(t, false, available)
+	cost := safetyInfo.CalculateCost(100_000, 100_000, 100_000)
+	requireModelSpecFloatEqual(t, 0, cost)
 }
 
 func TestResolveModelInfo_Pos_ResolvesTwoTierCatalogAndAliases(t *testing.T) {

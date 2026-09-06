@@ -48,7 +48,7 @@
 * **Dashboard 儀表板檢視** :
   * **Track 1（雲端推論收據）** : 呈現目前選中模型事件關聯之 `gen_metadata` 權威 Token 計費、TTFT 與真實延遲。
   * **Track 2（時間線上下文證據）** : 依據時間線還原當時可見的 System、Tools、History 與最新 Inbound Prompt。
-  * **有效輸入折算 (Effective Input Projection)** : 依各模型之快取折扣倍率計算加權等效輸入，客觀評估 Session 成本節省效益。
+  * **即時成本估算 (USD Cost Estimation)** : 依各模型之官方輸入、快取與輸出費率，即時計算會話推論花費與快取節省效益。
 * **Context 頁面檢視** :
   * **五大分區展示** : System & Rules（系統規約）、Tools（工具 Schema）、Active History（歷史對話）、Compacted Checkpoint（壓縮摘要）、Latest Inbound（當前提示詞）。
   * **Raw Evidence Mode** : 提供帶有各欄位資料來源標籤的結構化 JSON 證據視圖，完整還原底層 Protobuf 欄位。

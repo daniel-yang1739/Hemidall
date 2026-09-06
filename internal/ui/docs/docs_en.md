@@ -48,7 +48,7 @@
 * **Dashboard View** :
   * **Track 1 (Cloud Telemetry)** : Displays authoritative token billing, TTFT, and duration linked to the selected model event.
   * **Track 2 (Timeline Evidence)** : Reconstructs readable System, Tools, History, and Inbound prompt evidence visible at each step.
-  * **Effective Input Projection** : Computes price-equivalent weighted input from model-specific cache pricing ratios to evaluate session savings.
+  * **USD Cost Estimation** : Computes real-time inference cost and cache savings based on official vendor pricing for uncached input, cached input, and output tokens.
 * **Context View** :
   * **Five-Part Section Display** : System & Rules, Tool Schemas, Active History, Compacted Checkpoints, and Latest Inbound Prompt.
   * **Raw Evidence Mode** : Provides structured JSON evidence tagged with data sources, faithfully reflecting underlying Protobuf fields.

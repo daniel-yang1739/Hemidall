@@ -23,7 +23,7 @@ var allShortcutItems = []ShortcutItem{
 	{Category: "Global Navigation", Key: "4 / i", Desc: "Switch to [4] Architecture Docs View"},
 	{Category: "Global Navigation", Key: "Ctrl+p", Desc: "Open Session Quick Switcher Modal"},
 	{Category: "Global Navigation", Key: "? / F1", Desc: "Toggle this Keyboard Shortcuts Float Panel"},
-	{Category: "Global Navigation", Key: "q / Ctrl+c", Desc: "Gracefully quit agent-observer"},
+	{Category: "Global Navigation", Key: "q / Ctrl+c", Desc: "Gracefully quit Heimdall"},
 
 	// 2. Context View Controls
 	{Category: "Context View", Key: "r / R", Desc: "Toggle Decoded Evidence JSON / Refined Cards Mode"},
