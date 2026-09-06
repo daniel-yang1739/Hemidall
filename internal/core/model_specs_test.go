@@ -106,6 +106,56 @@ func TestCacheAdjustedInputProjection_Neg_RejectsUnpricedModel(t *testing.T) {
 	requireModelSpecEqual(t, false, available)
 }
 
+func TestResolveModelInfo_Pos_ResolvesTwoTierCatalogAndAliases(t *testing.T) {
+	// Canonical Gemini on Vertex AI
+	info, found := ResolveModelInfo(ProviderVertexAI, ModelGemini25Pro)
+	requireModelSpecEqual(t, true, found)
+	requireModelSpecEqual(t, ModelGemini25Pro, info.ID)
+	requireModelSpecEqual(t, ProviderVertexAI, info.Provider)
+	requireModelSpecEqual(t, "Google", info.Vendor)
+
+	// String alias resolution
+	infoAlias, foundAlias := ResolveModelInfoByString(ProviderVertexAI, "gemini-pro")
+	requireModelSpecEqual(t, true, foundAlias)
+	requireModelSpecEqual(t, ModelGemini25Pro, infoAlias.ID)
+
+	// Claude hosted on Vertex AI
+	claudeInfo, claudeFound := ResolveModelInfoByString(ProviderVertexAI, "claude-3-7-sonnet")
+	requireModelSpecEqual(t, true, claudeFound)
+	requireModelSpecEqual(t, ModelClaude37Sonnet, claudeInfo.ID)
+	requireModelSpecEqual(t, "Anthropic", claudeInfo.Vendor)
+}
+
+func TestResolveModelInfo_Pos_ComputesDerivedDiscountRates(t *testing.T) {
+	info, found := ResolveModelInfo(ProviderVertexAI, ModelGemini25Flash)
+	requireModelSpecEqual(t, true, found)
+	requireModelSpecFloatEqual(t, 0.75, info.CacheDiscountRate)
+	// 0.075 * (1 - 0.75) = 0.01875
+	requireModelSpecFloatEqual(t, 0.01875, info.CachedInputUSDPerMillion())
+
+	multiplier, ok := info.CacheInputMultiplier()
+	requireModelSpecEqual(t, true, ok)
+	requireModelSpecFloatEqual(t, 0.25, multiplier)
+}
+
+func TestResolveModelInfo_Neg_RejectsUnknownProviderAndModel(t *testing.T) {
+	_, found := ResolveModelInfo(ProviderOpenAI, ModelUnknown)
+	requireModelSpecEqual(t, false, found)
+
+	_, foundRaw := ResolveModelInfoByString(ProviderVertexAI, "non-existent-model-xyz")
+	requireModelSpecEqual(t, false, foundRaw)
+}
+
+func TestModelInfo_Pos_CalculatesCostCorrectly(t *testing.T) {
+	info, found := ResolveModelInfo(ProviderVertexAI, ModelGemini37Flash)
+	requireModelSpecEqual(t, true, found)
+
+	// 1M uncached ($0.75) + 1M cached ($0.075) + 1M output ($3.00) = $3.825
+	cost := info.CalculateCost(1_000_000, 1_000_000, 1_000_000)
+	requireModelSpecFloatEqual(t, 3.825, cost)
+}
+
+
 func requireModelSpecEqual[T comparable](t *testing.T, want, got T) {
 	t.Helper()
 	if want != got {

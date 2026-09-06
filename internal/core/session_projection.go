@@ -115,7 +115,9 @@ func projectUsageObservation(generation Generation) PersistedUsageObservation {
 		TimeToFirstTokenMs:       usage.TimeToFirstTokenMs,
 		StreamingDurationMs:      usage.StreamingDurationMs,
 		UpstreamRequestID:        usage.UpstreamRequestID,
+		Provider:                 ProviderVertexAI,
 		ModelName:                generation.ModelID,
+		Model:                    NormalizeModelID(generation.ModelID),
 		GenerationIndex:          generationIndex(generation.ID),
 		StepIndex:                generation.StepIndex,
 	}

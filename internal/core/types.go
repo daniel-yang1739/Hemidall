@@ -52,17 +52,45 @@ type TokenBreakdown struct {
 
 }
 
+// ProviderName identifies the hosting/execution infrastructure.
+type ProviderName string
+
+const (
+	ProviderVertexAI  ProviderName = "vertex_ai"
+	ProviderAnthropic ProviderName = "anthropic"
+	ProviderOpenAI    ProviderName = "openai"
+	ProviderUnknown   ProviderName = "unknown"
+)
+
+// ModelID identifies the canonical model revision.
+type ModelID string
+
+const (
+	ModelGemini25Pro         ModelID = "gemini-2.5-pro"
+	ModelGemini25Flash       ModelID = "gemini-2.5-flash"
+	ModelGemini37Flash       ModelID = "gemini-3.7-flash"
+	ModelGemini38Flash       ModelID = "gemini-3.8-flash"
+	ModelGemini37FlashHigh   ModelID = "gemini-3.7-flash-high"
+	ModelGemini37FlashSafety ModelID = "gemini-3.7-flash-safety-le"
+	ModelClaudeSonnet46      ModelID = "claude-sonnet-4-6"
+	ModelClaude37Sonnet      ModelID = "claude-3-7-sonnet"
+	ModelClaude35Sonnet      ModelID = "claude-3-5-sonnet"
+	ModelUnknown             ModelID = "unknown"
+)
+
 // PersistedUsageObservation contains schema-inferred observations decoded from
 // a local Antigravity generation record. UncachedInputTokens and
 // CachedInputTokens share one schema-inferred usage-message path; they support
 // the cache-adjusted input projection. ObservedContextTokens comes from a
 // separate context-state path and is kept separate from input usage.
 type PersistedUsageObservation struct {
-	Available       bool   `json:"available"`
-	Source          string `json:"source"`
-	GenerationIndex int    `json:"generation_index"`
-	StepIndex       int    `json:"step_index"`
-	ModelName       string `json:"model_name"`
+	Available       bool         `json:"available"`
+	Source          string       `json:"source"`
+	GenerationIndex int          `json:"generation_index"`
+	StepIndex       int          `json:"step_index"`
+	Provider        ProviderName `json:"provider,omitempty"`
+	ModelName       string       `json:"model_name"`
+	Model           ModelID      `json:"model,omitempty"`
 
 	HasObservedContextTokens bool `json:"has_observed_context_tokens"`
 	ObservedContextTokens    int  `json:"observed_context_tokens"`
@@ -198,8 +226,10 @@ func (e UnifiedAgentEvent) GetMessageRoleDescription() string {
 // ModelTokenStats holds aggregates from one schema-inferred input-usage message.
 // CachedInputTokenSum is a cached-input counter, not a provider invoice.
 type ModelTokenStats struct {
-	ModelName                     string  `json:"model_name"`
-	TurnCount                     int     `json:"turn_count"`
+	Provider                      ProviderName `json:"provider,omitempty"`
+	ModelName                     string       `json:"model_name"`
+	Model                         ModelID      `json:"model,omitempty"`
+	TurnCount                     int          `json:"turn_count"`
 	UncachedInputTokenSum         int     `json:"uncached_input_token_sum"`
 	CachedInputTokenSum           int     `json:"cached_input_token_sum"`
 	TotalProcessedTokenSum        int     `json:"total_processed_token_sum"`

@@ -21,7 +21,18 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 		}
 		stats := byModel[modelName]
 		if stats == nil {
-			stats = &ModelTokenStats{ModelName: modelName}
+			provider := usage.Provider
+			if provider == "" {
+				provider = ProviderVertexAI
+			}
+			stats = &ModelTokenStats{
+				Provider:  provider,
+				ModelName: modelName,
+				Model:     usage.Model,
+			}
+			if stats.Model == "" {
+				stats.Model = NormalizeModelID(modelName)
+			}
 			byModel[modelName] = stats
 		}
 
@@ -51,7 +62,10 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 		if stats.TotalProcessedTokenSum > 0 {
 			stats.CacheInputSharePercent = float64(stats.CachedInputTokenSum) / float64(stats.TotalProcessedTokenSum) * cacheSharePercentageScale
 		}
-		if spec, found := ResolveModelPricing(stats.ModelName); found {
+		if info, found := ResolveModelInfo(stats.Provider, stats.Model); found {
+			stats.EstimatedCostUSD = info.CalculateCost(stats.UncachedInputTokenSum, stats.CachedInputTokenSum, stats.TotalOutputTokenSum)
+			stats.HasEstimatedCost = true
+		} else if spec, found := ResolveModelPricing(stats.ModelName); found {
 			stats.EstimatedCostUSD = CalculateModelCost(spec, stats.UncachedInputTokenSum, stats.CachedInputTokenSum, stats.TotalOutputTokenSum)
 			stats.HasEstimatedCost = true
 		}
