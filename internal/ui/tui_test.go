@@ -1034,8 +1034,8 @@ func TestDirectSessionSwitchMsgState(t *testing.T) {
 	if m.isSessionSwitcherOpen {
 		t.Error("Expected session switcher to be closed after switch")
 	}
-	if !strings.Contains(m.clipboardStatus, "Switched to session") {
-		t.Errorf("Expected status message in clipboardStatus, got: %s", m.clipboardStatus)
+	if !strings.Contains(m.statusMessage, "Switched to session") {
+		t.Errorf("Expected status message in statusMessage, got: %s", m.statusMessage)
 	}
 }
 
@@ -1538,8 +1538,8 @@ func TestVisualMode_Pos_ShiftV_Navigation_G_and_g(t *testing.T) {
 	if m.isVisualMode {
 		t.Errorf("Expected isVisualMode to be false after 'y'")
 	}
-	if !strings.Contains(m.clipboardStatus, "Copied") {
-		t.Errorf("Expected clipboardStatus confirmation, got: %s", m.clipboardStatus)
+	if !strings.Contains(m.statusMessage, "Copied") {
+		t.Errorf("Expected statusMessage confirmation, got: %s", m.statusMessage)
 	}
 }
 
@@ -1565,16 +1565,16 @@ func TestNormalMode_Pos_CopyListAndDetail(t *testing.T) {
 	// In FocusList (selectedIdx 0 corresponds to latest Step 2)
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
 	m = updated.(Model)
-	if !strings.Contains(m.clipboardStatus, "Step #2") {
-		t.Errorf("Expected clipboardStatus for Step #2, got: %s", m.clipboardStatus)
+	if !strings.Contains(m.statusMessage, "Step #2") {
+		t.Errorf("Expected statusMessage for Step #2, got: %s", m.statusMessage)
 	}
 
 	// Switch to FocusDetail
 	m.focusPane = FocusDetail
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
 	m = updated.(Model)
-	if !strings.Contains(m.clipboardStatus, "Step #2") {
-		t.Errorf("Expected clipboardStatus for Step #2 detail, got: %s", m.clipboardStatus)
+	if !strings.Contains(m.statusMessage, "Step #2") {
+		t.Errorf("Expected statusMessage for Step #2 detail, got: %s", m.statusMessage)
 	}
 }
 
@@ -1603,8 +1603,8 @@ func TestVisualMode_Pos_YankWithCAndEnter(t *testing.T) {
 	if m.isVisualMode {
 		t.Errorf("Expected isVisualMode to exit on 'c'")
 	}
-	if !strings.Contains(m.clipboardStatus, "Copied") {
-		t.Errorf("Expected clipboardStatus on 'c'")
+	if !strings.Contains(m.statusMessage, "Copied") {
+		t.Errorf("Expected statusMessage on 'c'")
 	}
 
 	// 2. Test yank with 'enter'

@@ -120,8 +120,6 @@ type Model struct {
 	isVisualMode                   bool
 	visualStart                    int
 	visualCursor                   int
-	clipboardStatus                string
-	clipboardStatusTime            time.Time
 	latestEvent                    core.UnifiedAgentEvent
 	history                        []core.UnifiedAgentEvent
 	historyIndex                   map[string]int
@@ -1199,8 +1197,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.playbackEstimateCachedRevision = 0
 		m.playbackEstimateRefreshPending = false
 		m.playbackEstimateRefreshDirty = false
-		m.clipboardStatus = fmt.Sprintf("Live attached to %s", truncateStr(msg.SessionID, 8))
-		m.clipboardStatusTime = time.Now()
+		m.statusMessage = fmt.Sprintf("Live attached to %s", truncateStr(msg.SessionID, 8))
+		m.statusMessageTime = time.Now()
 		return m, nil
 
 	case SwitchSessionReqMsg:
@@ -1234,8 +1232,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.playbackEstimateCachedRevision = 0
 		m.playbackEstimateRefreshPending = false
 		m.playbackEstimateRefreshDirty = false
-		m.clipboardStatus = fmt.Sprintf("Attached session %s (loading history)", truncateStr(msg.SessionID, 8))
-		m.clipboardStatusTime = time.Now()
+		m.statusMessage = fmt.Sprintf("Attached session %s (loading history)", truncateStr(msg.SessionID, 8))
+		m.statusMessageTime = time.Now()
 		return m, nil
 
 	case SessionSwitchedMsg:
@@ -1271,8 +1269,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.playbackEstimateCachedRevision = 0
 		m.playbackEstimateRefreshPending = false
 		m.playbackEstimateRefreshDirty = false
-		m.clipboardStatus = fmt.Sprintf("Switched to session %s (%d steps)", truncateStr(msg.SessionID, 8), len(msg.Events))
-		m.clipboardStatusTime = time.Now()
+		m.statusMessage = fmt.Sprintf("Switched to session %s (%d steps)", truncateStr(msg.SessionID, 8), len(msg.Events))
+		m.statusMessageTime = time.Now()
 		return m, tea.Batch(m.requestContextEstimateRefresh(), m.requestDashboardReadModelRefresh())
 
 	case tea.KeyMsg:
@@ -1522,8 +1520,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				_ = CopyToClipboard(text)
 				subcatName := m.getSubcategoryName(m.contextSubItemIndex)
 				msg := fmt.Sprintf("📋 Copied [%s] to clipboard!", subcatName)
-				m.clipboardStatus = msg
-				m.clipboardStatusTime = time.Now()
 				m.statusMessage = msg
 				m.statusMessageTime = time.Now()
 				return m, nil
@@ -1904,8 +1900,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							selectedText := strings.Join(fullLines[start:end+1], "\n")
 							_ = CopyToClipboard(selectedText)
 							toast := fmt.Sprintf("📋 Copied %d lines to clipboard!", end-start+1)
-							m.clipboardStatus = toast
-							m.clipboardStatusTime = time.Now()
 							m.statusMessage = toast
 							m.statusMessageTime = time.Now()
 						}
@@ -1975,15 +1969,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							text := strings.Join(fullLines, "\n")
 							_ = CopyToClipboard(text)
 							toast := fmt.Sprintf("📋 Copied Step #%d detail (%d lines)!", selectedEvent.StepIndex, len(fullLines))
-							m.clipboardStatus = toast
-							m.clipboardStatusTime = time.Now()
 							m.statusMessage = toast
 							m.statusMessageTime = time.Now()
 						} else {
 							_ = CopyToClipboard(selectedEvent.RawContent)
 							toast := fmt.Sprintf("📋 Copied Step #%d payload to clipboard!", selectedEvent.StepIndex)
-							m.clipboardStatus = toast
-							m.clipboardStatusTime = time.Now()
 							m.statusMessage = toast
 							m.statusMessageTime = time.Now()
 						}
@@ -2014,8 +2004,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 						_ = CopyToClipboard(content)
 						toast := fmt.Sprintf("📋 Copied Step #%d payload to clipboard!", selectedEvent.StepIndex)
-						m.clipboardStatus = toast
-						m.clipboardStatusTime = time.Now()
 						m.statusMessage = toast
 						m.statusMessageTime = time.Now()
 					}
@@ -2267,10 +2255,6 @@ func (m Model) renderFooter() string {
 		return lipgloss.NewStyle().MaxWidth(m.width).Render(alert)
 	}
 
-	if m.clipboardStatus != "" && time.Since(m.clipboardStatusTime) < statusMessageDuration {
-		alert := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorSuccess).Padding(0, 1).Render(m.clipboardStatus)
-		return lipgloss.NewStyle().MaxWidth(m.width).Render(alert)
-	}
 
 	var hints string
 	if m.activeView == ViewContext {
