@@ -1,0 +1,71 @@
+package core
+
+// anthropicModelCatalog contains official first-party models hosted on the Anthropic Claude API platform.
+var anthropicModelCatalog = map[ModelID]ModelInfo{
+	ModelClaudeSonnet5: {
+		Provider:            ProviderAnthropic,
+		Vendor:              "Anthropic",
+		Name:                "Claude Sonnet 5",
+		ID:                  ModelClaudeSonnet5,
+		InputUSDPerMillion:  2.00,
+		OutputUSDPerMillion: 10.00,
+		CacheDiscountRate:   0.90, // 90% OFF
+		SourceLabel:         "Anthropic Claude API pricing",
+		SourceURL:           "https://platform.claude.com/docs/en/about-claude/pricing",
+	},
+	ModelClaudeSonnet46: {
+		Provider:            ProviderAnthropic,
+		Vendor:              "Anthropic",
+		Name:                "Claude Sonnet 4.6",
+		ID:                  ModelClaudeSonnet46,
+		InputUSDPerMillion:  3.00,
+		OutputUSDPerMillion: 15.00,
+		CacheDiscountRate:   0.90, // 90% OFF
+		SourceLabel:         "Anthropic Claude API pricing",
+		SourceURL:           "https://platform.claude.com/docs/en/about-claude/pricing",
+	},
+	ModelClaude37Sonnet: {
+		Provider:            ProviderAnthropic,
+		Vendor:              "Anthropic",
+		Name:                "Claude 3.7 Sonnet",
+		ID:                  ModelClaude37Sonnet,
+		InputUSDPerMillion:  3.00,
+		OutputUSDPerMillion: 15.00,
+		CacheDiscountRate:   0.90,
+		SourceLabel:         "Anthropic Claude API pricing",
+		SourceURL:           "https://platform.claude.com/docs/en/about-claude/pricing",
+	},
+	ModelClaude35Sonnet: {
+		Provider:            ProviderAnthropic,
+		Vendor:              "Anthropic",
+		Name:                "Claude 3.5 Sonnet",
+		ID:                  ModelClaude35Sonnet,
+		InputUSDPerMillion:  3.00,
+		OutputUSDPerMillion: 15.00,
+		CacheDiscountRate:   0.90,
+		SourceLabel:         "Anthropic Claude API pricing",
+		SourceURL:           "https://platform.claude.com/docs/en/about-claude/pricing",
+	},
+	ModelClaudeHaiku45: {
+		Provider:            ProviderAnthropic,
+		Vendor:              "Anthropic",
+		Name:                "Claude Haiku 4.5",
+		ID:                  ModelClaudeHaiku45,
+		InputUSDPerMillion:  1.00,
+		OutputUSDPerMillion: 5.00,
+		CacheDiscountRate:   0.90,
+		SourceLabel:         "Anthropic Claude API pricing",
+		SourceURL:           "https://platform.claude.com/docs/en/about-claude/pricing",
+	},
+	ModelClaudeOpus5: {
+		Provider:            ProviderAnthropic,
+		Vendor:              "Anthropic",
+		Name:                "Claude Opus 5",
+		ID:                  ModelClaudeOpus5,
+		InputUSDPerMillion:  5.00,
+		OutputUSDPerMillion: 25.00,
+		CacheDiscountRate:   0.90,
+		SourceLabel:         "Anthropic Claude API pricing",
+		SourceURL:           "https://platform.claude.com/docs/en/about-claude/pricing",
+	},
+}
