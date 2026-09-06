@@ -135,6 +135,38 @@ func TestResolveModelInfo_Pos_AnthropicOfficialCatalogAndPrefixes(t *testing.T) 
 	requireModelSpecEqual(t, ModelClaudeSonnet46, prefixed.ID)
 }
 
+func TestResolveModelInfo_Pos_OpenAIOfficialCatalogAndPrefixes(t *testing.T) {
+	// GPT-4o ($2.50 / $1.25 / $10.00, 50% cache discount)
+	gpt4o, found4o := ResolveModelInfo(ProviderOpenAI, ModelGPT4o)
+	requireModelSpecEqual(t, true, found4o)
+	requireModelSpecEqual(t, ProviderOpenAI, gpt4o.Provider)
+	requireModelSpecEqual(t, "OpenAI", gpt4o.Vendor)
+	requireModelSpecFloatEqual(t, 2.50, gpt4o.InputUSDPerMillion)
+	requireModelSpecFloatEqual(t, 1.25, gpt4o.CachedInputUSDPerMillion())
+	requireModelSpecFloatEqual(t, 10.00, gpt4o.OutputUSDPerMillion)
+	requireModelSpecEqual(t, "https://developers.openai.com/api/docs/pricing", gpt4o.SourceURL)
+
+	// GPT-5 ($1.25 / $0.125 / $10.00, 90% cache discount)
+	gpt5, found5 := ResolveModelInfo(ProviderOpenAI, ModelGPT5)
+	requireModelSpecEqual(t, true, found5)
+	requireModelSpecFloatEqual(t, 1.25, gpt5.InputUSDPerMillion)
+	requireModelSpecFloatEqual(t, 0.125, gpt5.CachedInputUSDPerMillion())
+	requireModelSpecFloatEqual(t, 10.00, gpt5.OutputUSDPerMillion)
+
+	// o3 reasoning model ($2.00 / $0.50 / $8.00, 75% cache discount)
+	o3, foundO3 := ResolveModelInfo(ProviderOpenAI, ModelO3)
+	requireModelSpecEqual(t, true, foundO3)
+	requireModelSpecFloatEqual(t, 2.00, o3.InputUSDPerMillion)
+	requireModelSpecFloatEqual(t, 0.50, o3.CachedInputUSDPerMillion())
+	requireModelSpecFloatEqual(t, 8.00, o3.OutputUSDPerMillion)
+
+	// String alias resolution with provider prefix
+	prefixed, foundPrefixed := ResolveModelInfoByString(ProviderOpenAI, "openai/gpt-4o")
+	requireModelSpecEqual(t, true, foundPrefixed)
+	requireModelSpecEqual(t, ModelGPT4o, prefixed.ID)
+}
+
+
 
 func requireModelSpecEqual[T comparable](t *testing.T, want, got T) {
 	t.Helper()

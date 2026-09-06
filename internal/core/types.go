@@ -78,6 +78,15 @@ const (
 	ModelClaude35Sonnet      ModelID = "claude-3-5-sonnet"
 	ModelClaudeHaiku45       ModelID = "claude-haiku-4-5"
 	ModelClaudeOpus5         ModelID = "claude-opus-5"
+	ModelGPT5                ModelID = "gpt-5"
+	ModelGPT5Mini            ModelID = "gpt-5-mini"
+	ModelGPT4o               ModelID = "gpt-4o"
+	ModelGPT4oMini           ModelID = "gpt-4o-mini"
+	ModelGPT41               ModelID = "gpt-4.1"
+	ModelO1                  ModelID = "o1"
+	ModelO3                  ModelID = "o3"
+	ModelO3Mini              ModelID = "o3-mini"
+	ModelO4Mini              ModelID = "o4-mini"
 	ModelUnknown             ModelID = "unknown"
 )
 

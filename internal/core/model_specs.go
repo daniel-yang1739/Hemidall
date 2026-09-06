@@ -89,6 +89,24 @@ func NormalizeModelID(raw string) ModelID {
 		return ModelClaudeHaiku45
 	case string(ModelClaudeOpus5), "claude-opus-5.0", "claude-5-opus":
 		return ModelClaudeOpus5
+	case string(ModelGPT5):
+		return ModelGPT5
+	case string(ModelGPT5Mini):
+		return ModelGPT5Mini
+	case string(ModelGPT4o):
+		return ModelGPT4o
+	case string(ModelGPT4oMini):
+		return ModelGPT4oMini
+	case string(ModelGPT41), "gpt-4-1":
+		return ModelGPT41
+	case string(ModelO1):
+		return ModelO1
+	case string(ModelO3):
+		return ModelO3
+	case string(ModelO3Mini):
+		return ModelO3Mini
+	case string(ModelO4Mini):
+		return ModelO4Mini
 	default:
 		return ModelUnknown
 	}
@@ -261,7 +279,107 @@ var modelCatalog = map[ProviderName]map[ModelID]ModelInfo{
 			SourceURL:           "https://platform.claude.com/docs/en/about-claude/pricing",
 		},
 	},
-	ProviderOpenAI: {},
+	ProviderOpenAI: {
+		ModelGPT5: {
+			Provider:            ProviderOpenAI,
+			Vendor:              "OpenAI",
+			Name:                "GPT-5",
+			ID:                  ModelGPT5,
+			InputUSDPerMillion:  1.25,
+			OutputUSDPerMillion: 10.00,
+			CacheDiscountRate:   0.90, // 90% OFF ($0.125 / MTok)
+			SourceLabel:         "OpenAI API pricing",
+			SourceURL:           "https://developers.openai.com/api/docs/pricing",
+		},
+		ModelGPT5Mini: {
+			Provider:            ProviderOpenAI,
+			Vendor:              "OpenAI",
+			Name:                "GPT-5 mini",
+			ID:                  ModelGPT5Mini,
+			InputUSDPerMillion:  0.25,
+			OutputUSDPerMillion: 2.00,
+			CacheDiscountRate:   0.90, // 90% OFF ($0.025 / MTok)
+			SourceLabel:         "OpenAI API pricing",
+			SourceURL:           "https://developers.openai.com/api/docs/pricing",
+		},
+		ModelGPT4o: {
+			Provider:            ProviderOpenAI,
+			Vendor:              "OpenAI",
+			Name:                "GPT-4o",
+			ID:                  ModelGPT4o,
+			InputUSDPerMillion:  2.50,
+			OutputUSDPerMillion: 10.00,
+			CacheDiscountRate:   0.50, // 50% OFF ($1.25 / MTok)
+			SourceLabel:         "OpenAI API pricing",
+			SourceURL:           "https://developers.openai.com/api/docs/pricing",
+		},
+		ModelGPT4oMini: {
+			Provider:            ProviderOpenAI,
+			Vendor:              "OpenAI",
+			Name:                "GPT-4o mini",
+			ID:                  ModelGPT4oMini,
+			InputUSDPerMillion:  0.15,
+			OutputUSDPerMillion: 0.60,
+			CacheDiscountRate:   0.50, // 50% OFF ($0.075 / MTok)
+			SourceLabel:         "OpenAI API pricing",
+			SourceURL:           "https://developers.openai.com/api/docs/pricing",
+		},
+		ModelGPT41: {
+			Provider:            ProviderOpenAI,
+			Vendor:              "OpenAI",
+			Name:                "GPT-4.1",
+			ID:                  ModelGPT41,
+			InputUSDPerMillion:  2.00,
+			OutputUSDPerMillion: 8.00,
+			CacheDiscountRate:   0.75, // 75% OFF ($0.50 / MTok)
+			SourceLabel:         "OpenAI API pricing",
+			SourceURL:           "https://developers.openai.com/api/docs/pricing",
+		},
+		ModelO1: {
+			Provider:            ProviderOpenAI,
+			Vendor:              "OpenAI",
+			Name:                "o1",
+			ID:                  ModelO1,
+			InputUSDPerMillion:  15.00,
+			OutputUSDPerMillion: 60.00,
+			CacheDiscountRate:   0.50, // 50% OFF ($7.50 / MTok)
+			SourceLabel:         "OpenAI API pricing",
+			SourceURL:           "https://developers.openai.com/api/docs/pricing",
+		},
+		ModelO3: {
+			Provider:            ProviderOpenAI,
+			Vendor:              "OpenAI",
+			Name:                "o3",
+			ID:                  ModelO3,
+			InputUSDPerMillion:  2.00,
+			OutputUSDPerMillion: 8.00,
+			CacheDiscountRate:   0.75, // 75% OFF ($0.50 / MTok)
+			SourceLabel:         "OpenAI API pricing",
+			SourceURL:           "https://developers.openai.com/api/docs/pricing",
+		},
+		ModelO3Mini: {
+			Provider:            ProviderOpenAI,
+			Vendor:              "OpenAI",
+			Name:                "o3-mini",
+			ID:                  ModelO3Mini,
+			InputUSDPerMillion:  1.10,
+			OutputUSDPerMillion: 4.40,
+			CacheDiscountRate:   0.50, // 50% OFF ($0.55 / MTok)
+			SourceLabel:         "OpenAI API pricing",
+			SourceURL:           "https://developers.openai.com/api/docs/pricing",
+		},
+		ModelO4Mini: {
+			Provider:            ProviderOpenAI,
+			Vendor:              "OpenAI",
+			Name:                "o4-mini",
+			ID:                  ModelO4Mini,
+			InputUSDPerMillion:  1.10,
+			OutputUSDPerMillion: 4.40,
+			CacheDiscountRate:   0.75, // 75% OFF ($0.275 / MTok)
+			SourceLabel:         "OpenAI API pricing",
+			SourceURL:           "https://developers.openai.com/api/docs/pricing",
+		},
+	},
 }
 
 // ResolveModelInfo resolves a ModelInfo record for a given provider and canonical model ID.
