@@ -140,3 +140,25 @@
   * 後台永遠維持 1 個活動 Watcher Goroutine，切換時透過 Context 立即銷毀並重新開箱新實例；
   * TUI 必須實作 `event.SessionID` 標籤守衛，防止全域 Channel 殘留事件引發跨會話污染；
   * 第一幀必須採用同步注水（Sync Hydration）載入全量歷史，後續變更透過 250ms Live Tail 原地覆蓋。
+
+---
+
+### 📌 條目 02-L：多廠商模型目錄必須物理按 Provider 拆分並採循序隔離管線同步
+* **決策狀態**：🟢 **ACCEPTED (已採納為標準規範)**
+* **首次記錄**：2026-09-06 | **累犯次數**：1 次
+* **適用檔案**：`02_architecture/17_Multi_Provider_Catalog_Topology_and_Sync_Engine.md`, `internal/core/model_catalog_*.go`
+* **【採納理由】**：避免單一模型檔案過度膨脹，並在自動化 AI Agent 巡檢時杜絕 Context Window 污染與跨廠商定價混淆。
+* **【強制執行標準】**：
+  * 各供應商（Google/Vertex AI, Anthropic, OpenAI）模型定義必須拆分為專屬檔案，且字典必須為 package-private，由 `model_catalog.go` 統一聚合；
+  * 同步 Skill 必須遵循「Phase A 抓取 $\to$ 比對 $\to$ 修改 $\to$ 跑測試綠燈」後始得進入 Phase B 的循序隔離 SOP，禁止一次看完全網批量大改。
+
+---
+
+### 📌 條目 02-M：終端響應式表格必須採用 3 階斷點與動態 Space-Between 空白均分
+* **決策狀態**：🟢 **ACCEPTED (已採納為標準規範)**
+* **首次記錄**：2026-09-06 | **累犯次數**：1 次
+* **適用檔案**：`02_architecture/18_Responsive_TUI_Breakdown_and_Dynamic_Space_Distribution.md`, `internal/ui/views.go`
+* **【採納理由】**：在左右雙分割螢幕（75~104 欄 Half-Screen）下避免單行自動換行破版，並合理保留核心成本指標。
+* **【強制執行標準】**：
+  * 嚴格劃分 3 階斷點：<75（Ultra-Compact 4 欄）、75~104（Half-Screen 5 欄，捨棄輪數保證快取與輸出）、>=105（Wide 6 欄）；
+  * 標題移除贅字標點（如 `:`），行文字透過 `formatSpaceBetweenRow` 動態均分餘數空白，確保行寬精確等於目標寬度。
