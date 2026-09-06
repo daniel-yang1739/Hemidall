@@ -7,12 +7,28 @@ const (
 	gemini38FlashModelID                     = "gemini-3.8-flash"
 	gemini37FlashStandardInputUSDPerMillion  = 0.75
 	gemini37FlashCachedInputUSDPerMillion    = 0.075
+	gemini37FlashOutputUSDPerMillion         = 3.00
 	freeInputUSDPerMillion                   = 0.0
+	freeOutputUSDPerMillion                  = 0.0
 	gemini37FlashHighModelID                 = "gemini-3.7-flash-high"
 	gemini37FlashSafetyLEModelID             = "gemini-3.7-flash-safety-le"
 	claudeSonnet46ModelID                    = "claude-sonnet-4-6"
 	claudeSonnet46StandardInputUSDPerMillion = 3.30
 	claudeSonnet46CachedInputUSDPerMillion   = 0.33
+	claudeSonnet46OutputUSDPerMillion        = 15.00
+
+	gemini25ProModelID                    = "gemini-2.5-pro"
+	gemini25ProStandardInputUSDPerMillion = 1.25
+	gemini25ProCachedInputUSDPerMillion   = 0.3125
+	gemini25ProOutputUSDPerMillion        = 5.00
+
+	gemini25FlashModelID                    = "gemini-2.5-flash"
+	gemini25FlashStandardInputUSDPerMillion = 0.075
+	gemini25FlashCachedInputUSDPerMillion   = 0.01875
+	gemini25FlashOutputUSDPerMillion        = 0.30
+
+	claude37SonnetModelID = "claude-3-7-sonnet"
+	claude35SonnetModelID = "claude-3-5-sonnet"
 )
 
 // ModelPricingSpec is a verified, provider-specific input-pricing profile.
@@ -22,9 +38,18 @@ type ModelPricingSpec struct {
 	ModelID                    string
 	StandardInputUSDPerMillion float64
 	CachedInputUSDPerMillion   float64
+	OutputUSDPerMillion        float64
 	CachedSavingsMultiplier    float64
 	SourceLabel                string
 	SourceURL                  string
+}
+
+// CalculateModelCost computes the estimated USD cost based on uncached input, cached input, and output tokens.
+func CalculateModelCost(spec ModelPricingSpec, uncachedInput, cachedInput, outputTokens int) float64 {
+	costUncached := (float64(uncachedInput) / 1_000_000.0) * spec.StandardInputUSDPerMillion
+	costCached := (float64(cachedInput) / 1_000_000.0) * spec.CachedInputUSDPerMillion
+	costOutput := (float64(outputTokens) / 1_000_000.0) * spec.OutputUSDPerMillion
+	return costUncached + costCached + costOutput
 }
 
 // CacheInputMultiplier returns the cached-input price as a fraction of the
@@ -66,21 +91,49 @@ func ResolveModelPricing(modelID string) (ModelPricingSpec, bool) {
 			ModelID:                    resolvedID,
 			StandardInputUSDPerMillion: gemini37FlashStandardInputUSDPerMillion,
 			CachedInputUSDPerMillion:   gemini37FlashCachedInputUSDPerMillion,
+			OutputUSDPerMillion:        gemini37FlashOutputUSDPerMillion,
 			CachedSavingsMultiplier:    1,
 			SourceLabel:                "Google Gemini Developer API paid standard pricing",
 			SourceURL:                  "https://ai.google.dev/gemini-api/docs/pricing",
 		}, true
 	case gemini37FlashHighModelID:
-		return ModelPricingSpec{ModelID: gemini37FlashHighModelID, StandardInputUSDPerMillion: gemini37FlashStandardInputUSDPerMillion, CachedInputUSDPerMillion: gemini37FlashCachedInputUSDPerMillion, CachedSavingsMultiplier: 1, SourceLabel: "Gemini Flash High pricing policy", SourceURL: ""}, true
+		return ModelPricingSpec{ModelID: gemini37FlashHighModelID, StandardInputUSDPerMillion: gemini37FlashStandardInputUSDPerMillion, CachedInputUSDPerMillion: gemini37FlashCachedInputUSDPerMillion, OutputUSDPerMillion: gemini37FlashOutputUSDPerMillion, CachedSavingsMultiplier: 1, SourceLabel: "Gemini Flash High pricing policy", SourceURL: ""}, true
 	case gemini37FlashSafetyLEModelID:
-		return ModelPricingSpec{ModelID: gemini37FlashSafetyLEModelID, StandardInputUSDPerMillion: freeInputUSDPerMillion, CachedInputUSDPerMillion: freeInputUSDPerMillion, CachedSavingsMultiplier: freeInputUSDPerMillion, SourceLabel: "Antigravity safety model policy", SourceURL: ""}, true
-	case claudeSonnet46ModelID:
+		return ModelPricingSpec{ModelID: gemini37FlashSafetyLEModelID, StandardInputUSDPerMillion: freeInputUSDPerMillion, CachedInputUSDPerMillion: freeInputUSDPerMillion, OutputUSDPerMillion: freeOutputUSDPerMillion, CachedSavingsMultiplier: freeInputUSDPerMillion, SourceLabel: "Antigravity safety model policy", SourceURL: ""}, true
+	case gemini25ProModelID, "gemini-pro":
 		return ModelPricingSpec{
-			ModelID:                    claudeSonnet46ModelID,
+			ModelID:                    gemini25ProModelID,
+			StandardInputUSDPerMillion: gemini25ProStandardInputUSDPerMillion,
+			CachedInputUSDPerMillion:   gemini25ProCachedInputUSDPerMillion,
+			OutputUSDPerMillion:        gemini25ProOutputUSDPerMillion,
+			CachedSavingsMultiplier:    1,
+			SourceLabel:                "Google Gemini 2.5 Pro pricing",
+			SourceURL:                  "https://ai.google.dev/gemini-api/docs/pricing",
+		}, true
+	case gemini25FlashModelID, "gemini-flash":
+		return ModelPricingSpec{
+			ModelID:                    gemini25FlashModelID,
+			StandardInputUSDPerMillion: gemini25FlashStandardInputUSDPerMillion,
+			CachedInputUSDPerMillion:   gemini25FlashCachedInputUSDPerMillion,
+			OutputUSDPerMillion:        gemini25FlashOutputUSDPerMillion,
+			CachedSavingsMultiplier:    1,
+			SourceLabel:                "Google Gemini 2.5 Flash pricing",
+			SourceURL:                  "https://ai.google.dev/gemini-api/docs/pricing",
+		}, true
+	case claudeSonnet46ModelID, claude37SonnetModelID, claude35SonnetModelID:
+		resolvedID := claudeSonnet46ModelID
+		if strings.ToLower(strings.TrimSpace(modelID)) == claude37SonnetModelID {
+			resolvedID = claude37SonnetModelID
+		} else if strings.ToLower(strings.TrimSpace(modelID)) == claude35SonnetModelID {
+			resolvedID = claude35SonnetModelID
+		}
+		return ModelPricingSpec{
+			ModelID:                    resolvedID,
 			StandardInputUSDPerMillion: claudeSonnet46StandardInputUSDPerMillion,
 			CachedInputUSDPerMillion:   claudeSonnet46CachedInputUSDPerMillion,
+			OutputUSDPerMillion:        claudeSonnet46OutputUSDPerMillion,
 			CachedSavingsMultiplier:    1,
-			SourceLabel:                "Google Cloud Agent Platform Claude Sonnet 4.6 standard pricing",
+			SourceLabel:                "Claude Sonnet standard pricing",
 			SourceURL:                  "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
 		}, true
 	default:

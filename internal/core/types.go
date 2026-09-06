@@ -211,6 +211,11 @@ type ModelTokenStats struct {
 	CachedSavedTokenSum           float64 `json:"cached_saved_token_sum"`
 	ObservedContextTokenSum       int     `json:"observed_context_token_sum"`
 	ObservedContextValueTurnCount int     `json:"observed_context_value_turn_count"`
+	TotalOutputTokenSum           int     `json:"total_output_token_sum"`
+	ThinkingOutputTokenSum        int     `json:"thinking_output_token_sum"`
+	ContentOutputTokenSum         int     `json:"content_output_token_sum"`
+	EstimatedCostUSD              float64 `json:"estimated_cost_usd"`
+	HasEstimatedCost              bool    `json:"has_estimated_cost"`
 }
 
 // SessionAggregateMetrics holds session-wide aggregate stats across all models and per-model

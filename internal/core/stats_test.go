@@ -63,3 +63,35 @@ func TestSessionMetricsUseSameUsageMessageInsteadOfSeparateContextState(t *testi
 	requireEqual(t, 1, metrics.TotalStats.ExplicitCacheValueTurnCount)
 	requireEqual(t, 10, metrics.TotalStats.ObservedContextTokenSum)
 }
+
+func TestSessionMetricsAccumulatesOutputTokensAndCalculatesCost(t *testing.T) {
+	history := []core.UnifiedAgentEvent{
+		{
+			Type: core.StepTypeModelResponse,
+			Usage: core.PersistedUsageObservation{
+				Available:             true,
+				ModelName:             "gemini-3.7-flash",
+				HasUncachedInputTokens: true,
+				UncachedInputTokens:   1_000_000,
+				HasCachedInputTokens:   true,
+				CachedInputTokens:     1_000_000,
+				ThinkingOutputTokens:  500_000,
+				OutputContentTokens:   500_000,
+			},
+		},
+	}
+
+	metrics := core.ComputeSessionAggregateMetrics(history)
+
+	requireEqual(t, 1_000_000, metrics.TotalStats.TotalOutputTokenSum)
+	requireEqual(t, 500_000, metrics.TotalStats.ThinkingOutputTokenSum)
+	requireEqual(t, 500_000, metrics.TotalStats.ContentOutputTokenSum)
+	if !metrics.TotalStats.HasEstimatedCost {
+		t.Fatalf("expected HasEstimatedCost to be true")
+	}
+	expectedCost := 3.825
+	if diff := metrics.TotalStats.EstimatedCostUSD - expectedCost; diff > 0.0001 || diff < -0.0001 {
+		t.Fatalf("expected cost %f, got %f", expectedCost, metrics.TotalStats.EstimatedCostUSD)
+	}
+}
+

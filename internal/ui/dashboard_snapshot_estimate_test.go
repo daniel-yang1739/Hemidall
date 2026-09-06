@@ -187,8 +187,10 @@ func TestDashboardAggregate_Neg_RendersUnavailableMetricsWithoutUsage(t *testing
 
 	view := model.renderDashboardView()
 
-	requireViewContains(t, view, "TOTAL PROCESSED")
-	requireViewContains(t, view, "EFFECTIVE TOKENS")
+	requireViewContains(t, view, "TOTAL INPUT")
+	requireViewContains(t, view, "TOTAL OUTPUT")
+	requireViewContains(t, view, "CACHE HIT RATE")
+	requireViewContains(t, view, "ESTIMATED COST")
 	requireViewContains(t, view, "unavailable")
 }
 
@@ -204,13 +206,14 @@ func TestDashboardAggregate_Boundary_UsesProtoDefaultForOmittedCacheField(t *tes
 
 	view := model.renderDashboardView()
 
-	requireViewContains(t, view, "CACHE HIT VOLUME")
-	requireViewContains(t, view, "1/2 explicit")
-	requireViewContains(t, view, "1 inferred zero")
+	requireViewContains(t, view, "TOTAL INPUT")
+	requireViewContains(t, view, "CACHE HIT RATE")
 	requireViewContains(t, view, "160 Tok")
+	requireViewContains(t, view, "37.5%")
+	requireViewContains(t, view, "60 cached tokens")
 }
 
-func TestDashboardAggregate_Pos_ProjectsEffectiveInputOnlyForPricedModel(t *testing.T) {
+func TestDashboardAggregate_Pos_ProjectsCostOnlyForPricedModel(t *testing.T) {
 	model := NewModel("session-a", false)
 	model.width = dashboardTestWidth
 	model.height = 40
@@ -222,29 +225,32 @@ func TestDashboardAggregate_Pos_ProjectsEffectiveInputOnlyForPricedModel(t *test
 
 	view := model.renderDashboardView()
 
-	requireViewContains(t, view, "Effective Input")
-	requireViewContains(t, view, "@0.10x")
-	requireViewContains(t, view, "weighted equivalent input")
+	requireViewContains(t, view, "ESTIMATED COST")
+	requireViewContains(t, view, "standard API rate")
+	requireViewContains(t, view, "unavailable")
 	requireRenderedLinesWithinWidth(t, view, dashboardTestWidth)
 }
 
-func TestDashboardAggregate_Pos_ShowsCompleteEffectiveAndSavedTotals(t *testing.T) {
+func TestDashboardAggregate_Pos_ShowsUsageAndCostTotals(t *testing.T) {
 	history := []core.UnifiedAgentEvent{
-		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardKnownModel, HasUncachedInputTokens: true, UncachedInputTokens: dashboardGeminiUncachedInputTokens, HasCachedInputTokens: true, CachedInputTokens: dashboardGeminiCachedInputTokens}},
-		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardClaudeModel, HasUncachedInputTokens: true, UncachedInputTokens: dashboardClaudeUncachedInputTokens, HasCachedInputTokens: true, CachedInputTokens: dashboardClaudeCachedInputTokens}},
+		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardKnownModel, HasUncachedInputTokens: true, UncachedInputTokens: dashboardGeminiUncachedInputTokens, HasCachedInputTokens: true, CachedInputTokens: dashboardGeminiCachedInputTokens, ThinkingOutputTokens: 50, OutputContentTokens: 50}},
+		{SessionID: "session-a", Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference, Usage: core.PersistedUsageObservation{Available: true, ModelName: dashboardClaudeModel, HasUncachedInputTokens: true, UncachedInputTokens: dashboardClaudeUncachedInputTokens, HasCachedInputTokens: true, CachedInputTokens: dashboardClaudeCachedInputTokens, ThinkingOutputTokens: 100, OutputContentTokens: 100}},
 	}
 	metrics := core.ComputeSessionAggregateMetrics(history)
 
 	table := renderModelBreakdownTable(metrics.ModelStats, metrics.TotalStats, dashboardTestWidth)
 
-	requireViewContains(t, table, "Effective Input")
-	requireViewContains(t, table, "Cached Saved (%)")
+	requireViewContains(t, table, "Model Name")
+	requireViewContains(t, table, "Turns")
+	requireViewContains(t, table, "Input")
+	requireViewContains(t, table, "Cached")
+	requireViewContains(t, table, "Output")
+	requireViewContains(t, table, "Est. Cost")
 	requireViewContains(t, table, "TOTAL SUMMARY")
-	requireViewContains(t, table, "300 (15.0%)")
-	requireViewContains(t, table, "470")
-	requireViewContains(t, table, "1.5k (76.5%)")
-	requireViewDoesNotContain(t, table, "Cache Data")
-	requireViewDoesNotContain(t, table, "Source")
+	requireViewContains(t, table, "USD")
+	requireViewDoesNotContain(t, table, "Effective Input")
+	requireViewDoesNotContain(t, table, "Cached Saved (%)")
+	requireViewDoesNotContain(t, table, "NT$")
 }
 
 func requireViewDoesNotContain(t *testing.T, view, unexpected string) {

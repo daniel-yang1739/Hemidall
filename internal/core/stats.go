@@ -39,6 +39,10 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 			stats.ObservedContextValueTurnCount++
 			stats.ObservedContextTokenSum += usage.ObservedContextTokens
 		}
+		turnOutput := usage.ThinkingOutputTokens + usage.OutputContentTokens
+		stats.ThinkingOutputTokenSum += usage.ThinkingOutputTokens
+		stats.ContentOutputTokenSum += usage.OutputContentTokens
+		stats.TotalOutputTokenSum += turnOutput
 	}
 
 	models := make([]ModelTokenStats, 0, len(byModel))
@@ -46,6 +50,10 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 	for _, stats := range byModel {
 		if stats.TotalProcessedTokenSum > 0 {
 			stats.CacheInputSharePercent = float64(stats.CachedInputTokenSum) / float64(stats.TotalProcessedTokenSum) * cacheSharePercentageScale
+		}
+		if spec, found := ResolveModelPricing(stats.ModelName); found {
+			stats.EstimatedCostUSD = CalculateModelCost(spec, stats.UncachedInputTokenSum, stats.CachedInputTokenSum, stats.TotalOutputTokenSum)
+			stats.HasEstimatedCost = true
 		}
 		if projection, available := ProjectCacheAdjustedInput(*stats); available {
 			stats.EffectiveInputTokenSum = projection.EffectiveInputTokens
@@ -56,6 +64,13 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 		total.UncachedInputTokenSum += stats.UncachedInputTokenSum
 		total.CachedInputTokenSum += stats.CachedInputTokenSum
 		total.TotalProcessedTokenSum += stats.TotalProcessedTokenSum
+		total.TotalOutputTokenSum += stats.TotalOutputTokenSum
+		total.ThinkingOutputTokenSum += stats.ThinkingOutputTokenSum
+		total.ContentOutputTokenSum += stats.ContentOutputTokenSum
+		if stats.HasEstimatedCost {
+			total.EstimatedCostUSD += stats.EstimatedCostUSD
+			total.HasEstimatedCost = true
+		}
 		total.ExplicitCacheValueTurnCount += stats.ExplicitCacheValueTurnCount
 		total.InferredZeroCacheTurnCount += stats.InferredZeroCacheTurnCount
 		total.EffectiveInputTokenSum += stats.EffectiveInputTokenSum

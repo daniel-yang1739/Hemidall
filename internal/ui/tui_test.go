@@ -1097,10 +1097,10 @@ func TestDashboardKpiRendering(t *testing.T) {
 	viewStr := m.View()
 
 	// 1. Verify metered-usage KPI cards are present.
-	requireViewContains(t, viewStr, "TOTAL PROCESSED")
-	requireViewContains(t, viewStr, "CACHE HIT VOLUME")
-	requireViewContains(t, viewStr, "UNCACHED INBOUND")
-	requireViewContains(t, viewStr, "EFFECTIVE TOKENS")
+	requireViewContains(t, viewStr, "TOTAL INPUT")
+	requireViewContains(t, viewStr, "TOTAL OUTPUT")
+	requireViewContains(t, viewStr, "CACHE HIT RATE")
+	requireViewContains(t, viewStr, "ESTIMATED COST")
 
 	// 2. Verify Multi-Model breakdown table shows both models.
 	requireViewContains(t, viewStr, "gemini-3.7-flash")
@@ -1129,9 +1129,10 @@ func TestDashboardHalfWidthResponsiveRendering(t *testing.T) {
 	viewStr := m.View()
 
 	// In half-width (80 cols), ensure 2-column KPI labels are complete without truncation
-	requireViewContains(t, viewStr, "TOTAL PROCESSED")
-	requireViewContains(t, viewStr, "CACHE HIT VOLUME")
-	requireViewContains(t, viewStr, "UNCACHED INBOUND")
+	requireViewContains(t, viewStr, "TOTAL INPUT")
+	requireViewContains(t, viewStr, "TOTAL OUTPUT")
+	requireViewContains(t, viewStr, "CACHE HIT RATE")
+	requireViewContains(t, viewStr, "ESTIMATED COST")
 	requireRenderedLinesWithinWidth(t, viewStr, 80)
 }
 

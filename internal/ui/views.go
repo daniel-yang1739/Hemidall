@@ -166,6 +166,34 @@ func formatCacheSavedRate(stats core.ModelTokenStats) string {
 	return fmt.Sprintf("%.1f%% net saved", savedPercent)
 }
 
+func formatTotalOutputSum(stats core.ModelTokenStats) string {
+	if !hasMeteredUsage(stats) {
+		return "unavailable"
+	}
+	return formatTokShort(stats.TotalOutputTokenSum) + " Tok"
+}
+
+func formatCacheHitRateOnly(stats core.ModelTokenStats) string {
+	if !hasMeteredUsage(stats) {
+		return "unavailable"
+	}
+	return fmt.Sprintf("%.1f%%", stats.CacheInputSharePercent)
+}
+
+func formatCachedTokensSub(stats core.ModelTokenStats) string {
+	if !hasMeteredUsage(stats) {
+		return "unavailable"
+	}
+	return fmt.Sprintf("%s cached tokens", formatTokShort(stats.CachedInputTokenSum))
+}
+
+func formatEstimatedCostCell(stats core.ModelTokenStats) string {
+	if !stats.HasEstimatedCost {
+		return "unavailable"
+	}
+	return fmt.Sprintf("$%.3f USD", stats.EstimatedCostUSD)
+}
+
 func formatObservedContextSum(stats core.ModelTokenStats) string {
 	if !hasMeteredUsage(stats) {
 		return "unavailable"
@@ -213,19 +241,19 @@ func renderBorderlessKpiStrip(tot core.ModelTokenStats, width int) string {
 		}
 		hStyle := lipgloss.NewStyle().Foreground(ColorMuted).Bold(true)
 
-		h1 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "TOTAL PROCESSED"), colW))
-		h2 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "CACHE HIT VOLUME"), colW))
+		h1 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "TOTAL INPUT"), colW))
+		h2 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "TOTAL OUTPUT"), colW))
 		v1 := lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render(
 			truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%s (%d Turns)", formatObservedContextSum(tot), tot.TurnCount)), colW))
-		v2 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(
-			truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheHitCell(tot)), colW))
+		v2 := lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(
+			truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatTotalOutputSum(tot)), colW))
 
-		h3 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "UNCACHED INBOUND"), colW))
-		h4 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "EFFECTIVE TOKENS"), colW))
-		v3 := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(
-			truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatUncachedCell(tot)), colW))
-		v4 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(
-			truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatEffectiveAggregateTokenCell(tot)), colW))
+		h3 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "CACHE HIT RATE"), colW))
+		h4 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "ESTIMATED COST"), colW))
+		v3 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(
+			truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheHitRateOnly(tot)), colW))
+		v4 := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(
+			truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatEstimatedCostCell(tot)), colW))
 
 		row1 := fmt.Sprintf("  %s %s", h1, h2)
 		row2 := fmt.Sprintf("  %s %s", v1, v2)
@@ -235,8 +263,8 @@ func renderBorderlessKpiStrip(tot core.ModelTokenStats, width int) string {
 		return fmt.Sprintf("%s\n%s\n%s\n%s", truncateVisualWidth(row1, width), truncateVisualWidth(row2, width), truncateVisualWidth(row3, width), truncateVisualWidth(row4, width))
 	}
 
-	// 5-Column Grid for Wide Terminals (>= 100 cols)
-	colW := (width - 4) / 5
+	// 4-Column Grid for Wide Terminals (>= 100 cols)
+	colW := (width - 4) / 4
 	if colW < 18 {
 		colW = 18
 	}
@@ -244,27 +272,24 @@ func renderBorderlessKpiStrip(tot core.ModelTokenStats, width int) string {
 	hStyle := lipgloss.NewStyle().Foreground(ColorMuted).Bold(true)
 	subStyle := lipgloss.NewStyle().Foreground(ColorMuted)
 
-	h1 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "TOTAL PROCESSED"), colW))
-	h2 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "CACHE HIT VOLUME"), colW))
-	h3 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "UNCACHED INBOUND"), colW))
-	h4 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "EFFECTIVE TOKENS"), colW))
-	h5 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "CACHED SAVED (%)"), colW))
+	h1 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "TOTAL INPUT"), colW))
+	h2 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "TOTAL OUTPUT"), colW))
+	h3 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "CACHE HIT RATE"), colW))
+	h4 := hStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "ESTIMATED COST"), colW))
 
 	v1 := lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatObservedContextSum(tot)), colW))
-	v2 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheHitCell(tot)), colW))
-	v3 := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatUncachedCell(tot)), colW))
-	v4 := lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatEffectiveAggregateTokenCell(tot)), colW))
-	v5 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheSavedTokenCell(tot)), colW))
+	v2 := lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatTotalOutputSum(tot)), colW))
+	v3 := lipgloss.NewStyle().Bold(true).Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheHitRateOnly(tot)), colW))
+	v4 := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatEstimatedCostCell(tot)), colW))
 
 	s1 := subStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, fmt.Sprintf("%d observed turns", tot.TurnCount)), colW))
-	s2 := lipgloss.NewStyle().Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheCoverage(tot)), colW))
-	s3 := lipgloss.NewStyle().Foreground(ColorHighlight).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheDefaultZeroCount(tot)), colW))
-	s4 := lipgloss.NewStyle().Foreground(ColorSecondary).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "weighted equivalent input"), colW))
-	s5 := lipgloss.NewStyle().Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCacheSavedRate(tot)), colW))
+	s2 := subStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "generated tokens"), colW))
+	s3 := lipgloss.NewStyle().Foreground(ColorSuccess).Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, formatCachedTokensSub(tot)), colW))
+	s4 := subStyle.Render(truncateVisualWidth(fmt.Sprintf("%-*s", colW, "standard API rate"), colW))
 
-	row1 := fmt.Sprintf("  %s %s %s %s %s", h1, h2, h3, h4, h5)
-	row2 := fmt.Sprintf("  %s %s %s %s %s", v1, v2, v3, v4, v5)
-	row3 := fmt.Sprintf("  %s %s %s %s %s", s1, s2, s3, s4, s5)
+	row1 := fmt.Sprintf("  %s %s %s %s", h1, h2, h3, h4)
+	row2 := fmt.Sprintf("  %s %s %s %s", v1, v2, v3, v4)
+	row3 := fmt.Sprintf("  %s %s %s %s", s1, s2, s3, s4)
 
 	return fmt.Sprintf("%s\n%s\n%s", truncateVisualWidth(row1, width), truncateVisualWidth(row2, width), truncateVisualWidth(row3, width))
 }
@@ -314,7 +339,7 @@ func formatSpaceBetweenRow(cols []string, minWidths []int, leftAlign []bool, tar
 
 func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTokenStats, width int) string {
 	var sb strings.Builder
-	sb.WriteString("\n" + TitleStyle.Render("MULTI-MODEL PERSISTED USAGE & WEIGHTED TOKEN EFFICIENCY:") + "\n")
+	sb.WriteString("\n" + TitleStyle.Render("MULTI-MODEL USAGE & COST BREAKDOWN:") + "\n")
 
 	targetWidth := width - 4
 	if targetWidth < 30 {
@@ -322,11 +347,11 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 	}
 
 	if width < 75 {
-		// Tier 1: 3-Column Ultra-Compact Table for Narrow Laptop Splits (< 75 cols)
-		minWidths := []int{14, 5, 10}
-		leftAligns := []bool{true, false, false}
+		// Tier 1: 4-Column Ultra-Compact Table for Narrow Laptop Splits (< 75 cols)
+		minWidths := []int{14, 5, 10, 12}
+		leftAligns := []bool{true, false, false, false}
 
-		headers := []string{"Model Name", "Turns", "Processed"}
+		headers := []string{"Model Name", "Turns", "Input", "Est. Cost"}
 		headerStr := "  " + formatSpaceBetweenRow(headers, minWidths, leftAligns, targetWidth)
 		sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(headerStr) + "\n")
 
@@ -335,6 +360,7 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 				truncateVisualWidth(m.ModelName, 14),
 				fmt.Sprintf("%d", m.TurnCount),
 				formatTokShort(m.TotalProcessedTokenSum),
+				formatEstimatedCostCell(m),
 			}
 			rowStr := "  " + formatSpaceBetweenRow(rowCols, minWidths, leftAligns, targetWidth)
 			sb.WriteString(rowStr + "\n")
@@ -347,17 +373,18 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 			"TOTAL",
 			fmt.Sprintf("%d", total.TurnCount),
 			formatTokShort(total.TotalProcessedTokenSum),
+			formatEstimatedCostCell(total),
 		}
 		totStr := "  " + formatSpaceBetweenRow(totCols, minWidths, leftAligns, targetWidth)
 		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(totStr))
 
 		return sb.String()
-	} else if width < 110 {
-		// Tier 2: 4-Column Compact Table for Medium Terminals (75 <= width < 110)
-		minWidths := []int{16, 5, 10, 16}
-		leftAligns := []bool{true, false, false, false}
+	} else if width < 105 {
+		// Tier 2: 5-Column Compact Table for Medium Terminals (75 <= width < 105)
+		minWidths := []int{16, 5, 10, 10, 12}
+		leftAligns := []bool{true, false, false, false, false}
 
-		headers := []string{"Model Name", "Turns", "Processed", "Effective"}
+		headers := []string{"Model Name", "Turns", "Input", "Output", "Est. Cost"}
 		headerStr := "  " + formatSpaceBetweenRow(headers, minWidths, leftAligns, targetWidth)
 		sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(headerStr) + "\n")
 
@@ -366,7 +393,8 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 				truncateVisualWidth(m.ModelName, 16),
 				fmt.Sprintf("%d", m.TurnCount),
 				formatTokShort(m.TotalProcessedTokenSum),
-				formatEffectiveInputCell(m),
+				formatTokShort(m.TotalOutputTokenSum),
+				formatEstimatedCostCell(m),
 			}
 			rowStr := "  " + formatSpaceBetweenRow(rowCols, minWidths, leftAligns, targetWidth)
 			sb.WriteString(rowStr + "\n")
@@ -379,7 +407,8 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 			"TOTAL SUMMARY",
 			fmt.Sprintf("%d", total.TurnCount),
 			formatTokShort(total.TotalProcessedTokenSum),
-			formatEffectiveAggregateCell(total),
+			formatTokShort(total.TotalOutputTokenSum),
+			formatEstimatedCostCell(total),
 		}
 		totStr := "  " + formatSpaceBetweenRow(totCols, minWidths, leftAligns, targetWidth)
 		sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(totStr))
@@ -387,11 +416,11 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 		return sb.String()
 	}
 
-	// Tier 3: 7-Column Full Table for Wide Terminals (>= 110 cols)
-	minWidths := []int{18, 5, 10, 15, 12, 16, 17}
-	leftAligns := []bool{true, false, false, false, false, false, false}
+	// Tier 3: 6-Column Full Table for Wide Terminals (>= 105 cols)
+	minWidths := []int{18, 5, 10, 8, 10, 12}
+	leftAligns := []bool{true, false, false, false, false, false}
 
-	headers := []string{"Model Name", "Turns", "Processed", "Cached", "Uncached", "Effective Input", "Cached Saved (%)"}
+	headers := []string{"Model Name", "Turns", "Input", "Cached", "Output", "Est. Cost"}
 	headerStr := "  " + formatSpaceBetweenRow(headers, minWidths, leftAligns, targetWidth)
 	sb.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render(headerStr) + "\n")
 
@@ -400,10 +429,9 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 			truncateVisualWidth(m.ModelName, 18),
 			fmt.Sprintf("%d", m.TurnCount),
 			formatTokShort(m.TotalProcessedTokenSum),
-			formatCacheHitCell(m),
-			formatUncachedCell(m),
-			formatEffectiveInputCell(m),
-			formatCacheSavedCell(m),
+			fmt.Sprintf("%.1f%%", m.CacheInputSharePercent),
+			formatTokShort(m.TotalOutputTokenSum),
+			formatEstimatedCostCell(m),
 		}
 		rowStr := "  " + formatSpaceBetweenRow(rowCols, minWidths, leftAligns, targetWidth)
 		sb.WriteString(rowStr + "\n")
@@ -416,10 +444,9 @@ func renderModelBreakdownTable(models []core.ModelTokenStats, total core.ModelTo
 		"TOTAL SUMMARY",
 		fmt.Sprintf("%d", total.TurnCount),
 		formatTokShort(total.TotalProcessedTokenSum),
-		formatCacheHitCell(total),
-		formatUncachedCell(total),
-		formatEffectiveAggregateCell(total),
-		formatCacheSavedCell(total),
+		fmt.Sprintf("%.1f%%", total.CacheInputSharePercent),
+		formatTokShort(total.TotalOutputTokenSum),
+		formatEstimatedCostCell(total),
 	}
 	totStr := "  " + formatSpaceBetweenRow(totCols, minWidths, leftAligns, targetWidth)
 	sb.WriteString(lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(totStr))
@@ -497,7 +524,7 @@ func (m Model) renderSessionDashboard(contentWidth int) string {
 
 	metrics := m.dashboardReadModel.Metrics
 	lines := []string{
-		TitleStyle.Render("SESSION DASHBOARD & TOKEN EFFICIENCY"),
+		TitleStyle.Render("SESSION DASHBOARD & COST TELEMETRY"),
 		renderBorderlessKpiStrip(metrics.TotalStats, contentWidth),
 	}
 	if len(metrics.ModelStats) > 0 {
