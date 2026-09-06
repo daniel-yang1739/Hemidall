@@ -2,6 +2,17 @@ package core
 
 // anthropicModelCatalog contains official first-party models hosted on the Anthropic Claude API platform.
 var anthropicModelCatalog = map[ModelID]ModelInfo{
+	ModelClaudeFable51: {
+		Provider:            ProviderAnthropic,
+		Vendor:              "Anthropic",
+		Name:                "Claude Fable 5.1",
+		ID:                  ModelClaudeFable51,
+		InputUSDPerMillion:  10.00,
+		OutputUSDPerMillion: 50.00,
+		CacheDiscountRate:   0.975, // 97.5% OFF
+		SourceLabel:         "Anthropic Claude API pricing",
+		SourceURL:           "https://platform.claude.com/docs/en/about-claude/pricing",
+	},
 	ModelClaudeSonnet5: {
 		Provider:            ProviderAnthropic,
 		Vendor:              "Anthropic",

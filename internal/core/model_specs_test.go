@@ -8,7 +8,7 @@ func TestModelInfo_Pos_ResolvesExactVerifiedGemini37Model(t *testing.T) {
 	requireModelSpecEqual(t, ModelGemini37Flash, info.ID)
 	requireModelSpecFloatEqual(t, 0.75, info.InputUSDPerMillion)
 	requireModelSpecFloatEqual(t, 0.075, info.CachedInputUSDPerMillion())
-	requireModelSpecFloatEqual(t, 3.00, info.OutputUSDPerMillion)
+	requireModelSpecFloatEqual(t, 3.75, info.OutputUSDPerMillion)
 	multiplier, ok := info.CacheInputMultiplier()
 	requireModelSpecEqual(t, true, ok)
 	requireModelSpecFloatEqual(t, 0.10, multiplier)
@@ -20,7 +20,7 @@ func TestModelInfo_Pos_ResolvesExactVerifiedGemini38Model(t *testing.T) {
 	requireModelSpecEqual(t, ModelGemini38Flash, info.ID)
 	requireModelSpecFloatEqual(t, 0.75, info.InputUSDPerMillion)
 	requireModelSpecFloatEqual(t, 0.075, info.CachedInputUSDPerMillion())
-	requireModelSpecFloatEqual(t, 3.00, info.OutputUSDPerMillion)
+	requireModelSpecFloatEqual(t, 3.75, info.OutputUSDPerMillion)
 	multiplier, ok := info.CacheInputMultiplier()
 	requireModelSpecEqual(t, true, ok)
 	requireModelSpecFloatEqual(t, 0.10, multiplier)
@@ -81,13 +81,13 @@ func TestResolveModelInfo_Pos_ResolvesTwoTierCatalogAndAliases(t *testing.T) {
 func TestResolveModelInfo_Pos_ComputesDerivedDiscountRates(t *testing.T) {
 	info, found := ResolveModelInfo(ProviderVertexAI, ModelGemini25Flash)
 	requireModelSpecEqual(t, true, found)
-	requireModelSpecFloatEqual(t, 0.75, info.CacheDiscountRate)
-	// 0.075 * (1 - 0.75) = 0.01875
-	requireModelSpecFloatEqual(t, 0.01875, info.CachedInputUSDPerMillion())
+	requireModelSpecFloatEqual(t, 0.90, info.CacheDiscountRate)
+	// 0.30 * (1 - 0.90) = 0.03
+	requireModelSpecFloatEqual(t, 0.03, info.CachedInputUSDPerMillion())
 
 	multiplier, ok := info.CacheInputMultiplier()
 	requireModelSpecEqual(t, true, ok)
-	requireModelSpecFloatEqual(t, 0.25, multiplier)
+	requireModelSpecFloatEqual(t, 0.10, multiplier)
 }
 
 func TestResolveModelInfo_Neg_RejectsUnknownProviderAndModel(t *testing.T) {
@@ -102,9 +102,9 @@ func TestModelInfo_Pos_CalculatesCostCorrectly(t *testing.T) {
 	info, found := ResolveModelInfo(ProviderVertexAI, ModelGemini37Flash)
 	requireModelSpecEqual(t, true, found)
 
-	// 1M uncached ($0.75) + 1M cached ($0.075) + 1M output ($3.00) = $3.825
+	// 1M uncached ($0.75) + 1M cached ($0.075) + 1M output ($3.75) = $4.575
 	cost := info.CalculateCost(1_000_000, 1_000_000, 1_000_000)
-	requireModelSpecFloatEqual(t, 3.825, cost)
+	requireModelSpecFloatEqual(t, 4.575, cost)
 }
 
 func TestResolveModelInfo_Pos_AnthropicOfficialCatalogAndPrefixes(t *testing.T) {
@@ -183,3 +183,39 @@ func requireModelSpecFloatEqual(t *testing.T, want, got float64) {
 }
 
 const modelSpecFloatTolerance = 0.000001
+
+func TestModelInfo_Pos_ResolvesExactVerifiedClaudeFable51Model(t *testing.T) {
+	info, found := ResolveModelInfo(ProviderAnthropic, ModelClaudeFable51)
+	requireModelSpecEqual(t, true, found)
+	requireModelSpecEqual(t, ModelClaudeFable51, info.ID)
+	requireModelSpecFloatEqual(t, 10.00, info.InputUSDPerMillion)
+	requireModelSpecFloatEqual(t, 0.25, info.CachedInputUSDPerMillion())
+	requireModelSpecFloatEqual(t, 50.00, info.OutputUSDPerMillion)
+	multiplier, ok := info.CacheInputMultiplier()
+	requireModelSpecEqual(t, true, ok)
+	requireModelSpecFloatEqual(t, 0.025, multiplier)
+}
+
+func TestModelInfo_Pos_ResolvesExactVerifiedGPT6AstraModel(t *testing.T) {
+	info, found := ResolveModelInfo(ProviderOpenAI, ModelGPT6Astra)
+	requireModelSpecEqual(t, true, found)
+	requireModelSpecEqual(t, ModelGPT6Astra, info.ID)
+	requireModelSpecFloatEqual(t, 10.00, info.InputUSDPerMillion)
+	requireModelSpecFloatEqual(t, 1.00, info.CachedInputUSDPerMillion())
+	requireModelSpecFloatEqual(t, 50.00, info.OutputUSDPerMillion)
+	multiplier, ok := info.CacheInputMultiplier()
+	requireModelSpecEqual(t, true, ok)
+	requireModelSpecFloatEqual(t, 0.10, multiplier)
+}
+
+func TestModelInfo_Pos_ResolvesExactVerifiedGPT56SolModel(t *testing.T) {
+	info, found := ResolveModelInfo(ProviderOpenAI, ModelGPT56Sol)
+	requireModelSpecEqual(t, true, found)
+	requireModelSpecEqual(t, ModelGPT56Sol, info.ID)
+	requireModelSpecFloatEqual(t, 4.00, info.InputUSDPerMillion)
+	requireModelSpecFloatEqual(t, 0.40, info.CachedInputUSDPerMillion())
+	requireModelSpecFloatEqual(t, 20.00, info.OutputUSDPerMillion)
+	multiplier, ok := info.CacheInputMultiplier()
+	requireModelSpecEqual(t, true, ok)
+	requireModelSpecFloatEqual(t, 0.10, multiplier)
+}

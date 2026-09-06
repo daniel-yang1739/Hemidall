@@ -2,6 +2,50 @@ package core
 
 // openAIModelCatalog contains official models served via the OpenAI API platform.
 var openAIModelCatalog = map[ModelID]ModelInfo{
+	ModelGPT6Astra: {
+		Provider:            ProviderOpenAI,
+		Vendor:              "OpenAI",
+		Name:                "GPT-6 Astra",
+		ID:                  ModelGPT6Astra,
+		InputUSDPerMillion:  10.00,
+		OutputUSDPerMillion: 50.00,
+		CacheDiscountRate:   0.90, // 90% OFF
+		SourceLabel:         "OpenAI API pricing",
+		SourceURL:           "https://developers.openai.com/api/docs/pricing",
+	},
+	ModelGPT56Sol: {
+		Provider:            ProviderOpenAI,
+		Vendor:              "OpenAI",
+		Name:                "GPT-5.6 Sol",
+		ID:                  ModelGPT56Sol,
+		InputUSDPerMillion:  4.00,
+		OutputUSDPerMillion: 20.00,
+		CacheDiscountRate:   0.90, // 90% OFF
+		SourceLabel:         "OpenAI API pricing",
+		SourceURL:           "https://developers.openai.com/api/docs/pricing",
+	},
+	ModelGPT56Terra: {
+		Provider:            ProviderOpenAI,
+		Vendor:              "OpenAI",
+		Name:                "GPT-5.6 Terra",
+		ID:                  ModelGPT56Terra,
+		InputUSDPerMillion:  2.00,
+		OutputUSDPerMillion: 12.00,
+		CacheDiscountRate:   0.90, // 90% OFF
+		SourceLabel:         "OpenAI API pricing",
+		SourceURL:           "https://developers.openai.com/api/docs/pricing",
+	},
+	ModelGPT56Luna: {
+		Provider:            ProviderOpenAI,
+		Vendor:              "OpenAI",
+		Name:                "GPT-5.6 Luna",
+		ID:                  ModelGPT56Luna,
+		InputUSDPerMillion:  0.20,
+		OutputUSDPerMillion: 1.20,
+		CacheDiscountRate:   0.90, // 90% OFF
+		SourceLabel:         "OpenAI API pricing",
+		SourceURL:           "https://developers.openai.com/api/docs/pricing",
+	},
 	ModelGPT5: {
 		Provider:            ProviderOpenAI,
 		Vendor:              "OpenAI",

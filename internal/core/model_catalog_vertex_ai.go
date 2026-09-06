@@ -18,9 +18,9 @@ var vertexAIModelCatalog = map[ModelID]ModelInfo{
 		Vendor:              "Google",
 		Name:                "Gemini 2.5 Flash",
 		ID:                  ModelGemini25Flash,
-		InputUSDPerMillion:  0.075,
-		OutputUSDPerMillion: 0.30,
-		CacheDiscountRate:   0.75, // 75% OFF
+		InputUSDPerMillion:  0.30,
+		OutputUSDPerMillion: 2.50,
+		CacheDiscountRate:   0.90, // 90% OFF
 		SourceLabel:         "Google Gemini 2.5 Flash pricing",
 		SourceURL:           "https://ai.google.dev/gemini-api/docs/pricing",
 	},
@@ -30,7 +30,7 @@ var vertexAIModelCatalog = map[ModelID]ModelInfo{
 		Name:                "Gemini 3.7 Flash",
 		ID:                  ModelGemini37Flash,
 		InputUSDPerMillion:  0.75,
-		OutputUSDPerMillion: 3.00,
+		OutputUSDPerMillion: 3.75,
 		CacheDiscountRate:   0.90, // 90% OFF
 		SourceLabel:         "Google Gemini Developer API paid standard pricing",
 		SourceURL:           "https://ai.google.dev/gemini-api/docs/pricing",
@@ -41,7 +41,7 @@ var vertexAIModelCatalog = map[ModelID]ModelInfo{
 		Name:                "Gemini 3.8 Flash",
 		ID:                  ModelGemini38Flash,
 		InputUSDPerMillion:  0.75,
-		OutputUSDPerMillion: 3.00,
+		OutputUSDPerMillion: 3.75,
 		CacheDiscountRate:   0.90,
 		SourceLabel:         "Google Gemini Developer API paid standard pricing",
 		SourceURL:           "https://ai.google.dev/gemini-api/docs/pricing",

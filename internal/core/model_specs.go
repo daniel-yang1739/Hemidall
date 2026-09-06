@@ -22,6 +22,8 @@ func NormalizeModelID(raw string) ModelID {
 		return ModelGemini37FlashHigh
 	case string(ModelGemini37FlashSafety):
 		return ModelGemini37FlashSafety
+	case string(ModelClaudeFable51), "claude-fable-5.1":
+		return ModelClaudeFable51
 	case string(ModelClaudeSonnet5), "claude-sonnet-5.0", "claude-5-sonnet":
 		return ModelClaudeSonnet5
 	case string(ModelClaudeSonnet46), "claude-sonnet-4.6", "claude-4-6-sonnet":
@@ -34,6 +36,14 @@ func NormalizeModelID(raw string) ModelID {
 		return ModelClaudeHaiku45
 	case string(ModelClaudeOpus5), "claude-opus-5.0", "claude-5-opus":
 		return ModelClaudeOpus5
+	case string(ModelGPT6Astra):
+		return ModelGPT6Astra
+	case string(ModelGPT56Sol):
+		return ModelGPT56Sol
+	case string(ModelGPT56Terra):
+		return ModelGPT56Terra
+	case string(ModelGPT56Luna):
+		return ModelGPT56Luna
 	case string(ModelGPT5):
 		return ModelGPT5
 	case string(ModelGPT5Mini):
