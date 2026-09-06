@@ -616,13 +616,6 @@ func renderCloudStepInspection(inspection core.StepInspectionReadModel, contentW
 	boldStyle := lipgloss.NewStyle().Bold(true)
 
 	statusTimeStr := fmt.Sprintf("%s · %s", dashboardStatus(event.Status), dashboardTimestamp(event))
-	if telemetry.UpstreamRequestID != "" {
-		reqID := telemetry.UpstreamRequestID
-		if len(reqID) > 18 {
-			reqID = reqID[:18] + "..."
-		}
-		statusTimeStr += fmt.Sprintf(" · ID: %s", reqID)
-	}
 
 	lines := []string{
 		TitleStyle.Render(fmt.Sprintf("STEP #%d · CLOUD GENERATION", event.StepIndex)),
