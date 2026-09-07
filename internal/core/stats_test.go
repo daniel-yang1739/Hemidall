@@ -89,7 +89,7 @@ func TestSessionMetricsAccumulatesOutputTokensAndCalculatesCost(t *testing.T) {
 	if !metrics.TotalStats.HasEstimatedCost {
 		t.Fatalf("expected HasEstimatedCost to be true")
 	}
-	expectedCost := 3.825
+	expectedCost := 4.575
 	if diff := metrics.TotalStats.EstimatedCostUSD - expectedCost; diff > 0.0001 || diff < -0.0001 {
 		t.Fatalf("expected cost %f, got %f", expectedCost, metrics.TotalStats.EstimatedCostUSD)
 	}

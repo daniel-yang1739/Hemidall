@@ -68,4 +68,26 @@ var anthropicModelCatalog = map[ModelID]ModelInfo{
 		SourceLabel:         "Anthropic Claude API pricing",
 		SourceURL:           "https://platform.claude.com/docs/en/about-claude/pricing",
 	},
+	ModelClaudeFable51: {
+		Provider:            ProviderAnthropic,
+		Vendor:              "Anthropic",
+		Name:                "Claude Fable 5.1",
+		ID:                  ModelClaudeFable51,
+		InputUSDPerMillion:  10.00,
+		OutputUSDPerMillion: 50.00,
+		CacheDiscountRate:   0.975, // 97.5% OFF
+		SourceLabel:         "Anthropic Claude API pricing",
+		SourceURL:           "https://platform.claude.com/docs/en/about-claude/pricing",
+	},
+	ModelClaudeFable5: {
+		Provider:            ProviderAnthropic,
+		Vendor:              "Anthropic",
+		Name:                "Claude Fable 5",
+		ID:                  ModelClaudeFable5,
+		InputUSDPerMillion:  10.00,
+		OutputUSDPerMillion: 50.00,
+		CacheDiscountRate:   0.90, // 90% OFF
+		SourceLabel:         "Anthropic Claude API pricing",
+		SourceURL:           "https://platform.claude.com/docs/en/about-claude/pricing",
+	},
 }
