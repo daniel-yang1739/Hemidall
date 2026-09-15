@@ -19,7 +19,12 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 		if modelName == "" {
 			modelName = "unknown"
 		}
-		stats := byModel[modelName]
+		provider := usage.Provider
+		if provider == "" {
+			provider = ProviderVertexAI
+		}
+		key := string(provider) + ":" + modelName
+		stats := byModel[key]
 		if stats == nil {
 			provider := usage.Provider
 			if provider == "" {
@@ -33,7 +38,7 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 			if stats.Model == "" {
 				stats.Model = NormalizeModelID(modelName)
 			}
-			byModel[modelName] = stats
+			byModel[key] = stats
 		}
 
 		stats.TurnCount++
@@ -45,7 +50,9 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 		} else {
 			stats.InferredZeroCacheTurnCount++
 		}
-		stats.TotalProcessedTokenSum += usage.CachedInputTokens
+		if usage.HasCachedInputTokens {
+			stats.TotalProcessedTokenSum += usage.CachedInputTokens
+		}
 		if usage.HasObservedContextTokens {
 			stats.ObservedContextValueTurnCount++
 			stats.ObservedContextTokenSum += usage.ObservedContextTokens
@@ -91,6 +98,9 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 	}
 
 	sort.Slice(models, func(i, j int) bool {
+		if models[i].TotalProcessedTokenSum == models[j].TotalProcessedTokenSum {
+			return string(models[i].Provider)+models[i].ModelName < string(models[j].Provider)+models[j].ModelName
+		}
 		return models[i].TotalProcessedTokenSum > models[j].TotalProcessedTokenSum
 	})
 	return SessionAggregateMetrics{TotalStats: total, ModelStats: models}

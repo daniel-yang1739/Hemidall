@@ -2,16 +2,18 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
+	"reflect"
 	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-
 	"heimdall/internal/agent_adapters/antigravity"
 	"heimdall/internal/core"
 	"heimdall/internal/runtime"
@@ -19,228 +21,152 @@ import (
 )
 
 const (
-	disabledHTTPPort          = 0
-	eventChannelCapacity      = 10_000
-	historyBatchSize          = 500
-	historyBatchFlushInterval = 50 * time.Millisecond
-	version                   = "v0.5.0-session-switcher"
+	disabledHTTPPort   = 0
+	healthReadTimeout  = 5 * time.Second
+	healthWriteTimeout = 10 * time.Second
 )
 
-type PlainLogConfig struct {
-	Ctx       context.Context
-	Cancel    context.CancelFunc
-	Port      int
-	File      string
-	DB        string
-	EventChan chan core.UnifiedAgentEvent
+func main() {
+	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }
 
-func main() {
-	filePath := flag.String("file", "", "Path to the agent transcript_full.jsonl file (leave empty for auto-detection)")
-	dbPath := flag.String("db", "", "Path to SQLite conversation database (leave empty for auto-detection)")
-	port := flag.Int("port", disabledHTTPPort, "HTTP server port for the optional health check (0 disables it)")
-	sessionID := flag.String("session", "", "Session ID to track (leave empty for auto-detection of latest active session)")
-	plainMode := flag.Bool("plain", false, "Use plain scrolling log mode instead of full-screen interactive TUI")
-	flag.Parse()
-
-	sessionPassed := false
-	flag.Visit(func(f *flag.Flag) {
-		if f.Name == "session" {
-			sessionPassed = true
+func run(args []string, output, diagnostics io.Writer) error {
+	flags := flag.NewFlagSet("heimdall", flag.ContinueOnError)
+	flags.SetOutput(diagnostics)
+	transcript := flags.String("file", "", "Path to transcript_full.jsonl")
+	database := flags.String("db", "", "Path to conversation SQLite database")
+	id := flags.String("session", "", "Session ID (latest session when omitted)")
+	port := flags.Int("port", disabledHTTPPort, "Optional health endpoint port (0 disables it)")
+	plain := flags.Bool("plain", false, "Use scrolling logs")
+	reportMode := flags.Bool("report", false, "Read one session and write an analysis report")
+	format := flags.String("format", "text", "Report format: text or json")
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
 		}
-	})
-
-	targetSessionID := *sessionID
-	targetFilePath := *filePath
-	targetDBPath := *dbPath
-	sessions := make([]core.SessionInfo, 0, 1)
-
-	homeDirectory, homeErr := os.UserHomeDir()
-	if homeErr != nil {
-		fmt.Fprintf(os.Stderr, "Failed to resolve home directory: %v\n", homeErr)
-		os.Exit(1)
+		return err
 	}
-
-	// Resolve only the latest session synchronously. Full catalog discovery runs
-	// after the TUI starts so one slow historical database cannot delay first paint.
-	if !sessionPassed || targetSessionID == "" {
-		if latest, latestErr := antigravity.DiscoverLatestSession(homeDirectory); latestErr == nil {
+	if flags.NArg() != 0 {
+		return fmt.Errorf("unexpected positional arguments")
+	}
+	if *format != "text" && *format != "json" {
+		return fmt.Errorf("unsupported report format %q", *format)
+	}
+	if *reportMode && (*plain || *port != disabledHTTPPort) {
+		return fmt.Errorf("-report cannot be combined with -plain or -port")
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	var sessions []core.SessionInfo
+	if *id == "" && *transcript == "" && *database == "" {
+		if latest, err := antigravity.DiscoverLatestSession(home); err == nil {
+			*id, *transcript, *database = latest.SessionID, latest.LogPath, latest.DBPath
 			sessions = append(sessions, *latest)
-			targetSessionID = latest.SessionID
-			if targetFilePath == "" {
-				targetFilePath = latest.LogPath
-			}
-			if targetDBPath == "" {
-				targetDBPath = latest.DBPath
-			}
 		}
+	} else if *id == "" {
+		*id = "local"
 	}
-
-	openSwitcherOnStart := targetSessionID == ""
-
-	ctx, cancel := context.WithCancel(context.Background())
+	if *reportMode {
+		if *id == "" {
+			return fmt.Errorf("report requires a discoverable session or explicit sources")
+		}
+		query, err := runtime.LoadSession(home, *id, *transcript, *database)
+		if err != nil {
+			return err
+		}
+		return core.WriteAnalysisReport(output, core.NewAnalysisService(query).Report(), *format)
+	}
+	if *plain && *id == "" {
+		return fmt.Errorf("plain mode requires a discoverable session or explicit sources")
+	}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-
-	// Initialize event channel with large buffer for seamless history warmup
-	eventChan := make(chan core.UnifiedAgentEvent, eventChannelCapacity)
-
-	// The runtime owns the adapter-to-core hand-off. The TUI receives projected
-	// domain events and never imports an adapter or parser package.
-	supervisor, supervisorErr := runtime.NewSessionSupervisor(ctx, eventChan)
-	if supervisorErr != nil {
-		fmt.Fprintf(os.Stderr, "Failed to initialize session supervisor: %v\n", supervisorErr)
-		os.Exit(1)
+	supervisor, err := runtime.NewSessionSupervisor(ctx)
+	if err != nil {
+		return err
 	}
-	if targetSessionID != "" {
-		if err := supervisor.StartSession(targetSessionID, targetFilePath, targetDBPath); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to start session watcher: %v\n", err)
-			os.Exit(1)
-		}
+	if *id != "" {
+		go func() { _ = supervisor.StartSession(*id, *transcript, *database) }()
 	}
-
-	// The TUI is the product surface. Keep the auxiliary health endpoint opt-in
-	// so it does not claim a web dashboard or reserve a port by default.
 	if *port != disabledHTTPPort {
-		go startHTTPServer(*port)
+		go startHTTPServer(ctx, *port)
 	}
-
-	// If plain mode requested, run traditional scrolling CLI
-	if *plainMode {
-		if targetSessionID == "" {
-			fmt.Fprintln(os.Stderr, "Plain mode requires a discoverable session or an explicit -session value")
-			return
-		}
-		runPlainLogMode(PlainLogConfig{
-			Ctx:       ctx,
-			Cancel:    cancel,
-			Port:      *port,
-			File:      targetFilePath,
-			DB:        targetDBPath,
-			EventChan: eventChan,
-		})
-		return
+	if *plain {
+		return runPlainLogMode(ctx, supervisor.Updates(), output)
 	}
-
-	// ==================== FULL-SCREEN INTERACTIVE TUI ====================
-	initialModel := ui.NewModelWithData(targetSessionID, openSwitcherOnStart, ui.ModelData{
-		Sessions: sessions,
-		ContextPayloadBuilder: func(history []core.UnifiedAgentEvent, sessionID string) core.AgentContextPayload {
-			query := supervisor.Query()
-			if query == nil || query.Session().Ref.SessionID != sessionID {
-				return core.BuildContextPayloadFromHistory(core.ContextBuildInput{History: history, SessionID: sessionID})
-			}
-			return core.BuildContextPayloadFromSession(query.Session(), core.ContextBuildInput{History: history, SessionID: sessionID})
-		},
-		DashboardReadModelBuilder: func(history []core.UnifiedAgentEvent, sessionID string) core.DashboardReadModel {
-			query := supervisor.Query()
-			if query == nil || query.Session().Ref.SessionID != sessionID {
-				return core.BuildDashboardReadModelFromEvents(sessionID, history)
-			}
-			return query.DashboardReadModel()
-		},
-	}, supervisor)
-	p := tea.NewProgram(initialModel, tea.WithAltScreen(), tea.WithMouseCellMotion())
-
-	// Discover the switcher catalog in the background. This is deliberately
-	// independent from live watcher startup and from the first TUI frame.
+	model := ui.NewModelWithData(*id, *id == "", ui.ModelData{Sessions: sessions}, supervisor)
+	program := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithContext(ctx))
 	go func() {
-		catalog, catalogErr := antigravity.DiscoverAllSessions(homeDirectory)
-		if catalogErr == nil {
-			p.Send(ui.SessionCatalogMsg{Sessions: catalog})
+		catalog, err := antigravity.DiscoverAllSessions(home)
+		if err == nil {
+			program.Send(ui.SessionCatalogMsg{Sessions: catalog})
 		}
 	}()
-
-	// Forward transcript hydration in coherent batches. The watcher first emits a
-	// 10-event preview, then historical replay arrives in 500-row batches. This
-	// avoids one Bubble Tea redraw and Context invalidation per transcript row.
 	go func() {
-		ticker := time.NewTicker(historyBatchFlushInterval)
-		defer ticker.Stop()
-		batch := make([]core.UnifiedAgentEvent, 0, historyBatchSize)
-		flush := func() {
-			if len(batch) == 0 {
-				return
-			}
-			events := make([]core.UnifiedAgentEvent, len(batch))
-			copy(events, batch)
-			p.Send(ui.HistoryBatchMsg{Events: events})
-			batch = batch[:0]
-		}
-
 		for {
 			select {
 			case <-ctx.Done():
-				flush()
 				return
-			case event := <-eventChan:
-				batch = append(batch, event)
-				if len(batch) >= historyBatchSize {
-					flush()
-				}
-			case <-ticker.C:
-				flush()
+			case update := <-supervisor.Updates():
+				program.Send(ui.SessionUpdateMsg(update))
 			}
 		}
 	}()
-
-	if _, err := p.Run(); err != nil {
-		fmt.Printf("❌ Error running TUI: %v\n", err)
-		os.Exit(1)
-	}
+	_, err = program.Run()
+	return err
 }
 
-func runPlainLogMode(config PlainLogConfig) {
-	printBanner(config.Port, config.File, config.DB)
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-sigChan
-		fmt.Println("\n\n🛑 Received shutdown signal. Gracefully exiting...")
-		config.Cancel()
-	}()
-
-	fmt.Println("👀 Watching agent events & analyzing Context in real-time... (Press Ctrl+C to stop)")
-	fmt.Println()
-
+func runPlainLogMode(ctx context.Context, updates <-chan core.SessionUpdate, output io.Writer) error {
+	previous := make(map[int]core.UnifiedAgentEvent)
+	var epoch uint64
+	var lastHealth core.MonitorState
 	for {
 		select {
-		case <-config.Ctx.Done():
-			return
-		case event := <-config.EventChan:
-			table := core.FormatTokenBreakdownTable(event)
-			fmt.Println(table)
+		case <-ctx.Done():
+			return nil
+		case update := <-updates:
+			if update.SwitchError != "" && !update.Ready {
+				return fmt.Errorf("load session: %s", update.SwitchError)
+			}
+			if update.Health.State != "" && update.Health.State != lastHealth {
+				if _, err := fmt.Fprintf(output, "Source: %s %s\n", update.Health.State, update.Health.Error); err != nil {
+					return err
+				}
+				lastHealth = update.Health.State
+			}
+			if !update.Ready {
+				continue
+			}
+			if epoch != update.Epoch {
+				previous = make(map[int]core.UnifiedAgentEvent)
+				epoch = update.Epoch
+			}
+			current := make(map[int]core.UnifiedAgentEvent)
+			for _, event := range core.ProjectSessionEvents(update.Session) {
+				current[event.StepIndex] = event
+				if old, ok := previous[event.StepIndex]; !ok || !reflect.DeepEqual(old, event) {
+					if _, err := fmt.Fprintln(output, core.FormatTokenBreakdownTable(event)); err != nil {
+						return err
+					}
+				}
+			}
+			previous = current
 		}
 	}
 }
 
-func printBanner(port int, file, db string) {
-	fmt.Println("================================================================================")
-	fmt.Printf("  🐹 HEIMDALL %s (Go Real-Time LLM Context Telemetry)\n", version)
-	fmt.Println("================================================================================")
-	if port == disabledHTTPPort {
-		fmt.Println("  • Optional Health Endpoint : disabled")
-	} else {
-		fmt.Printf("  • Optional Health Endpoint : http://localhost:%d\n", port)
-	}
-	fmt.Println("  • Source Adapter    : antigravity")
-	fmt.Printf("  • Log File Path     : %s\n", file)
-	fmt.Printf("  • SQLite Telemetry  : %s\n", db)
-	fmt.Println("================================================================================")
-	fmt.Println()
-}
-
-func startHTTPServer(port int) {
-	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok","app":"heimdall"}`))
+func startHTTPServer(ctx context.Context, port int) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"status":"ok","app":"heimdall","scope":"process"}`)
 	})
-
-	server := &http.Server{
-		Addr:         fmt.Sprintf(":%d", port),
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-	}
-
+	server := &http.Server{Addr: fmt.Sprintf(":%d", port), Handler: mux, ReadTimeout: healthReadTimeout, WriteTimeout: healthWriteTimeout}
+	go func() { <-ctx.Done(); _ = server.Close() }()
 	_ = server.ListenAndServe()
 }

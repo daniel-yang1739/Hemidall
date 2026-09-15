@@ -73,22 +73,28 @@ type ChatModelMetadata struct {
 
 // ModelUsage represents exa.cortex_pb.ModelUsage (Field 4).
 type ModelUsage struct {
-	ModelCode            int64
-	UncachedPromptTokens int64
-	ThinkingOutputTokens int64
-	CachedContentTokens  int64
-	ProviderTier         int64
-	BotID                string
-	OutputContentTokens  int64
-	UpstreamRequestID    string
+	HasUncachedPromptTokens bool
+	HasThinkingOutputTokens bool
+	HasCachedContentTokens  bool
+	HasOutputContentTokens  bool
+	ModelCode               int64
+	UncachedPromptTokens    int64
+	ThinkingOutputTokens    int64
+	CachedContentTokens     int64
+	ProviderTier            int64
+	BotID                   string
+	OutputContentTokens     int64
+	UpstreamRequestID       string
 }
 
 // ChatStartMetadata represents exa.cortex_pb.ChatStartMetadata (Field 9).
 type ChatStartMetadata struct {
-	ObservedContextTokens int64
-	ContextLimitTokens    int64
-	StartStepIndex        int64
-	CheckpointIndex       int64
+	HasObservedContextTokens bool
+	HasContextLimitTokens    bool
+	ObservedContextTokens    int64
+	ContextLimitTokens       int64
+	StartStepIndex           int64
+	CheckpointIndex          int64
 }
 
 // MessagePromptMetadata represents exa.cortex_pb.MessagePromptMetadata (Field 2).
@@ -167,7 +173,7 @@ func DecodeChatModelMetadata(data []byte) (ChatModelMetadata, error) {
 		case 12:
 			meta.StreamingDuration = decodeDuration(f.Bytes)
 		case 17:
-			if meta.Usage.UncachedPromptTokens == 0 && meta.Usage.CachedContentTokens == 0 {
+			if !meta.Usage.HasUncachedPromptTokens && !meta.Usage.HasCachedContentTokens {
 				if subFields, sErr := wire.Decode(f.Bytes); sErr == nil {
 					for _, sf := range subFields {
 						if sf.Number == 2 {
@@ -224,16 +230,20 @@ func DecodeModelUsage(data []byte) (ModelUsage, error) {
 			usage.ModelCode = int64(f.Integer)
 		case 2:
 			usage.UncachedPromptTokens = int64(f.Integer)
+			usage.HasUncachedPromptTokens = true
 		case 3:
 			usage.ThinkingOutputTokens = int64(f.Integer)
+			usage.HasThinkingOutputTokens = true
 		case 5:
 			usage.CachedContentTokens = int64(f.Integer)
+			usage.HasCachedContentTokens = true
 		case 6:
 			usage.ProviderTier = int64(f.Integer)
 		case 7:
 			usage.BotID = string(f.Bytes)
 		case 9:
 			usage.OutputContentTokens = int64(f.Integer)
+			usage.HasOutputContentTokens = true
 		case 11:
 			usage.UpstreamRequestID = string(f.Bytes)
 		}
@@ -258,8 +268,10 @@ func DecodeChatStart(data []byte) (ChatStartMetadata, error) {
 					switch sf.Number {
 					case 1:
 						meta.ObservedContextTokens = int64(sf.Integer)
+						meta.HasObservedContextTokens = true
 					case 4:
 						meta.ContextLimitTokens = int64(sf.Integer)
+						meta.HasContextLimitTokens = true
 					case 5:
 						meta.StartStepIndex = int64(sf.Integer)
 					case 6:

@@ -2,187 +2,209 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
 	"time"
 
-	"heimdall/internal/agent_adapters"
+	agents "heimdall/internal/agent_adapters"
 	"heimdall/internal/agent_adapters/antigravity"
 	"heimdall/internal/core"
 )
 
-const supervisorEventChannelCapacity = 1_024
+const (
+	refreshInterval      = 250 * time.Millisecond
+	maximumRetryInterval = 4 * time.Second
+	retryMultiplier      = 2
+	healthHeartbeat      = time.Second
+	updateCapacity       = 1
+)
 
-// SessionSupervisor is the composition-root coordinator for one selected
-// session. It is the only runtime package that knows both an adapter and core.
+var errSuperseded = errors.New("session load superseded")
+
+// SessionSupervisor owns one active source and publishes replaceable, complete
+// snapshots. A slow consumer can coalesce updates without losing removals.
 type SessionSupervisor struct {
-	mu            sync.RWMutex
-	rootContext   context.Context
-	eventChannel  chan<- core.UnifiedAgentEvent
-	homeDirectory string
-	cancelActive  context.CancelFunc
-	activeID      string
-	query         *core.QueryService
-	analysis      *core.AnalysisService
+	mu             sync.RWMutex
+	rootContext    context.Context
+	homeDirectory  string
+	requestedEpoch uint64
+	activeEpoch    uint64
+	cancelActive   context.CancelFunc
+	cancelLoading  context.CancelFunc
+	query          *core.QueryService
+	analysis       *core.AnalysisService
+	updates        chan core.SessionUpdate
+	current        core.SessionUpdate
 }
 
-// NewSessionSupervisor creates an adapter-aware runtime coordinator.
-func NewSessionSupervisor(rootContext context.Context, eventChannel chan<- core.UnifiedAgentEvent) (*SessionSupervisor, error) {
-	homeDirectory, err := os.UserHomeDir()
+func NewSessionSupervisor(ctx context.Context) (*SessionSupervisor, error) {
+	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("resolve home directory: %w", err)
 	}
-	return newSessionSupervisor(rootContext, eventChannel, homeDirectory), nil
+	return newSessionSupervisor(ctx, home), nil
 }
 
-func newSessionSupervisor(rootContext context.Context, eventChannel chan<- core.UnifiedAgentEvent, homeDirectory string) *SessionSupervisor {
-	return &SessionSupervisor{rootContext: rootContext, eventChannel: eventChannel, homeDirectory: homeDirectory}
+func newSessionSupervisor(ctx context.Context, home string) *SessionSupervisor {
+	return &SessionSupervisor{rootContext: ctx, homeDirectory: home, updates: make(chan core.SessionUpdate, updateCapacity)}
 }
 
-// SwitchSession replaces the active monitor only after the new session's
-// sources and initial snapshot have been successfully parsed.
-func (supervisor *SessionSupervisor) SwitchSession(sessionID string) error {
-	return supervisor.startSession(sessionID, "", "")
-}
+func (s *SessionSupervisor) Updates() <-chan core.SessionUpdate { return s.updates }
 
-// StartSession supports explicit source paths for CLI diagnostics while normal
-// operation resolves the session's provider-standard artifact locations.
-func (supervisor *SessionSupervisor) StartSession(sessionID, transcriptPath, databasePath string) error {
-	return supervisor.startSession(sessionID, transcriptPath, databasePath)
-}
+func (s *SessionSupervisor) SwitchSession(id string) error { return s.StartSession(id, "", "") }
 
-func (supervisor *SessionSupervisor) startSession(sessionID, transcriptPath, databasePath string) error {
-	sources, err := supervisor.sourcesFor(sessionID, transcriptPath, databasePath)
+func (s *SessionSupervisor) StartSession(id, transcript, database string) error {
+	s.mu.Lock()
+	s.requestedEpoch++
+	if s.cancelLoading != nil {
+		s.cancelLoading()
+	}
+	loadingContext, cancelLoading := context.WithCancel(s.rootContext)
+	s.cancelLoading = cancelLoading
+	ticket := s.requestedEpoch
+	s.current.RequestedSessionID = id
+	s.current.SwitchError = ""
+	s.current.Loading = true
+	s.publishLocked()
+	s.mu.Unlock()
+
+	query, err := loadSession(loadingContext, s.homeDirectory, id, transcript, database)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if ticket != s.requestedEpoch || s.rootContext.Err() != nil {
+		cancelLoading()
+		return errSuperseded
+	}
+	s.current.Loading = false
+	s.cancelLoading = nil
 	if err != nil {
+		cancelLoading()
+		s.current.SwitchError = err.Error()
+		s.publishLocked()
 		return err
 	}
-	store, err := antigravity.NewSessionStore(agents.SessionRef{
-		AgentID:      agents.AgentID("antigravity"),
-		SessionID:    sessionID,
-		DiscoveredAt: time.Now(),
-	}, sources)
-	if err != nil {
-		return err
+	if s.cancelActive != nil {
+		s.cancelActive()
 	}
-	query := core.NewQueryService(store)
-	initialDelta, err := query.Refresh()
-	if err != nil {
-		return fmt.Errorf("hydrate session %s: %w", sessionID, err)
+	s.cancelActive, s.activeEpoch = cancelLoading, ticket
+	s.query, s.analysis = query, core.NewAnalysisService(query)
+	s.current = core.SessionUpdate{
+		Epoch: ticket, Ready: true, Session: query.Session(),
+		Health: core.MonitorHealth{State: core.MonitorHealthy, LastSuccess: time.Now()},
 	}
-
-	supervisor.mu.Lock()
-	if supervisor.cancelActive != nil {
-		supervisor.cancelActive()
-	}
-	activeContext, cancelActive := context.WithCancel(supervisor.rootContext)
-	supervisor.cancelActive = cancelActive
-	supervisor.activeID = sessionID
-	supervisor.query = query
-	supervisor.analysis = core.NewAnalysisService(query)
-	supervisor.mu.Unlock()
-
-	supervisor.emitInitialSession(query.Session())
-	monitor := antigravity.NewMonitor(query)
-	deltas := make(chan core.SessionDelta, supervisorEventChannelCapacity)
-	go supervisor.forwardMonitor(activeContext, monitor, deltas, query, initialDelta.Revision)
+	s.publishLocked()
+	go s.run(loadingContext, query, ticket)
 	return nil
 }
 
-func (supervisor *SessionSupervisor) sourcesFor(sessionID, transcriptPath, databasePath string) ([]agents.SourceRef, error) {
-	if transcriptPath == "" && databasePath == "" {
-		return antigravity.DiscoverSessionSources(supervisor.homeDirectory, sessionID)
-	}
-	sources := make([]agents.SourceRef, 0, 2)
-	if transcriptPath != "" {
-		sources = append(sources, agents.SourceRef{Kind: agents.SourceKindTranscript, Path: transcriptPath})
-	}
-	if databasePath != "" {
-		sources = append(sources, agents.SourceRef{Kind: agents.SourceKindConversation, Path: databasePath})
-	}
-	return sources, nil
+// LoadSession performs a single read, suitable for offline reports and startup.
+func LoadSession(home, id, transcript, database string) (*core.QueryService, error) {
+	return loadSession(context.Background(), home, id, transcript, database)
 }
 
-func (supervisor *SessionSupervisor) forwardMonitor(ctx context.Context, monitor *antigravity.Monitor, deltas chan core.SessionDelta, query *core.QueryService, initialRevision uint64) {
-	monitorErrors := make(chan error, 1)
-	go func() {
-		monitorErrors <- monitor.Run(ctx, deltas)
-	}()
+func loadSession(ctx context.Context, home, id, transcript, database string) (*core.QueryService, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	var sources []agents.SourceRef
+	if transcript == "" && database == "" {
+		var err error
+		sources, err = antigravity.DiscoverSessionSources(home, id)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		if transcript != "" {
+			sources = append(sources, agents.SourceRef{Kind: agents.SourceKindTranscript, Path: transcript})
+		}
+		if database != "" {
+			sources = append(sources, agents.SourceRef{Kind: agents.SourceKindConversation, Path: database})
+		}
+	}
+	store, err := antigravity.NewSessionStoreWithContext(ctx, core.SessionRef{AgentID: "antigravity", SessionID: id}, sources)
+	if err != nil {
+		return nil, err
+	}
+	query := core.NewQueryService(store)
+	if _, err := query.Refresh(); err != nil {
+		return nil, fmt.Errorf("hydrate session %s: %w", id, err)
+	}
+	return query, nil
+}
+
+func (s *SessionSupervisor) run(ctx context.Context, query *core.QueryService, epoch uint64) {
+	defer s.markStopped(epoch)
+	delay := refreshInterval
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	lastPublish := time.Now()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case delta := <-deltas:
-			if delta.Revision <= initialRevision {
-				continue
-			}
-			if len(delta.ChangedStepIndexes) > 0 {
-				supervisor.emitChangedSteps(query.Session(), delta.ChangedStepIndexes)
-			}
-		case <-monitorErrors:
+		case <-timer.C:
+		}
+		delta, err := query.Refresh()
+		s.mu.Lock()
+		if epoch != s.activeEpoch || ctx.Err() != nil {
+			s.mu.Unlock()
 			return
 		}
-	}
-}
-
-// Query exposes only the core query boundary to application composition.
-func (supervisor *SessionSupervisor) Query() *core.QueryService {
-	supervisor.mu.RLock()
-	defer supervisor.mu.RUnlock()
-	return supervisor.query
-}
-
-// Analysis exposes only the query-backed analysis service.
-func (supervisor *SessionSupervisor) Analysis() *core.AnalysisService {
-	supervisor.mu.RLock()
-	defer supervisor.mu.RUnlock()
-	return supervisor.analysis
-}
-
-func (supervisor *SessionSupervisor) emitChangedSteps(session core.Session, changedStepIndexes []int) {
-	for _, event := range core.ProjectChangedSessionEvents(session, changedStepIndexes) {
-		select {
-		case supervisor.eventChannel <- event:
-		case <-supervisor.rootContext.Done():
-			return
-		}
-	}
-}
-
-const startupPreviewTailCount = 30
-
-func (supervisor *SessionSupervisor) emitInitialSession(session core.Session) {
-	allEvents := core.ProjectSessionEvents(session)
-	if len(allEvents) <= startupPreviewTailCount {
-		for _, event := range allEvents {
-			select {
-			case supervisor.eventChannel <- event:
-			case <-supervisor.rootContext.Done():
-				return
+		now := time.Now()
+		changed := false
+		if err != nil {
+			changed = s.current.Health.State != core.MonitorDegraded || s.current.Health.Error != err.Error()
+			s.current.Health.State, s.current.Health.Error = core.MonitorDegraded, err.Error()
+			delay *= retryMultiplier
+			if delay > maximumRetryInterval {
+				delay = maximumRetryInterval
 			}
-		}
-		return
-	}
-
-	// 1. First emit the latest preview slice so the TUI immediately renders the active latest step and recent history.
-	tailEvents := allEvents[len(allEvents)-startupPreviewTailCount:]
-	for _, event := range tailEvents {
-		select {
-		case supervisor.eventChannel <- event:
-		case <-supervisor.rootContext.Done():
-			return
-		}
-	}
-
-	// 2. Then, in background, hydrate the older historical events without delaying initial paint.
-	go func() {
-		olderEvents := allEvents[:len(allEvents)-startupPreviewTailCount]
-		for _, event := range olderEvents {
-			select {
-			case supervisor.eventChannel <- event:
-			case <-supervisor.rootContext.Done():
-				return
+		} else {
+			changed = s.current.Health.State != core.MonitorHealthy || delta.Revision != s.current.Session.Revision
+			if delta.Revision != s.current.Session.Revision {
+				s.current.Session = query.Session()
 			}
+			s.current.Health = core.MonitorHealth{State: core.MonitorHealthy, LastSuccess: now}
+			delay = refreshInterval
 		}
-	}()
+		if changed || now.Sub(lastPublish) >= healthHeartbeat {
+			s.publishLocked()
+			lastPublish = now
+		}
+		s.mu.Unlock()
+		timer.Reset(delay)
+	}
+}
+
+func (s *SessionSupervisor) publishLocked() {
+	select {
+	case <-s.updates:
+	default:
+	}
+	update := s.current
+	update.Session = core.CloneSession(s.current.Session)
+	s.updates <- update
+}
+
+func (s *SessionSupervisor) markStopped(epoch uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if epoch == s.activeEpoch && s.rootContext.Err() != nil {
+		s.current.Health.State = core.MonitorStopped
+		s.publishLocked()
+	}
+}
+
+func (s *SessionSupervisor) Query() *core.QueryService {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.query
+}
+
+func (s *SessionSupervisor) Analysis() *core.AnalysisService {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.analysis
 }

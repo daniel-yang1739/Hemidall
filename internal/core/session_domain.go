@@ -29,24 +29,24 @@ const (
 
 // SessionRef uniquely identifies a provider session without exposing host paths.
 type SessionRef struct {
-	AgentID      AgentID
-	SessionID    string
-	Workspace    string
-	DiscoveredAt time.Time
+	AgentID      AgentID   `json:"agent_id"`
+	SessionID    string    `json:"session_id"`
+	Workspace    string    `json:"workspace,omitempty"`
+	DiscoveredAt time.Time `json:"discovered_at"`
 }
 
 // SourceRef locates one provider artifact used to build session data.
 type SourceRef struct {
-	Kind SourceKind
-	Path string
+	Kind SourceKind `json:"kind"`
+	Path string     `json:"path"`
 }
 
 // Evidence preserves provenance for a parsed or assembled value.
 type Evidence struct {
-	Level   EvidenceLevel
-	Source  SourceRef
-	Locator string
-	Note    string
+	Level   EvidenceLevel `json:"level"`
+	Source  SourceRef     `json:"source"`
+	Locator string        `json:"locator"`
+	Note    string        `json:"note"`
 }
 
 // SessionDelta identifies source changes applied to a session snapshot.
@@ -54,6 +54,7 @@ type SessionDelta struct {
 	SessionID          string
 	Revision           uint64
 	ChangedStepIndexes []int
+	Reset              bool
 }
 
 // ToolCall is the source-neutral representation of one observed tool request.
@@ -82,6 +83,8 @@ type Step struct {
 
 // UsageObservation is schema-inferred persisted usage evidence for one generation.
 type UsageObservation struct {
+	HasThinkingOutputTokens  bool
+	HasOutputContentTokens   bool
 	HasObservedContextTokens bool
 	ObservedContextTokens    int
 	HasUncachedInputTokens   bool
@@ -100,11 +103,13 @@ type UsageObservation struct {
 
 // Generation contains model and usage observations associated with one model turn.
 type Generation struct {
-	ID        string
-	StepIndex int
-	ModelID   string
-	Usage     UsageObservation
-	Evidence  []Evidence
+	ID           string
+	StepIndex    int
+	HasStepIndex bool
+	Provider     ProviderName
+	ModelID      string
+	Usage        UsageObservation
+	Evidence     []Evidence
 }
 
 // ContextSnapshot identifies persisted or explicitly labelled fallback context evidence.
@@ -140,6 +145,7 @@ type ModelCatalog struct {
 
 // Session is the provider-neutral read model consumed by core services and views.
 type Session struct {
+	DiagnosticCount  int
 	Ref              SessionRef
 	Steps            []Step
 	Generations      []Generation

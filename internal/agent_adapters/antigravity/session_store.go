@@ -1,16 +1,18 @@
 package antigravity
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
-	"strconv"
+	"reflect"
 	"sync"
 
 	"heimdall/internal/agent_adapters"
 	contextparser "heimdall/internal/agent_adapters/antigravity/parsers/context"
 	"heimdall/internal/agent_adapters/antigravity/parsers/conversation"
 	"heimdall/internal/agent_adapters/antigravity/parsers/transcript"
+	"heimdall/internal/core"
 )
 
 const initialTranscriptOffset int64 = 0
@@ -18,19 +20,22 @@ const initialTranscriptOffset int64 = 0
 // SessionStore keeps the parsed facts for one Antigravity session in memory.
 // Original artifacts remain the source of truth; this store never writes them.
 type SessionStore struct {
-	mu                 sync.RWMutex
-	ref                agents.SessionRef
-	transcriptSource   agents.SourceRef
-	transcriptOffset   int64
-	pendingTranscript  string
-	stepsByIndex       map[int]agents.Step
-	generations        []agents.Generation
-	lastParsedGenIndex int
-	contextSnapshots   []agents.ContextSnapshot
-	conversationSource *agents.SourceRef
-	conversationState  sourceState
-	revision           uint64
-	diagnostics        []error
+	ctx                     context.Context
+	mu                      sync.RWMutex
+	ref                     agents.SessionRef
+	transcriptSource        agents.SourceRef
+	transcriptOffset        int64
+	pendingTranscript       string
+	stepsByIndex            map[int]agents.Step
+	generations             []agents.Generation
+	lastParsedGenIndex      int
+	contextSnapshots        []agents.ContextSnapshot
+	conversationSource      *agents.SourceRef
+	conversationState       sourceState
+	revision                uint64
+	diagnostics             []error
+	conversationDiagnostics []error
+	transcriptInfo          os.FileInfo
 }
 
 type sourceState struct {
@@ -43,12 +48,18 @@ type sourceState struct {
 
 // NewSessionStore creates a store for sources already resolved by discovery.
 func NewSessionStore(ref agents.SessionRef, sources []agents.SourceRef) (*SessionStore, error) {
+	return NewSessionStoreWithContext(context.Background(), ref, sources)
+}
+
+// NewSessionStoreWithContext binds source reads to a session activation.
+func NewSessionStoreWithContext(ctx context.Context, ref agents.SessionRef, sources []agents.SourceRef) (*SessionStore, error) {
 	transcriptSource, ok := findTranscriptSource(sources)
 	if !ok {
 		return nil, fmt.Errorf("session %s has no transcript source", ref.SessionID)
 	}
 	conversationSource, conversationAvailable := findConversationSource(sources)
 	store := &SessionStore{
+		ctx:                ctx,
 		ref:                ref,
 		transcriptSource:   transcriptSource,
 		transcriptOffset:   initialTranscriptOffset,
@@ -65,7 +76,9 @@ func NewSessionStore(ref agents.SessionRef, sources []agents.SourceRef) (*Sessio
 func (store *SessionStore) Session() agents.Session {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
-	return cloneSession(buildSession(store.ref, store.stepsByIndex, store.generations, store.contextSnapshots, store.revision))
+	session := buildSession(store.ref, store.stepsByIndex, store.generations, store.contextSnapshots, store.revision)
+	session.DiagnosticCount = len(store.diagnostics) + len(store.conversationDiagnostics)
+	return core.CloneSession(session)
 }
 
 // Refresh incrementally reads only transcript bytes appended since the last
@@ -74,12 +87,63 @@ func (store *SessionStore) Session() agents.Session {
 func (store *SessionStore) Refresh() (agents.SessionDelta, error) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
+	if err := store.ctx.Err(); err != nil {
+		return agents.SessionDelta{}, err
+	}
+	info, err := os.Stat(store.transcriptSource.Path)
+	if err != nil {
+		return agents.SessionDelta{}, fmt.Errorf("stat transcript: %w", err)
+	}
+	unchanged := store.transcriptInfo != nil && os.SameFile(info, store.transcriptInfo) && info.Size() == store.transcriptOffset && info.ModTime() == store.transcriptInfo.ModTime()
+	if unchanged && store.conversationSource != nil {
+		state, stateErr := readSourceState(store.conversationSource.Path)
+		if stateErr != nil {
+			return agents.SessionDelta{}, stateErr
+		}
+		unchanged = state == store.conversationState
+	}
+	if unchanged {
+		return store.currentDelta(nil), nil
+	}
+
+	// Parse against private working state; cursors and facts commit together.
+	working := &SessionStore{
+		ctx: store.ctx,
+		ref: store.ref, transcriptSource: store.transcriptSource,
+		transcriptOffset: store.transcriptOffset, pendingTranscript: store.pendingTranscript,
+		stepsByIndex: make(map[int]agents.Step, len(store.stepsByIndex)),
+		generations:  store.generations, contextSnapshots: store.contextSnapshots,
+		conversationSource: store.conversationSource, conversationState: store.conversationState,
+		revision: store.revision, transcriptInfo: store.transcriptInfo,
+		diagnostics:             append([]error(nil), store.diagnostics...),
+		conversationDiagnostics: append([]error(nil), store.conversationDiagnostics...),
+	}
+	for index, step := range store.stepsByIndex {
+		working.stepsByIndex[index] = step
+	}
+	delta, err := working.refresh()
+	if err != nil {
+		return agents.SessionDelta{}, err
+	}
+	if err := store.ctx.Err(); err != nil {
+		return agents.SessionDelta{}, err
+	}
+	working.transcriptInfo = info
+	store.transcriptOffset, store.pendingTranscript = working.transcriptOffset, working.pendingTranscript
+	store.stepsByIndex, store.generations = working.stepsByIndex, working.generations
+	store.contextSnapshots, store.conversationState = working.contextSnapshots, working.conversationState
+	store.revision, store.transcriptInfo, store.diagnostics = working.revision, working.transcriptInfo, working.diagnostics
+	store.conversationDiagnostics = working.conversationDiagnostics
+	return delta, nil
+}
+
+func (store *SessionStore) refresh() (agents.SessionDelta, error) {
 
 	fileInfo, err := os.Stat(store.transcriptSource.Path)
 	if err != nil {
 		return agents.SessionDelta{}, fmt.Errorf("stat transcript: %w", err)
 	}
-	transcriptReset := fileInfo.Size() < store.transcriptOffset
+	transcriptReset := fileInfo.Size() < store.transcriptOffset || (store.transcriptInfo != nil && (!os.SameFile(fileInfo, store.transcriptInfo) || (fileInfo.Size() == store.transcriptOffset && fileInfo.ModTime() != store.transcriptInfo.ModTime())))
 	resetIndexes := make([]int, 0)
 	if transcriptReset {
 		resetIndexes = store.resetTranscriptFacts()
@@ -93,7 +157,9 @@ func (store *SessionStore) Refresh() (agents.SessionDelta, error) {
 			store.revision++
 		}
 		changedIndexes := append(resetIndexes, genSteps...)
-		return store.currentDelta(changedIndexes), nil
+		delta := store.currentDelta(changedIndexes)
+		delta.Reset = transcriptReset
+		return delta, nil
 	}
 	file, err := os.Open(store.transcriptSource.Path)
 	if err != nil {
@@ -103,7 +169,7 @@ func (store *SessionStore) Refresh() (agents.SessionDelta, error) {
 	if _, err := file.Seek(store.transcriptOffset, io.SeekStart); err != nil {
 		return agents.SessionDelta{}, fmt.Errorf("seek transcript: %w", err)
 	}
-	appendedBytes, err := io.ReadAll(file)
+	appendedBytes, err := io.ReadAll(sessionReader{ctx: store.ctx, reader: file})
 	if err != nil {
 		return agents.SessionDelta{}, fmt.Errorf("read transcript: %w", err)
 	}
@@ -123,14 +189,16 @@ func (store *SessionStore) Refresh() (agents.SessionDelta, error) {
 	}
 	changedIndexes = append(changedIndexes, genSteps...)
 	store.revision++
-	return store.currentDelta(changedIndexes), nil
+	delta := store.currentDelta(changedIndexes)
+	delta.Reset = transcriptReset
+	return delta, nil
 }
 
 // Diagnostics returns copies of non-fatal parser diagnostics accumulated by refresh.
 func (store *SessionStore) Diagnostics() []error {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
-	return append([]error(nil), store.diagnostics...)
+	return append(append([]error(nil), store.diagnostics...), store.conversationDiagnostics...)
 }
 
 func (store *SessionStore) resetTranscriptFacts() []int {
@@ -143,6 +211,9 @@ func (store *SessionStore) resetTranscriptFacts() []int {
 	store.stepsByIndex = make(map[int]agents.Step)
 	store.generations = nil
 	store.lastParsedGenIndex = -1
+	store.contextSnapshots = nil
+	store.conversationState = sourceState{}
+	store.diagnostics, store.conversationDiagnostics = nil, nil
 	return changedIndexes
 }
 
@@ -184,31 +255,52 @@ func (store *SessionStore) refreshConversation() ([]int, error) {
 		return nil, nil
 	}
 
-	generations, diagnostics, parseErr := (conversation.Parser{}).ParseDatabaseIncremental(store.conversationSource.Path, *store.conversationSource, store.lastParsedGenIndex)
+	// Existing rows may receive usage after their initial insertion. Reconcile
+	// all rows on database/WAL changes rather than assuming append-only records.
+	generations, diagnostics, parseErr := (conversation.Parser{}).ParseDatabaseContext(store.ctx, store.conversationSource.Path, *store.conversationSource)
 	if parseErr != nil {
 		return nil, parseErr
 	}
-	store.diagnostics = append(store.diagnostics, diagnostics...)
+	if !reflect.DeepEqual(store.conversationDiagnostics, diagnostics) {
+		store.conversationDiagnostics = diagnostics
+		store.revision++
+	}
 
 	changedStepIndexes := make([]int, 0, len(generations))
-	if len(generations) > 0 {
-		store.generations = append(store.generations, generations...)
+	if !reflect.DeepEqual(store.generations, generations) {
+		for _, gen := range store.generations {
+			changedStepIndexes = append(changedStepIndexes, gen.StepIndex)
+		}
+		store.generations = generations
 		for _, gen := range generations {
 			changedStepIndexes = append(changedStepIndexes, gen.StepIndex)
-			if genIdx, err := strconv.Atoi(gen.ID); err == nil && genIdx > store.lastParsedGenIndex {
-				store.lastParsedGenIndex = genIdx
-			}
 		}
 	}
 
-	snapshot, snapshotErr := (contextparser.Parser{}).ParseLatest(store.conversationSource.Path, *store.conversationSource)
+	snapshot, snapshotErr := (contextparser.Parser{}).ParseLatestContext(store.ctx, store.conversationSource.Path, *store.conversationSource)
+	var snapshots []agents.ContextSnapshot
 	if snapshotErr == nil {
-		store.contextSnapshots = []agents.ContextSnapshot{snapshot}
-	} else if len(generations) == 0 && store.contextSnapshots == nil {
-		store.contextSnapshots = nil
+		snapshots = []agents.ContextSnapshot{snapshot}
+	}
+	if !reflect.DeepEqual(store.contextSnapshots, snapshots) {
+		store.contextSnapshots = snapshots
+		// A context-only change must invalidate every derived read model.
+		store.revision++
 	}
 	store.conversationState = state
 	return changedStepIndexes, nil
+}
+
+type sessionReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (reader sessionReader) Read(data []byte) (int, error) {
+	if err := reader.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return reader.reader.Read(data)
 }
 
 func readSourceState(path string) (sourceState, error) {

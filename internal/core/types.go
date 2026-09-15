@@ -52,20 +52,21 @@ type TokenBreakdown struct {
 
 }
 
-
 // PersistedUsageObservation contains schema-inferred observations decoded from
 // a local Antigravity generation record. UncachedInputTokens and
 // CachedInputTokens share one schema-inferred usage-message path; they support
 // the cache-adjusted input projection. ObservedContextTokens comes from a
 // separate context-state path and is kept separate from input usage.
 type PersistedUsageObservation struct {
-	Available       bool         `json:"available"`
-	Source          string       `json:"source"`
-	GenerationIndex int          `json:"generation_index"`
-	StepIndex       int          `json:"step_index"`
-	Provider        ProviderName `json:"provider,omitempty"`
-	ModelName       string       `json:"model_name"`
-	Model           ModelID      `json:"model,omitempty"`
+	HasThinkingOutputTokens bool         `json:"has_thinking_output_tokens"`
+	HasOutputContentTokens  bool         `json:"has_output_content_tokens"`
+	Available               bool         `json:"available"`
+	Source                  string       `json:"source"`
+	GenerationIndex         int          `json:"generation_index"`
+	StepIndex               int          `json:"step_index"`
+	Provider                ProviderName `json:"provider,omitempty"`
+	ModelName               string       `json:"model_name"`
+	Model                   ModelID      `json:"model,omitempty"`
 
 	HasObservedContextTokens bool `json:"has_observed_context_tokens"`
 	ObservedContextTokens    int  `json:"observed_context_tokens"`
@@ -205,19 +206,19 @@ type ModelTokenStats struct {
 	ModelName                     string       `json:"model_name"`
 	Model                         ModelID      `json:"model,omitempty"`
 	TurnCount                     int          `json:"turn_count"`
-	UncachedInputTokenSum         int     `json:"uncached_input_token_sum"`
-	CachedInputTokenSum           int     `json:"cached_input_token_sum"`
-	TotalProcessedTokenSum        int     `json:"total_processed_token_sum"`
-	ExplicitCacheValueTurnCount   int     `json:"explicit_cache_value_turn_count"`
-	InferredZeroCacheTurnCount    int     `json:"inferred_zero_cache_turn_count"`
+	UncachedInputTokenSum         int          `json:"uncached_input_token_sum"`
+	CachedInputTokenSum           int          `json:"cached_input_token_sum"`
+	TotalProcessedTokenSum        int          `json:"total_processed_token_sum"`
+	ExplicitCacheValueTurnCount   int          `json:"explicit_cache_value_turn_count"`
+	InferredZeroCacheTurnCount    int          `json:"inferred_zero_cache_turn_count"`
 	CacheInputSharePercent        float64      `json:"cache_input_share_percent"`
 	ObservedContextTokenSum       int          `json:"observed_context_token_sum"`
-	ObservedContextValueTurnCount int     `json:"observed_context_value_turn_count"`
-	TotalOutputTokenSum           int     `json:"total_output_token_sum"`
-	ThinkingOutputTokenSum        int     `json:"thinking_output_token_sum"`
-	ContentOutputTokenSum         int     `json:"content_output_token_sum"`
-	EstimatedCostUSD              float64 `json:"estimated_cost_usd"`
-	HasEstimatedCost              bool    `json:"has_estimated_cost"`
+	ObservedContextValueTurnCount int          `json:"observed_context_value_turn_count"`
+	TotalOutputTokenSum           int          `json:"total_output_token_sum"`
+	ThinkingOutputTokenSum        int          `json:"thinking_output_token_sum"`
+	ContentOutputTokenSum         int          `json:"content_output_token_sum"`
+	EstimatedCostUSD              float64      `json:"estimated_cost_usd"`
+	HasEstimatedCost              bool         `json:"has_estimated_cost"`
 }
 
 // SessionAggregateMetrics holds session-wide aggregate stats across all models and per-model

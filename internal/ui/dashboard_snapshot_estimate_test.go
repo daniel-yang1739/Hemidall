@@ -24,50 +24,22 @@ const (
 	dashboardPlaybackSecondStep = 2
 )
 
-func TestDashboardCloudStep_Pos_RendersFourContextDimensionsWithBars(t *testing.T) {
-	model := NewModel("session-a", false)
-	model.width = dashboardTestWidth
-	model.height = 40
-	model.history = []core.UnifiedAgentEvent{{StepIndex: dashboardSnapshotStep, Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference}}
-	model.dashboardIdx = 0
-	model.dashboardReadModel = core.DashboardReadModel{
-		SessionID: "session-a",
-		Inspections: map[int]core.StepInspectionReadModel{dashboardSnapshotStep: {
-			Kind: core.DashboardStepCloud,
-			TurnTelemetry: &core.EmpiricalTurnTelemetry{
-				ObservedContextTokens: 171_100,
-				CachedContentTokens:   155_449,
-				UncachedPromptTokens:  15_651,
-				ThinkingOutputTokens:  1_124,
-				OutputContentTokens:   162,
-				OutputTokens:          1_286,
-				TotalTokens:           172_386,
-				ContextWindowLimit:    256_000,
-				UtilizationPercentage: 66.8,
-				CacheHitPercentage:    90.8,
-				TimeToFirstTokenMs:    1620,
-				StreamingDurationMs:   3450,
-			},
-		}},
+func TestDashboardCloudStepLabelsObservedAndMissingValues(t *testing.T) {
+	usage := core.PersistedUsageObservation{
+		Available: true, HasObservedContextTokens: true, ObservedContextTokens: 171100,
+		HasUncachedInputTokens: true, UncachedInputTokens: 15651,
+		HasCachedInputTokens: true, CachedInputTokens: 155449,
+		HasThinkingOutputTokens: true, ThinkingOutputTokens: 1124,
+		HasOutputContentTokens: true, OutputContentTokens: 162,
 	}
-	model.dashboardReadModelHistoryCount = len(model.history)
-
-	view := model.renderDashboardView()
-
-	requireViewContains(t, view, "TURN TOKEN TELEMETRY (100% EMPIRICAL METRICS)")
-	requireViewContains(t, view, "Context Window Load")
-	requireViewContains(t, view, "Context Tokens")
-	requireViewContains(t, view, "Cached Content")
-	requireViewContains(t, view, "Uncached Prompt")
-	requireViewContains(t, view, "Output Tokens")
-	requireViewContains(t, view, "Thinking Output")
-	requireViewContains(t, view, "90% OFF")
-	requireViewContains(t, view, "REASONING")
-	requireViewContains(t, view, "In:")
-	requireViewContains(t, view, "Total Turn Tokens")
-	requireViewContains(t, view, "Event / Time")
-	requireViewContains(t, view, "MODEL_RESPONSE")
-	requireViewContains(t, view, "████")
+	view := renderCloudStepInspection(core.StepInspectionReadModel{Event: core.UnifiedAgentEvent{StepIndex: dashboardSnapshotStep, Type: core.StepTypeModelResponse, Usage: usage}}, dashboardTestWidth)
+	expected := []string{"TURN TOKEN TELEMETRY", "Context Window Load    unavailable", "Context Tokens", "  - Cached Content", "  - Uncached Prompt", "Output Tokens", "  - Thinking Output", "  - Content Output", "171.1k"}
+	for _, text := range expected {
+		t.Run(text, func(t *testing.T) { requireViewContains(t, view, text) })
+	}
+	if strings.Contains(view, "[observed]") || strings.Contains(view, "100% EMPIRICAL") || strings.Contains(view, "90% OFF") || strings.Contains(view, "256k") {
+		t.Fatal("unjustified telemetry or limit claim")
+	}
 }
 
 func TestDashboardLocalStep_Pos_RendersEventTimeAndTriggeredCloudStep(t *testing.T) {
@@ -105,28 +77,15 @@ func TestDashboardLocalStep_Pos_RendersEventTimeAndTriggeredCloudStep(t *testing
 	requireViewContains(t, view, "command result output")
 }
 
-func TestDashboardCloudStep_Neg_ShowsSynchronizingWhenTelemetryPending(t *testing.T) {
-	model := NewModel("session-a", false)
-	model.width = dashboardTestWidth
-	model.height = 40
-	model.history = []core.UnifiedAgentEvent{{StepIndex: dashboardSnapshotStep, Type: core.StepTypeModelResponse, Scope: core.ScopeCloudInference}}
-	model.dashboardIdx = 0
-	model.dashboardReadModel = core.DashboardReadModel{
-		SessionID: "session-a",
-		Inspections: map[int]core.StepInspectionReadModel{dashboardSnapshotStep: {
-			Kind: core.DashboardStepCloud,
-			TurnTelemetry: &core.EmpiricalTurnTelemetry{
-				ObservedContextTokens: 0,
-			},
-		}},
+func TestDashboardCloudStepLeavesMissingTelemetryUnavailable(t *testing.T) {
+	view := renderCloudStepInspection(core.StepInspectionReadModel{Event: core.UnifiedAgentEvent{StepIndex: dashboardSnapshotStep, RawContent: "locally visible response", Thinking: "local reasoning"}}, dashboardTestWidth)
+	requireViewContains(t, view, "TURN TOKEN TELEMETRY")
+	requireViewContains(t, view, "- Content Output       unavailable")
+	requireViewContains(t, view, "- Thinking Output      unavailable")
+	requireViewContains(t, view, "unknown")
+	if strings.Contains(view, "[observed]") {
+		t.Fatal("local text must not become observed telemetry")
 	}
-	model.dashboardReadModelHistoryCount = len(model.history)
-
-	view := model.renderDashboardView()
-
-	requireViewContains(t, view, "TURN TOKEN TELEMETRY (100% EMPIRICAL METRICS)")
-	requireViewContains(t, view, "Telemetry synchronizing from cloud metadata")
-	requireViewContains(t, view, "resolving...")
 }
 
 func TestDashboardReadModel_Neg_ShowsPreparationWithoutCachedReadModel(t *testing.T) {

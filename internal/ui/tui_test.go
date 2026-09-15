@@ -403,61 +403,30 @@ func TestCurrentHistoryList_CheckpointStaysOnOneMutedLine(t *testing.T) {
 }
 
 func TestCyclicTabAndShiftTabViewSwitching(t *testing.T) {
-	m := NewModel("test-session", false)
-	m.width = 100
-	m.height = 30
-
-	if m.activeView != ViewDashboard {
-		t.Fatalf("Initial view should be ViewDashboard, got %v", m.activeView)
+	cases := []struct {
+		name string
+		from ActiveView
+		key  tea.KeyType
+		want ActiveView
+	}{
+		{"dashboard-next", ViewDashboard, tea.KeyTab, ViewHistory},
+		{"history-next", ViewHistory, tea.KeyTab, ViewContext},
+		{"context-next", ViewContext, tea.KeyTab, ViewDocs},
+		{"docs-next", ViewDocs, tea.KeyTab, ViewInsights},
+		{"insights-wrap", ViewInsights, tea.KeyTab, ViewDashboard},
+		{"dashboard-wrap", ViewDashboard, tea.KeyShiftTab, ViewInsights},
+		{"insights-previous", ViewInsights, tea.KeyShiftTab, ViewDocs},
+		{"docs-previous", ViewDocs, tea.KeyShiftTab, ViewContext},
 	}
-
-	// 1. Press Tab -> ViewHistory
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	m = updated.(Model)
-	if m.activeView != ViewHistory {
-		t.Fatalf("After 1st Tab, expected ViewHistory, got %v", m.activeView)
-	}
-
-	// 2. Press Tab -> ViewContext
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	m = updated.(Model)
-	if m.activeView != ViewContext {
-		t.Fatalf("After 2nd Tab, expected ViewContext, got %v", m.activeView)
-	}
-
-	// 3. Press Tab -> ViewDocs
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	m = updated.(Model)
-	if m.activeView != ViewDocs {
-		t.Fatalf("After 3rd Tab, expected ViewDocs, got %v", m.activeView)
-	}
-
-	// 4. Press Tab -> ViewDashboard (Clockwise wrap)
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	m = updated.(Model)
-	if m.activeView != ViewDashboard {
-		t.Fatalf("After 4th Tab, expected ViewDashboard, got %v", m.activeView)
-	}
-
-	// 5. Press Shift+Tab -> ViewDocs (Counter-clockwise wrap)
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	m = updated.(Model)
-	if m.activeView != ViewDocs {
-		t.Fatalf("After Shift+Tab, expected ViewDocs, got %v", m.activeView)
-	}
-
-	// 6. Press Shift+Tab -> ViewContext
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	m = updated.(Model)
-	if m.activeView != ViewContext {
-		t.Fatalf("After 2nd Shift+Tab, expected ViewContext, got %v", m.activeView)
-	}
-
-	// 7. Press Shift+Tab -> ViewHistory
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	m = updated.(Model)
-	if m.activeView != ViewHistory {
-		t.Fatalf("After 3rd Shift+Tab, expected ViewHistory, got %v", m.activeView)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			model := NewModel("test-session", false)
+			model.activeView = tc.from
+			updated, _ := model.Update(tea.KeyMsg{Type: tc.key})
+			if updated.(Model).activeView != tc.want {
+				t.Fatalf("wanted %v, got %v", tc.want, updated.(Model).activeView)
+			}
+		})
 	}
 }
 
@@ -1451,27 +1420,23 @@ func TestSessionSwitch_Pos_SessionResetMsgClearsHistory(t *testing.T) {
 	}
 }
 
-func TestSessionSwitch_Pos_SwitchSessionReqMsgDelegatesToSwitcher(t *testing.T) {
+func TestSessionSwitchRequestRunsInBackgroundAndPreservesHistory(t *testing.T) {
 	mock := &mockSessionSwitcher{}
-	m := NewModel("session-A", false, mock)
-	m.history = []core.UnifiedAgentEvent{
-		{SessionID: "session-A", StepIndex: 1, Summary: "Step 1"},
+	model := NewModel("session-A", false, mock)
+	model.history = []core.UnifiedAgentEvent{{SessionID: "session-A", StepIndex: 1, Summary: "Step 1"}}
+	updated, cmd := model.Update(SwitchSessionReqMsg{SessionID: "session-B"})
+	model = updated.(Model)
+	if mock.called || cmd == nil {
+		t.Fatal("switch must be deferred to a background command")
 	}
-
-	updated, _ := m.Update(SwitchSessionReqMsg{SessionID: "session-B"})
-	m = updated.(Model)
-
-	if !mock.called {
-		t.Fatalf("Expected switcher.SwitchSession to be called, but it was not")
+	result := cmd()
+	updated, _ = model.Update(result)
+	model = updated.(Model)
+	if !mock.called || mock.lastSessionID != "session-B" {
+		t.Fatal("switch was not delegated")
 	}
-	if mock.lastSessionID != "session-B" {
-		t.Fatalf("Expected switcher target 'session-B', got '%s'", mock.lastSessionID)
-	}
-	if m.sessionID != "session-B" {
-		t.Fatalf("Expected model sessionID 'session-B', got '%s'", m.sessionID)
-	}
-	if len(m.history) != 0 {
-		t.Fatalf("Expected model history to be cleared on switch request, got %d", len(m.history))
+	if model.sessionID != "session-A" || len(model.history) != 1 {
+		t.Fatal("request/completion must preserve display until a prepared snapshot arrives")
 	}
 }
 func TestVisualMode_Pos_ShiftV_Navigation_G_and_g(t *testing.T) {

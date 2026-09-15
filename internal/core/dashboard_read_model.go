@@ -55,14 +55,14 @@ type EmpiricalTurnTelemetry struct {
 	UncachedPromptTokens  int     `json:"uncached_prompt_tokens"`  // F4.2
 	ThinkingOutputTokens  int     `json:"thinking_output_tokens"`  // F4.3
 	OutputContentTokens   int     `json:"output_content_tokens"`   // F4.9
-	OutputTokens          int     `json:"output_tokens"`          // Thinking + Content
-	TotalTokens           int     `json:"total_tokens"`           // ObservedContextTokens + OutputTokens
-	ContextWindowLimit    int     `json:"context_window_limit"`   // F9.10.4 or model default
-	UtilizationPercentage float64 `json:"utilization_percentage"` // ObservedContextTokens / ContextWindowLimit * 100
-	CacheHitPercentage    float64 `json:"cache_hit_percentage"`   // CachedContentTokens / ObservedContextTokens * 100
-	TimeToFirstTokenMs    int64   `json:"time_to_first_token_ms"` // F11
-	StreamingDurationMs   int64   `json:"streaming_duration_ms"`  // F12
-	UpstreamRequestID     string  `json:"upstream_request_id"`    // F4.11
+	OutputTokens          int     `json:"output_tokens"`           // Thinking + Content
+	TotalTokens           int     `json:"total_tokens"`            // ObservedContextTokens + OutputTokens
+	ContextWindowLimit    int     `json:"context_window_limit"`    // F9.10.4 or model default
+	UtilizationPercentage float64 `json:"utilization_percentage"`  // ObservedContextTokens / ContextWindowLimit * 100
+	CacheHitPercentage    float64 `json:"cache_hit_percentage"`    // CachedContentTokens / ObservedContextTokens * 100
+	TimeToFirstTokenMs    int64   `json:"time_to_first_token_ms"`  // F11
+	StreamingDurationMs   int64   `json:"streaming_duration_ms"`   // F12
+	UpstreamRequestID     string  `json:"upstream_request_id"`     // F4.11
 }
 
 // StepInspectionReadModel contains all data necessary to render the lower
@@ -122,7 +122,7 @@ func BuildDashboardReadModel(session Session) DashboardReadModel {
 	return DashboardReadModel{
 		SessionID:   session.Ref.SessionID,
 		Revision:    session.Revision,
-		Metrics:     ComputeSessionAggregateMetrics(events),
+		Metrics:     generationMetrics(session.Generations),
 		Inspections: inspections,
 	}
 }
@@ -139,10 +139,14 @@ func BuildDashboardReadModelFromEvents(sessionID string, events []UnifiedAgentEv
 			continue
 		}
 		session.Generations = append(session.Generations, Generation{
-			ID:        generationIDFromEvent(event),
-			StepIndex: event.StepIndex,
-			ModelID:   event.Usage.ModelName,
+			ID:           generationIDFromEvent(event),
+			StepIndex:    event.StepIndex,
+			HasStepIndex: true,
+			Provider:     event.Usage.Provider,
+			ModelID:      event.Usage.ModelName,
 			Usage: UsageObservation{
+				HasThinkingOutputTokens:  event.Usage.HasThinkingOutputTokens,
+				HasOutputContentTokens:   event.Usage.HasOutputContentTokens,
 				HasObservedContextTokens: event.Usage.HasObservedContextTokens,
 				ObservedContextTokens:    event.Usage.ObservedContextTokens,
 				HasUncachedInputTokens:   event.Usage.HasUncachedInputTokens,
@@ -163,65 +167,26 @@ func BuildDashboardReadModelFromEvents(sessionID string, events []UnifiedAgentEv
 	return BuildDashboardReadModel(session)
 }
 
-// BuildEmpiricalTurnTelemetry extracts the 100% empirical turn telemetry from an event.
+// BuildEmpiricalTurnTelemetry projects stored counters without local fallbacks.
+// Availability remains on Event.Usage; missing fields must not render as zero.
 func BuildEmpiricalTurnTelemetry(event UnifiedAgentEvent) EmpiricalTurnTelemetry {
 	u := event.Usage
-	observedCtx := u.ObservedContextTokens
-	if u.UncachedInputTokens > 0 || u.CachedInputTokens > 0 {
-		observedCtx = u.UncachedInputTokens + u.CachedInputTokens
+	result := EmpiricalTurnTelemetry{
+		ObservedContextTokens: u.ObservedContextTokens,
+		CachedContentTokens:   u.CachedInputTokens, UncachedPromptTokens: u.UncachedInputTokens,
+		ThinkingOutputTokens: u.ThinkingOutputTokens, OutputContentTokens: u.OutputContentTokens,
+		OutputTokens:       u.ThinkingOutputTokens + u.OutputContentTokens,
+		TotalTokens:        u.UncachedInputTokens + u.CachedInputTokens + u.ThinkingOutputTokens + u.OutputContentTokens,
+		ContextWindowLimit: u.ContextLimit, TimeToFirstTokenMs: u.TimeToFirstTokenMs,
+		StreamingDurationMs: u.StreamingDurationMs, UpstreamRequestID: u.UpstreamRequestID,
 	}
-
-	thinkingTokens := u.ThinkingOutputTokens
-	if thinkingTokens == 0 && event.Thinking != "" {
-		thinkingTokens = CountTokens(event.Thinking)
+	if u.HasObservedContextTokens && u.HasContextLimit && u.ContextLimit > 0 {
+		result.UtilizationPercentage = float64(u.ObservedContextTokens) / float64(u.ContextLimit) * cacheSharePercentageScale
 	}
-
-	contentTokens := u.OutputContentTokens
-	if contentTokens == 0 && event.RawContent != "" {
-		contentTokens = CountTokens(event.RawContent)
+	if u.HasUncachedInputTokens && u.UncachedInputTokens+u.CachedInputTokens > 0 {
+		result.CacheHitPercentage = float64(u.CachedInputTokens) / float64(u.UncachedInputTokens+u.CachedInputTokens) * cacheSharePercentageScale
 	}
-
-	outputTokens := thinkingTokens + contentTokens
-	totalTokens := observedCtx + outputTokens
-
-	contextLimit := u.ContextLimit
-	if contextLimit <= 0 {
-		modelLower := strings.ToLower(u.ModelName)
-		if strings.Contains(modelLower, "gemini") {
-			contextLimit = 1_000_000
-		} else {
-			contextLimit = 256_000
-		}
-	}
-
-	var utilPercent float64
-	if contextLimit > 0 {
-		utilPercent = float64(observedCtx) / float64(contextLimit) * 100.0
-	}
-
-	var cacheHitPercent float64
-	if observedCtx > 0 {
-		cacheHitPercent = float64(u.CachedInputTokens) / float64(observedCtx) * 100.0
-	}
-	if cacheHitPercent > 100.0 {
-		cacheHitPercent = 100.0
-	}
-
-	return EmpiricalTurnTelemetry{
-		ObservedContextTokens: observedCtx,
-		CachedContentTokens:   u.CachedInputTokens,
-		UncachedPromptTokens:  u.UncachedInputTokens,
-		ThinkingOutputTokens:  thinkingTokens,
-		OutputContentTokens:   contentTokens,
-		OutputTokens:          outputTokens,
-		TotalTokens:           totalTokens,
-		ContextWindowLimit:    contextLimit,
-		UtilizationPercentage: utilPercent,
-		CacheHitPercentage:    cacheHitPercent,
-		TimeToFirstTokenMs:    u.TimeToFirstTokenMs,
-		StreamingDurationMs:   u.StreamingDurationMs,
-		UpstreamRequestID:     u.UpstreamRequestID,
-	}
+	return result
 }
 
 func dashboardStepsFromEvents(events []UnifiedAgentEvent) []Step {
@@ -317,35 +282,7 @@ func buildRequestContextTimeline(events []UnifiedAgentEvent, snapshots []Context
 	snapshotByStep := snapshotsByGeneratedStep(snapshots)
 	state := newRequestContextTimelineState()
 
-	// Solution 1 (Global Baseline Snapshot Projection):
-	// Find the latest available persisted snapshot that contains SystemPrompt or NativeTools
-	// to serve as the baseline invariant for historical steps whose snapshots were rolled.
-	var baselineSystemText string
-	var baselineTools []ToolSignature
-	for i := len(snapshots) - 1; i >= 0; i-- {
-		s := snapshots[i]
-		if baselineSystemText == "" {
-			sys := s.SystemPrompt
-			if sys == "" {
-				sys = strings.TrimSpace(s.IdentityPrompt + "\n" + s.ConstitutionDoc)
-			}
-			if sys != "" {
-				baselineSystemText = sys
-			}
-		}
-		if len(baselineTools) == 0 && len(s.NativeTools) > 0 {
-			baselineTools = s.NativeTools
-		}
-	}
-
-	baselineSystemTokens := 0
-	if baselineSystemText != "" {
-		baselineSystemTokens = CountTokens(baselineSystemText)
-	}
-	baselineToolTokens := 0
-	if len(baselineTools) > 0 {
-		baselineToolTokens = countToolDefinitionTokens(baselineTools)
-	}
+	// Historical reconstruction never borrows a later generation's snapshot.
 
 	for _, event := range events {
 		if event.IsCloudStep() {
@@ -356,15 +293,6 @@ func buildRequestContextTimeline(events []UnifiedAgentEvent, snapshots []Context
 			composition := state.composition(event.StepIndex)
 			if snapshot, found := snapshotByStep[event.StepIndex]; found {
 				composition = applySnapshotEvidence(composition, snapshot)
-			} else {
-				// Solution 1: Apply Global Baseline System Instruction and Tool Schemas
-				if baselineSystemTokens > 0 && (composition.SystemInstruction.Evidence == ContextSectionUnavailable || composition.SystemInstruction.Tokens < baselineSystemTokens) {
-					composition.SystemInstruction = requestContextSection(baselineSystemTokens, ContextSectionReconstructed)
-				}
-				if baselineToolTokens > 0 && (composition.ToolSchemas.Evidence == ContextSectionUnavailable || composition.ToolSchemas.Tokens < baselineToolTokens) {
-					composition.ToolSchemas = requestContextSection(baselineToolTokens, ContextSectionReconstructed)
-				}
-				composition.TotalVisibleTokens = composition.SystemInstruction.Tokens + composition.ToolSchemas.Tokens + composition.ConversationContext.Tokens + composition.ActiveInput.Tokens
 			}
 			compositions[event.StepIndex] = composition
 			state.consumeCloudGeneration(event)

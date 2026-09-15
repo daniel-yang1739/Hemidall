@@ -13,8 +13,11 @@ const unknownStepKind = "UNKNOWN"
 func ProjectSessionEvents(session Session) []UnifiedAgentEvent {
 	usageByStep := make(map[int]Generation, len(session.Generations))
 	for _, generation := range session.Generations {
+		if !generation.HasStepIndex && generation.StepIndex == 0 {
+			continue
+		}
 		known, exists := usageByStep[generation.StepIndex]
-		if !exists || generation.ID > known.ID {
+		if !exists || generationIDLess(known.ID, generation.ID) {
 			usageByStep[generation.StepIndex] = generation
 		}
 	}
@@ -41,9 +44,12 @@ func ProjectChangedSessionEvents(session Session, changedStepIndexes []int) []Un
 
 	usageByStep := make(map[int]Generation)
 	for _, generation := range session.Generations {
+		if !generation.HasStepIndex && generation.StepIndex == 0 {
+			continue
+		}
 		if _, needed := targetMap[generation.StepIndex]; needed {
 			known, exists := usageByStep[generation.StepIndex]
-			if !exists || generation.ID > known.ID {
+			if !exists || generationIDLess(known.ID, generation.ID) {
 				usageByStep[generation.StepIndex] = generation
 			}
 		}
@@ -100,6 +106,8 @@ func projectToolCalls(calls []ToolCall) []ToolCallInfo {
 func projectUsageObservation(generation Generation) PersistedUsageObservation {
 	usage := generation.Usage
 	return PersistedUsageObservation{
+		HasThinkingOutputTokens:  usage.HasThinkingOutputTokens,
+		HasOutputContentTokens:   usage.HasOutputContentTokens,
 		Available:                usage.HasObservedContextTokens || usage.HasUncachedInputTokens || usage.HasCachedInputTokens,
 		HasObservedContextTokens: usage.HasObservedContextTokens,
 		ObservedContextTokens:    usage.ObservedContextTokens,
@@ -115,7 +123,7 @@ func projectUsageObservation(generation Generation) PersistedUsageObservation {
 		TimeToFirstTokenMs:       usage.TimeToFirstTokenMs,
 		StreamingDurationMs:      usage.StreamingDurationMs,
 		UpstreamRequestID:        usage.UpstreamRequestID,
-		Provider:                 ProviderVertexAI,
+		Provider:                 generation.Provider,
 		ModelName:                generation.ModelID,
 		Model:                    NormalizeModelID(generation.ModelID),
 		GenerationIndex:          generationIndex(generation.ID),

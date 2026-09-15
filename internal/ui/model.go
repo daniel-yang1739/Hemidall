@@ -22,6 +22,7 @@ const (
 	ViewHistory
 	ViewContext
 	ViewDocs
+	ViewInsights
 )
 
 type FocusPane int
@@ -112,6 +113,18 @@ type ModelData struct {
 
 // Model represents the bubbletea application state
 type Model struct {
+	runtimeManaged                 bool
+	sessionEpoch                   uint64
+	sessionRevision                uint64
+	pendingSessionUpdate           *core.SessionUpdate
+	sessionAnalysisPending         bool
+	switchRequest                  uint64
+	sourceHealth                   core.MonitorHealth
+	sourceLoading                  bool
+	analysisReport                 core.SessionAnalysisReport
+	reportReady                    bool
+	insightsIndex                  int
+	insightsGroup                  int
 	sessionID                      string
 	activeView                     ActiveView
 	focusPane                      FocusPane
@@ -313,6 +326,8 @@ func (m *Model) nextView() {
 	case ViewContext:
 		m.activeView = ViewDocs
 	case ViewDocs:
+		m.activeView = ViewInsights
+	case ViewInsights:
 		m.activeView = ViewDashboard
 	}
 }
@@ -323,6 +338,8 @@ func (m *Model) prevView() {
 	m.isHistorySearching = false
 	switch m.activeView {
 	case ViewDashboard:
+		m.activeView = ViewInsights
+	case ViewInsights:
 		m.activeView = ViewDocs
 	case ViewHistory:
 		m.activeView = ViewDashboard
@@ -571,6 +588,9 @@ func (m *Model) invalidateDashboardReadModel() {
 // Bubble Tea's render path. Cursor movement only reads the last completed
 // projection, so it cannot trigger tokenization or session queries.
 func (m *Model) requestDashboardReadModelRefresh() tea.Cmd {
+	if m.runtimeManaged {
+		return nil
+	}
 	if m.dashboardReadModelPending {
 		m.dashboardReadModelDirty = true
 		return nil
@@ -599,6 +619,9 @@ func (m *Model) requestDashboardReadModelRefresh() tea.Cmd {
 // outside the UI update path. Repeated hydration batches coalesce into one
 // follow-up refresh so a long replay cannot schedule one payload build per row.
 func (m *Model) requestContextEstimateRefresh() tea.Cmd {
+	if m.runtimeManaged {
+		return nil
+	}
 	if m.contextPayloadBuilder == nil {
 		return nil
 	}
@@ -630,6 +653,9 @@ func (m *Model) requestContextEstimateRefresh() tea.Cmd {
 // after history changes. Dashboard navigation reads this cache only, so j/k
 // never performs SQLite I/O or scans the transcript.
 func (m *Model) requestPlaybackContextEstimateRefresh() tea.Cmd {
+	if m.runtimeManaged {
+		return nil
+	}
 	if m.playbackEstimateRefreshPending {
 		m.playbackEstimateRefreshDirty = true
 		return nil
@@ -1106,6 +1132,24 @@ func (m Model) buildFullInspectorLines(e core.UnifiedAgentEvent, maxWidth int) [
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case SessionUpdateMsg:
+		cmd := m.receiveSessionUpdate(core.SessionUpdate(msg))
+		return m, cmd
+	case sessionAnalysisMsg:
+		cmd := m.receiveSessionAnalysis(msg)
+		return m, cmd
+	case sessionSwitchResultMsg:
+		if msg.Request == m.switchRequest && msg.Err != nil {
+			m.statusMessage, m.statusMessageTime = msg.Err.Error(), time.Now()
+		}
+		return m, nil
+	case reportExportMsg:
+		m.statusMessage = "Report saved: " + msg.Path
+		if msg.Err != nil {
+			m.statusMessage = "Report export failed: " + msg.Err.Error()
+		}
+		m.statusMessageTime = time.Now()
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -1113,10 +1157,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case AgentEventMsg:
+		if m.runtimeManaged {
+			return m, nil
+		}
 		m.applyHistoryEvents([]core.UnifiedAgentEvent{core.UnifiedAgentEvent(msg)})
 		return m, m.requestDashboardReadModelRefresh()
 
 	case HistoryBatchMsg:
+		if m.runtimeManaged {
+			return m, nil
+		}
 		m.applyHistoryEvents(msg.Events)
 		if m.activeView == ViewContext {
 			m.refreshContextInspectorCache()
@@ -1132,6 +1182,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case ContextEstimateMsg:
+		if m.runtimeManaged {
+			return m, nil
+		}
 		if msg.SessionID == m.sessionID && msg.HistoryCount >= m.contextEstimateHistoryCount {
 			m.contextEstimate = msg.Estimate
 			m.contextEstimateHistoryCount = msg.HistoryCount
@@ -1153,6 +1206,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case DashboardReadModelMsg:
+		if m.runtimeManaged {
+			return m, nil
+		}
 		if msg.SessionID != m.sessionID {
 			return m, nil
 		}
@@ -1167,6 +1223,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case PlaybackContextEstimatesMsg:
+		if m.runtimeManaged {
+			return m, nil
+		}
 		if msg.SessionID != m.sessionID {
 			return m, nil
 		}
@@ -1182,6 +1241,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case SessionResetMsg:
+		if m.runtimeManaged {
+			return m, nil
+		}
 		m.sessionID = msg.SessionID
 		m.history = make([]core.UnifiedAgentEvent, 0, 1000)
 		m.historyIndex = buildHistoryIndex(m.history)
@@ -1214,41 +1276,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case SwitchSessionReqMsg:
-		if m.switcher != nil {
-			_ = m.switcher.SwitchSession(msg.SessionID)
+		if m.switcher == nil {
+			return m, nil
 		}
-		m.sessionID = msg.SessionID
-		m.history = make([]core.UnifiedAgentEvent, 0, defaultHistoryCapacity)
-		m.historyIndex = buildHistoryIndex(m.history)
-		m.latestEvent = core.UnifiedAgentEvent{}
-		m.dashboardIdx = 0
-		m.selectedIdx = 0
-		m.detailScroll = 0
-		m.historyOffset = 0
-		m.isSessionSwitcherOpen = false
-		m.isShortcutsModalOpen = false
-		m.activeView = ViewDashboard
-		m.refreshContextPayload()
-		m.contextEstimate = core.VisibleContextEvidenceEstimate{}
-		m.contextEstimateHistoryCount = 0
-		m.contextEstimateRefreshPending = false
-		m.contextEstimateRefreshDirty = false
-		m.dashboardReadModel = core.DashboardReadModel{}
-		m.dashboardReadModelHistoryCount = 0
-		m.dashboardReadModelRevision++
-		m.dashboardReadModelPending = false
-		m.dashboardReadModelDirty = false
-		m.playbackContextEstimates = nil
-		m.playbackEstimateHistoryCount = 0
-		m.playbackEstimateRevision = 0
-		m.playbackEstimateCachedRevision = 0
-		m.playbackEstimateRefreshPending = false
-		m.playbackEstimateRefreshDirty = false
-		m.clipboardStatus = fmt.Sprintf("Attached session %s (loading history)", truncateStr(msg.SessionID, 8))
-		m.clipboardStatusTime = time.Now()
-		return m, nil
+		m.switchRequest++
+		request, switcher, id := m.switchRequest, m.switcher, msg.SessionID
+		return m, func() tea.Msg { return sessionSwitchResultMsg{Request: request, Err: switcher.SwitchSession(id)} }
 
 	case SessionSwitchedMsg:
+		if m.runtimeManaged {
+			return m, nil
+		}
 		m.sessionID = msg.SessionID
 		m.history = msg.Events
 		m.historyIndex = buildHistoryIndex(m.history)
@@ -1307,6 +1345,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.isCommandMode = false
 				m.commandInput = ""
 				switch cmd {
+				case "report":
+					if !m.reportReady {
+						m.statusMessage, m.statusMessageTime = "Report is not ready", time.Now()
+						return m, nil
+					}
+					return m, m.exportAnalysisReportCmd()
 				case "q", "quit", "q!", "exit":
 					return m, tea.Quit
 				case "w", "write":
@@ -1570,7 +1614,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.isDocsSearching = false
 				m.isHistorySearching = false
 				return m, nil
+			case "5":
+				m.activeView = ViewInsights
+				m.isDocsSearching, m.isHistorySearching = false, false
+				return m, nil
 			}
+		}
+		if m.activeView == ViewInsights {
+			m.updateInsightsKey(key)
+			return m, nil
 		}
 
 		// ==================== CONTEXT VIEW KEYBINDINGS ====================
@@ -2179,6 +2231,8 @@ func (m Model) View() string {
 
 	var content string
 	switch m.activeView {
+	case ViewInsights:
+		content = m.renderInsightsView()
 	case ViewDocs:
 		content = m.renderDocsView()
 	case ViewHistory:
@@ -2221,48 +2275,37 @@ func (m Model) View() string {
 }
 
 func (m Model) renderHeader() string {
-	title := HeaderStyle.Render(" HEIMDALL ")
-	if m.width < 90 {
-		title = HeaderStyle.Render(" HEIMDALL ")
+	const (
+		fullNavigationWidth    = 105
+		compactNavigationWidth = 70
+		sessionTagLength       = 8
+	)
+	left := HeaderStyle.Render(" HEIMDALL ")
+	labels := []string{"Dashboard", "History", "Context", "Docs", "Insights"}
+	for index, label := range labels {
+		if m.width < fullNavigationWidth && index == int(ViewDashboard) {
+			label = "Home"
+		}
+		if m.width < compactNavigationWidth && index != int(m.activeView) {
+			label = ""
+		}
+		text := fmt.Sprintf(" [%d]", index+1)
+		if label != "" {
+			text += " " + label
+		}
+		style := lipgloss.NewStyle().Foreground(insightsCaptionColor)
+		if index == int(m.activeView) {
+			style = style.Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg)
+		}
+		left += style.Render(text)
 	}
-
-	tab1 := lipgloss.NewStyle().Foreground(ColorMuted).Render(" [1] Dashboard ")
-	tab2 := lipgloss.NewStyle().Foreground(ColorMuted).Render(" [2] History ")
-	tab3 := lipgloss.NewStyle().Foreground(ColorMuted).Render(" [3] Context ")
-	tab4 := lipgloss.NewStyle().Foreground(ColorMuted).Render(" [4] Docs ")
-
-	switch m.activeView {
-	case ViewDashboard:
-		tab1 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [1] Dashboard ")
-	case ViewHistory:
-		tab2 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [2] History ")
-	case ViewContext:
-		tab3 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [3] Context ")
-	case ViewDocs:
-		tab4 = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render(" [4] Docs ")
+	shortID := truncateVisualWidth(m.sessionID, sessionTagLength)
+	right := lipgloss.NewStyle().Foreground(ColorHighlight).Render(shortID)
+	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right)
+	if gap > 1 {
+		return left + strings.Repeat(" ", gap) + right
 	}
-
-	viewTabs := tab1 + tab2 + tab3 + tab4
-	left := lipgloss.JoinHorizontal(lipgloss.Center, title, viewTabs)
-
-	shortHash := m.sessionID
-	if len(shortHash) > 8 {
-		shortHash = shortHash[:8]
-	}
-	timeInfo := lipgloss.NewStyle().Foreground(ColorLightText).Render(time.Now().Format("15:04:05"))
-	sep := lipgloss.NewStyle().Foreground(ColorBorder).Render(" | ")
-	stepsInfo := lipgloss.NewStyle().Foreground(ColorLightText).Render(fmt.Sprintf("Steps: %d", len(m.history)))
-	sessionTag := lipgloss.NewStyle().Foreground(ColorHighlight).Render(fmt.Sprintf("(%s)", shortHash))
-	right := timeInfo + sep + stepsInfo + sep + sessionTag
-
-	gapWidth := m.width - lipgloss.Width(left) - lipgloss.Width(right)
-	if gapWidth < 1 {
-		gapWidth = 1
-	}
-	gap := strings.Repeat(" ", gapWidth)
-
-	headerLine := lipgloss.JoinHorizontal(lipgloss.Center, left, gap, right)
-	return lipgloss.NewStyle().MaxWidth(m.width).Render(headerLine)
+	return truncateVisualWidth(left, m.width)
 }
 
 func (m Model) renderFooter() string {
@@ -2276,6 +2319,12 @@ func (m Model) renderFooter() string {
 		alert := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorSuccess).Padding(0, 1).Render(m.statusMessage)
 		return lipgloss.NewStyle().MaxWidth(m.width).Render(alert)
 	}
+	if m.sourceLoading {
+		return truncateVisualWidth("Loading session... current session remains available", m.width)
+	}
+	if m.sourceHealth.State == core.MonitorDegraded || m.sourceHealth.State == core.MonitorStopped {
+		return truncateVisualWidth(fmt.Sprintf("Source %s · last read %s · %s", m.sourceHealth.State, m.sourceHealth.LastSuccess.Format(time.TimeOnly), m.sourceHealth.Error), m.width)
+	}
 
 	if m.clipboardStatus != "" && time.Since(m.clipboardStatusTime) < statusMessageDuration {
 		alert := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorSuccess).Padding(0, 1).Render(m.clipboardStatus)
@@ -2283,7 +2332,9 @@ func (m Model) renderFooter() string {
 	}
 
 	var hints string
-	if m.activeView == ViewContext {
+	if m.activeView == ViewInsights {
+		hints = " h/l Category · j/k Select · Enter Evidence · :report Export"
+	} else if m.activeView == ViewContext {
 		modeLabel := "[r] Raw"
 		if m.isContextRawMode {
 			modeLabel = "[r] Refined"

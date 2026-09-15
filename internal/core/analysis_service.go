@@ -1,83 +1,42 @@
 package core
 
-import "sort"
+import (
+	"encoding/json"
+	"sort"
+	"sync"
+)
 
-const percentageMultiplier = 100.0
-
-// AnalysisService derives aggregate metrics exclusively through SessionQuery.
-// It cannot access an adapter, filesystem, database, or parser implementation.
+// AnalysisService derives reusable analysis exclusively from SessionQuery.
 type AnalysisService struct {
-	query SessionQuery
+	query          SessionQuery
+	mu             sync.Mutex
+	cachedID       string
+	cachedRevision uint64
+	cachedJSON     []byte
 }
 
-// NewAnalysisService creates a query-backed analysis boundary.
-func NewAnalysisService(query SessionQuery) *AnalysisService {
-	return &AnalysisService{query: query}
-}
+func NewAnalysisService(query SessionQuery) *AnalysisService { return &AnalysisService{query: query} }
 
-// SessionMetrics calculates observed usage aggregates for the active session.
+// SessionMetrics is the compatibility aggregate entry point. Both projections
+// use generationMetrics so several generations at one step remain billable.
 func (service *AnalysisService) SessionMetrics() SessionAggregateMetrics {
-	statsByModel := make(map[string]*ModelTokenStats)
-	for _, generation := range service.query.Session().Generations {
-		if !generation.Usage.HasUncachedInputTokens {
-			continue
-		}
-		modelName := generation.ModelID
-		if modelName == "" {
-			modelName = "unknown"
-		}
-		stats := statsByModel[modelName]
-		if stats == nil {
-			stats = &ModelTokenStats{ModelName: modelName}
-			statsByModel[modelName] = stats
-		}
-		applyGenerationUsage(stats, generation.Usage)
-	}
-	modelStats := make([]ModelTokenStats, 0, len(statsByModel))
-	total := ModelTokenStats{ModelName: "TOTAL"}
-	for _, stats := range statsByModel {
-		finalizeTokenStats(stats)
-		modelStats = append(modelStats, *stats)
-		addTokenStats(&total, *stats)
-	}
-	sort.Slice(modelStats, func(left, right int) bool {
-		return modelStats[left].ModelName < modelStats[right].ModelName
-	})
-	finalizeTokenStats(&total)
-	return SessionAggregateMetrics{TotalStats: total, ModelStats: modelStats}
+	metrics := generationMetrics(service.query.Session().Generations)
+	sort.Slice(metrics.ModelStats, func(i, j int) bool { return metrics.ModelStats[i].ModelName < metrics.ModelStats[j].ModelName })
+	return metrics
 }
 
-func applyGenerationUsage(stats *ModelTokenStats, usage UsageObservation) {
-	if !usage.HasUncachedInputTokens {
-		return
+// Report caches tokenization and ranking by session revision. Decoding a fresh
+// copy keeps callers from mutating the cached report's nested slices.
+func (service *AnalysisService) Report() SessionAnalysisReport {
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	session := service.query.Session()
+	if service.cachedJSON == nil || service.cachedID != session.Ref.SessionID || service.cachedRevision != session.Revision {
+		report := BuildSessionAnalysisReport(session)
+		service.cachedJSON, _ = json.Marshal(report)
+		service.cachedID, service.cachedRevision = session.Ref.SessionID, session.Revision
 	}
-	stats.TurnCount++
-	stats.UncachedInputTokenSum += usage.UncachedInputTokens
-	if usage.HasCachedInputTokens {
-		stats.CachedInputTokenSum += usage.CachedInputTokens
-		stats.ExplicitCacheValueTurnCount++
-	} else {
-		stats.InferredZeroCacheTurnCount++
-	}
-	if usage.HasObservedContextTokens {
-		stats.ObservedContextTokenSum += usage.ObservedContextTokens
-		stats.ObservedContextValueTurnCount++
-	}
-}
-
-func addTokenStats(total *ModelTokenStats, stats ModelTokenStats) {
-	total.TurnCount += stats.TurnCount
-	total.UncachedInputTokenSum += stats.UncachedInputTokenSum
-	total.CachedInputTokenSum += stats.CachedInputTokenSum
-	total.ExplicitCacheValueTurnCount += stats.ExplicitCacheValueTurnCount
-	total.InferredZeroCacheTurnCount += stats.InferredZeroCacheTurnCount
-	total.ObservedContextTokenSum += stats.ObservedContextTokenSum
-	total.ObservedContextValueTurnCount += stats.ObservedContextValueTurnCount
-}
-
-func finalizeTokenStats(stats *ModelTokenStats) {
-	stats.TotalProcessedTokenSum = stats.UncachedInputTokenSum + stats.CachedInputTokenSum
-	if stats.TotalProcessedTokenSum > 0 {
-		stats.CacheInputSharePercent = float64(stats.CachedInputTokenSum) * percentageMultiplier / float64(stats.TotalProcessedTokenSum)
-	}
+	var report SessionAnalysisReport
+	_ = json.Unmarshal(service.cachedJSON, &report)
+	return report
 }

@@ -1,6 +1,7 @@
 package context
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strconv"
@@ -28,12 +29,17 @@ type Parser struct{}
 
 // ParseLatest returns the latest sufficiently large decodable context snapshot.
 func (Parser) ParseLatest(databasePath string, source agents.SourceRef) (core.ContextSnapshot, error) {
+	return (Parser{}).ParseLatestContext(context.Background(), databasePath, source)
+}
+
+// ParseLatestContext ties snapshot discovery to the active session lifetime.
+func (Parser) ParseLatestContext(ctx context.Context, databasePath string, source agents.SourceRef) (core.ContextSnapshot, error) {
 	database, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=ro", databasePath))
 	if err != nil {
 		return core.ContextSnapshot{}, fmt.Errorf("open context database: %w", err)
 	}
 	defer database.Close()
-	rows, err := database.Query(snapshotRowsQuery, minimumSnapshotBytes)
+	rows, err := database.QueryContext(ctx, snapshotRowsQuery, minimumSnapshotBytes)
 	if err != nil {
 		return core.ContextSnapshot{}, fmt.Errorf("query context snapshots: %w", err)
 	}
@@ -115,7 +121,6 @@ func ParseSnapshot(generationIndex int, data []byte, source agents.SourceRef) (c
 	}
 	return snapshot, nil
 }
-
 
 func printableText(data []byte) string {
 	if len(data) == 0 || !utf8.Valid(data) {

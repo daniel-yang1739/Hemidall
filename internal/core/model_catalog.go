@@ -98,9 +98,9 @@ func (m ModelInfo) CalculateCost(uncachedInput, cachedInput, outputTokens int) f
 	if m.IsFree {
 		return 0
 	}
-	costUncached := (float64(uncachedInput) / 1_000_000.0) * m.InputUSDPerMillion
-	costCached := (float64(cachedInput) / 1_000_000.0) * m.CachedInputUSDPerMillion()
-	costOutput := (float64(outputTokens) / 1_000_000.0) * m.OutputUSDPerMillion
+	costUncached := (float64(uncachedInput) / TokensPerMillion) * m.InputUSDPerMillion
+	costCached := (float64(cachedInput) / TokensPerMillion) * m.CachedInputUSDPerMillion()
+	costOutput := (float64(outputTokens) / TokensPerMillion) * m.OutputUSDPerMillion
 	return costUncached + costCached + costOutput
 }
 
@@ -110,4 +110,3 @@ var modelCatalog = map[ProviderName]map[ModelID]ModelInfo{
 	ProviderAnthropic: anthropicModelCatalog,
 	ProviderOpenAI:    openAIModelCatalog,
 }
-

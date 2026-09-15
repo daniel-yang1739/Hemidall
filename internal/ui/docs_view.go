@@ -13,6 +13,12 @@ import (
 //go:embed docs/*.md
 var docsFS embed.FS
 
+//go:embed docs/insights.md
+var insightsGuideEnglish string
+
+//go:embed docs/insights_zh.md
+var insightsGuideTraditionalChinese string
+
 // DocSubBullet represents a sub-item under a major documentation topic
 type DocSubBullet struct {
 	Key  string
@@ -40,7 +46,11 @@ func loadDocDefinitions(lang string) []DocItem {
 	}
 
 	var items []DocItem
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	guide := insightsGuideEnglish
+	if lang == "zh" {
+		guide = insightsGuideTraditionalChinese
+	}
+	scanner := bufio.NewScanner(strings.NewReader(guide + "\n" + string(data)))
 	currentCategory := "General"
 	var currentItem *DocItem
 

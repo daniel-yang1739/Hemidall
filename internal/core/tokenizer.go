@@ -10,15 +10,17 @@ var (
 	defaultEncoding = "cl100k_base"
 	bpeInstance     *tiktoken.Tiktoken
 	bpeOnce         sync.Once
+	bpeError        error
 )
+
+const fallbackBytesPerToken = 4
 
 // GetTokenizer retrieves the singleton Tiktoken BPE encoder
 func GetTokenizer() (*tiktoken.Tiktoken, error) {
-	var err error
 	bpeOnce.Do(func() {
-		bpeInstance, err = tiktoken.GetEncoding(defaultEncoding)
+		bpeInstance, bpeError = tiktoken.GetEncoding(defaultEncoding)
 	})
-	return bpeInstance, err
+	return bpeInstance, bpeError
 }
 
 // CountTokens estimates tokens with the configured local BPE encoding.
@@ -29,7 +31,7 @@ func CountTokens(text string) int {
 	enc, err := GetTokenizer()
 	if err != nil {
 		// Fallback: estimate 1 token per 4 characters if tokenizer fails
-		return (len(text) + 3) / 4
+		return (len(text) + fallbackBytesPerToken - 1) / fallbackBytesPerToken
 	}
 	tokens := enc.Encode(text, nil, nil)
 	return len(tokens)

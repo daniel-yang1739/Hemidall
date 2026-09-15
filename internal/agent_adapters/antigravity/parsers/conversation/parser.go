@@ -1,6 +1,7 @@
 package conversation
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"regexp"
@@ -11,6 +12,7 @@ import (
 
 	"heimdall/internal/agent_adapters"
 	"heimdall/internal/agent_adapters/antigravity/schema"
+	"heimdall/internal/core"
 )
 
 const (
@@ -53,12 +55,17 @@ type Parser struct{}
 
 // ParseDatabase opens the database read-only and returns every decodable generation.
 func (Parser) ParseDatabase(databasePath string, source agents.SourceRef) ([]agents.Generation, []error, error) {
+	return (Parser{}).ParseDatabaseContext(context.Background(), databasePath, source)
+}
+
+// ParseDatabaseContext permits cancellation during historical hydration.
+func (Parser) ParseDatabaseContext(ctx context.Context, databasePath string, source agents.SourceRef) ([]agents.Generation, []error, error) {
 	database, err := sql.Open("sqlite", fmt.Sprintf("file:%s?mode=ro", databasePath))
 	if err != nil {
 		return nil, nil, fmt.Errorf("open conversation database: %w", err)
 	}
 	defer database.Close()
-	rows, err := database.Query(generationRowsQuery)
+	rows, err := database.QueryContext(ctx, generationRowsQuery)
 	if err != nil {
 		return nil, nil, fmt.Errorf("query generation metadata: %w", err)
 	}
@@ -140,7 +147,7 @@ func decodeGenerationMetadata(index int, data []byte, source agents.SourceRef) (
 		evidence = append(evidence, agents.Evidence{Level: agents.EvidenceWireStructure, Source: source, Locator: locator, Note: "direct model field"})
 	}
 	return generationMetadata{
-		generation:  agents.Generation{ID: strconv.Itoa(index), StepIndex: stepIndex, ModelID: modelID, Usage: usage, Evidence: evidence},
+		generation:  agents.Generation{ID: strconv.Itoa(index), StepIndex: stepIndex, HasStepIndex: hasInputBoundary, Provider: core.ProviderVertexAI, ModelID: modelID, Usage: usage, Evidence: evidence},
 		modelEnum:   meta.CustomMetadata[modelEnumKey],
 		executionID: meta.CustomMetadata[lastExecutionIDKey],
 	}, nil
@@ -302,40 +309,37 @@ func extractInputBoundary(customMetadata map[string]string) (int, bool) {
 
 func decodeUsage(meta schema.ChatModelMetadata) agents.UsageObservation {
 	usage := agents.UsageObservation{}
-	if meta.ChatStart.ObservedContextTokens > 0 {
+	if meta.ChatStart.HasObservedContextTokens || meta.ChatStart.ObservedContextTokens > 0 {
 		usage.ObservedContextTokens = int(meta.ChatStart.ObservedContextTokens)
 		usage.HasObservedContextTokens = true
 	}
-	if meta.ChatStart.ContextLimitTokens > 0 {
+	if meta.ChatStart.HasContextLimitTokens || meta.ChatStart.ContextLimitTokens > 0 {
 		usage.ContextLimit = int(meta.ChatStart.ContextLimitTokens)
 		usage.HasContextLimit = true
 	}
 
 	u := meta.Usage
-	if u.UncachedPromptTokens > 0 {
+	if u.HasUncachedPromptTokens || u.UncachedPromptTokens > 0 {
 		usage.UncachedInputTokens = int(u.UncachedPromptTokens)
 		usage.HasUncachedInputTokens = true
 	}
-	if u.CachedContentTokens > 0 {
+	if u.HasCachedContentTokens || u.CachedContentTokens > 0 {
 		usage.CachedInputTokens = int(u.CachedContentTokens)
 		usage.HasCachedInputTokens = true
 	}
-	if u.ThinkingOutputTokens > 0 {
+	if u.HasThinkingOutputTokens || u.ThinkingOutputTokens > 0 {
 		usage.ThinkingOutputTokens = int(u.ThinkingOutputTokens)
+		usage.HasThinkingOutputTokens = true
 	}
-	if u.OutputContentTokens > 0 {
+	if u.HasOutputContentTokens || u.OutputContentTokens > 0 {
 		usage.OutputContentTokens = int(u.OutputContentTokens)
+		usage.HasOutputContentTokens = true
 	}
 	if u.UpstreamRequestID != "" {
 		usage.UpstreamRequestID = u.UpstreamRequestID
 	}
 
-	// Authoritative input calculation:
-	// ObservedContextTokens is the true empirical prompt context: CachedInputTokens + UncachedInputTokens
-	if usage.UncachedInputTokens > 0 || usage.CachedInputTokens > 0 {
-		usage.ObservedContextTokens = usage.UncachedInputTokens + usage.CachedInputTokens
-		usage.HasObservedContextTokens = true
-	}
+	// Keep the context-state observation distinct from billing input counters.
 
 	if meta.TimeToFirstToken > 0 {
 		usage.TimeToFirstTokenMs = meta.TimeToFirstToken.Milliseconds()
@@ -346,6 +350,6 @@ func decodeUsage(meta schema.ChatModelMetadata) agents.UsageObservation {
 
 	// Calculate TotalTokens = ObservedContextTokens (Input) + OutputTokens
 	outputTokens := usage.ThinkingOutputTokens + usage.OutputContentTokens
-	usage.TotalTokens = usage.ObservedContextTokens + outputTokens
+	usage.TotalTokens = usage.UncachedInputTokens + usage.CachedInputTokens + outputTokens
 	return usage
 }
