@@ -1,12 +1,24 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"heimdall/internal/core"
 )
+
+func TestHistoryContentPayload_Pos_ShowsStepOutputArtifactSource(t *testing.T) {
+	model := NewModel("session-a", false)
+	event := core.UnifiedAgentEvent{
+		Type: core.StepTypeGeneric, RawContent: "persisted output", ContentSource: core.SourceKindArtifacts,
+	}
+
+	rendered := strings.Join(model.buildContentPayloadLines(event, 80), "\n")
+
+	requireViewContains(t, rendered, "Source: STEP OUTPUT ARTIFACT")
+}
 
 const (
 	historyBatchFirstStep       = 1

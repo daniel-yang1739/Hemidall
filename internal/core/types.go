@@ -115,11 +115,12 @@ type UnifiedAgentEvent struct {
 	ConsumedStepIndices []int `json:"consumed_step_indices,omitempty"` // Local step indices consumed by this cloud turn
 
 	// Content and summaries
-	Summary     string           `json:"summary"`            // Single-line summary for CLI display
-	RawContent  string           `json:"raw_content"`        // Full text payload
-	Thinking    string           `json:"thinking,omitempty"` // Reasoning chain
-	ToolCalls   []ToolCallInfo   `json:"tool_calls,omitempty"`
-	ToolResults []ToolResultInfo `json:"tool_results,omitempty"`
+	Summary       string           `json:"summary"`                  // Single-line summary for CLI display
+	RawContent    string           `json:"raw_content"`              // Full text payload
+	ContentSource SourceKind       `json:"content_source,omitempty"` // Persisted source selected for RawContent
+	Thinking      string           `json:"thinking,omitempty"`       // Reasoning chain
+	ToolCalls     []ToolCallInfo   `json:"tool_calls,omitempty"`
+	ToolResults   []ToolResultInfo `json:"tool_results,omitempty"`
 
 	// Tokens is a local cl100k_base estimate injected by Analyzer. Usage is the
 	// separately persisted generation metadata observation, when available.

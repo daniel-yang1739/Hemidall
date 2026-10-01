@@ -71,6 +71,7 @@ type Step struct {
 	Kind                string
 	Status              string
 	Content             string
+	ContentSource       SourceKind
 	Thinking            string
 	ToolCalls           []ToolCall
 	Scope               StepScope

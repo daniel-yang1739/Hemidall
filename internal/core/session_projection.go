@@ -77,6 +77,7 @@ func projectSingleStepEvent(session Session, step Step, usageByStep map[int]Gene
 		Status:              step.Status,
 		Summary:             step.Content,
 		RawContent:          step.Content,
+		ContentSource:       step.ContentSource,
 		Thinking:            step.Thinking,
 		ToolCalls:           projectToolCalls(step.ToolCalls),
 		Scope:               step.Scope,

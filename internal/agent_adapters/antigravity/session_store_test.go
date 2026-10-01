@@ -12,13 +12,86 @@ import (
 )
 
 const (
-	fixtureSessionID  = "session-fixture"
-	fixtureFirstStep  = 11
-	fixtureSecondStep = 12
-	fixtureFileMode   = 0o600
-	fixtureTimestamp  = "2026-09-01T01:02:03Z"
-	secondRevision    = 2
+	fixtureSessionID     = "session-fixture"
+	fixtureFirstStep     = 11
+	fixtureSecondStep    = 12
+	fixtureToolStep      = 13
+	fixtureFileMode      = 0o600
+	fixtureDirectoryMode = 0o700
+	fixtureTimestamp     = "2026-09-01T01:02:03Z"
+	secondRevision       = 2
 )
+
+func TestSessionStoreStepOutput_Pos_UsesPersistedArtifactContent(t *testing.T) {
+	store, stepOutputsPath := newFixtureStoreWithStepOutputs(t, toolResultTranscriptLine(fixtureToolStep, "transcript content")+"\n")
+	writeStepOutputFixture(t, stepOutputsPath, fixtureToolStep, stepOutputFileName, "persisted tool output")
+
+	_, refreshErr := store.Refresh()
+	step := store.Session().Steps[0]
+
+	requireNoError(t, refreshErr)
+	requireEqual(t, step.Content, "persisted tool output")
+	requireEqual(t, step.ContentSource, core.SourceKindArtifacts)
+	requireEqual(t, step.Evidence[len(step.Evidence)-1].Note, stepOutputEvidenceNote)
+}
+
+func TestSessionStoreStepOutput_Pos_DiscoversSiblingArtifactsForExplicitTranscript(t *testing.T) {
+	root := t.TempDir()
+	logsPath := filepath.Join(root, systemGeneratedDirectory, logsDirectoryName)
+	stepOutputsPath := filepath.Join(root, systemGeneratedDirectory, stepsDirectoryName)
+	requireNoError(t, os.MkdirAll(logsPath, fixtureDirectoryMode))
+	requireNoError(t, os.MkdirAll(stepOutputsPath, fixtureDirectoryMode))
+	transcriptPath := filepath.Join(logsPath, fullTranscriptFileName)
+	writeFixtureFile(t, transcriptPath, toolResultTranscriptLine(fixtureToolStep, "transcript content")+"\n")
+	writeStepOutputFixture(t, stepOutputsPath, fixtureToolStep, stepOutputFileName, "persisted tool output")
+	store := newFixtureStore(t, transcriptPath)
+
+	_, refreshErr := store.Refresh()
+	step := store.Session().Steps[0]
+
+	requireNoError(t, refreshErr)
+	requireEqual(t, step.Content, "persisted tool output")
+	requireEqual(t, step.ContentSource, core.SourceKindArtifacts)
+}
+
+func TestSessionStoreStepOutput_TN_PreservesTranscriptWithoutArtifact(t *testing.T) {
+	store, _ := newFixtureStoreWithStepOutputs(t, toolResultTranscriptLine(fixtureToolStep, "transcript content")+"\n")
+
+	_, refreshErr := store.Refresh()
+	step := store.Session().Steps[0]
+
+	requireNoError(t, refreshErr)
+	requireEqual(t, step.Content, "transcript content")
+	requireEqual(t, step.ContentSource, core.SourceKindTranscript)
+}
+
+func TestSessionStoreStepOutput_FP_IgnoresNonOutputArtifact(t *testing.T) {
+	store, stepOutputsPath := newFixtureStoreWithStepOutputs(t, toolResultTranscriptLine(fixtureToolStep, "transcript content")+"\n")
+	writeStepOutputFixture(t, stepOutputsPath, fixtureToolStep, "content.md", "unrelated artifact")
+
+	_, refreshErr := store.Refresh()
+	step := store.Session().Steps[0]
+
+	requireNoError(t, refreshErr)
+	requireEqual(t, step.Content, "transcript content")
+	requireEqual(t, step.ContentSource, core.SourceKindTranscript)
+}
+
+func TestSessionStoreStepOutput_FN_RefreshesArtifactWithoutTranscriptChange(t *testing.T) {
+	store, stepOutputsPath := newFixtureStoreWithStepOutputs(t, toolResultTranscriptLine(fixtureToolStep, "running transcript content")+"\n")
+	outputPath := writeStepOutputFixture(t, stepOutputsPath, fixtureToolStep, stepOutputFileName, "initial output")
+	firstDelta, firstRefreshErr := store.Refresh()
+	writeFixtureFile(t, outputPath, "final background output")
+	secondDelta, secondRefreshErr := store.Refresh()
+	step := store.Session().Steps[0]
+
+	requireNoError(t, firstRefreshErr)
+	requireNoError(t, secondRefreshErr)
+	requireEqual(t, secondDelta.Revision > firstDelta.Revision, true)
+	requireEqual(t, secondDelta.ChangedStepIndexes[0], fixtureToolStep)
+	requireEqual(t, step.Content, "final background output")
+	requireEqual(t, step.ContentSource, core.SourceKindArtifacts)
+}
 
 func TestSessionStore_RefreshReadsOnlyAppendedTranscriptData(t *testing.T) {
 	transcriptPath := writeFixtureTranscript(t, transcriptLine(fixtureFirstStep, "first")+"\n")
@@ -99,7 +172,6 @@ func TestSessionStore_RefreshLinksLocalStepToTriggeringPlannerResponseToolCall(t
 	requireEqual(t, readModel.Inspections[2].LocalAction, "run_command")
 }
 
-
 func TestNewSessionStore_RequiresTranscriptSource(t *testing.T) {
 	store, err := NewSessionStore(agents.SessionRef{SessionID: fixtureSessionID}, nil)
 
@@ -134,6 +206,34 @@ func newFixtureStore(t *testing.T, transcriptPath string) *SessionStore {
 	return store
 }
 
+func newFixtureStoreWithStepOutputs(t *testing.T, transcriptContent string) (*SessionStore, string) {
+	t.Helper()
+	root := t.TempDir()
+	logsPath := filepath.Join(root, ".system_generated", "logs")
+	stepOutputsPath := filepath.Join(root, ".system_generated", "steps")
+	requireNoError(t, os.MkdirAll(logsPath, fixtureDirectoryMode))
+	requireNoError(t, os.MkdirAll(stepOutputsPath, fixtureDirectoryMode))
+	transcriptPath := filepath.Join(logsPath, "transcript_full.jsonl")
+	writeFixtureFile(t, transcriptPath, transcriptContent)
+	store, err := NewSessionStore(agents.SessionRef{
+		AgentID: agents.AgentID("antigravity"), SessionID: fixtureSessionID,
+	}, []agents.SourceRef{
+		{Kind: agents.SourceKindTranscript, Path: transcriptPath},
+		{Kind: agents.SourceKindArtifacts, Path: stepOutputsPath},
+	})
+	requireNoError(t, err)
+	return store, stepOutputsPath
+}
+
+func writeStepOutputFixture(t *testing.T, root string, stepIndex int, name, content string) string {
+	t.Helper()
+	directory := filepath.Join(root, strconv.Itoa(stepIndex))
+	requireNoError(t, os.MkdirAll(directory, fixtureDirectoryMode))
+	path := filepath.Join(directory, name)
+	writeFixtureFile(t, path, content)
+	return path
+}
+
 func writeFixtureTranscript(t *testing.T, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "transcript_full.jsonl")
@@ -159,6 +259,10 @@ func writeFixtureFile(t *testing.T, path, content string) {
 
 func transcriptLine(stepIndex int, content string) string {
 	return `{"step_index":` + strconv.Itoa(stepIndex) + `,"source":"USER","type":"USER_INPUT","status":"DONE","created_at":"` + fixtureTimestamp + `","content":"` + content + `"}`
+}
+
+func toolResultTranscriptLine(stepIndex int, content string) string {
+	return `{"step_index":` + strconv.Itoa(stepIndex) + `,"source":"MODEL","type":"GENERIC","status":"DONE","created_at":"` + fixtureTimestamp + `","content":"` + content + `"}`
 }
 
 func requireNoError(t *testing.T, err error) {

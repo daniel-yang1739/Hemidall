@@ -82,14 +82,15 @@ func ParseTranscriptLine(line string, source agents.SourceRef) (agents.Step, err
 	}
 
 	return agents.Step{
-		Index:     raw.StepIndex,
-		Timestamp: parsedTime,
-		Source:    raw.Source,
-		Kind:      kind,
-		Status:    raw.Status,
-		Content:   raw.Content,
-		Thinking:  raw.Thinking,
-		ToolCalls: toolCalls,
+		Index:         raw.StepIndex,
+		Timestamp:     parsedTime,
+		Source:        raw.Source,
+		Kind:          kind,
+		Status:        raw.Status,
+		Content:       raw.Content,
+		ContentSource: agents.SourceKindTranscript,
+		Thinking:      raw.Thinking,
+		ToolCalls:     toolCalls,
 		Evidence: []agents.Evidence{{
 			Level:   agents.EvidenceObservedOnly,
 			Source:  source,

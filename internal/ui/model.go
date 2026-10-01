@@ -1106,7 +1106,13 @@ func (m Model) buildContentPayloadLines(e core.UnifiedAgentEvent, maxWidth int) 
 		lines = append(lines, strings.Repeat("─", sepWidth))
 	}
 
-	lines = append(lines, fmt.Sprintf("Content Payload (Role: %s):", e.GetMessageRole()))
+	payloadHeader := fmt.Sprintf("Content Payload (Role: %s", e.GetMessageRole())
+	if e.ContentSource == core.SourceKindArtifacts {
+		payloadHeader += ", Source: STEP OUTPUT ARTIFACT"
+	} else if e.ContentSource == core.SourceKindTranscript {
+		payloadHeader += ", Source: TRANSCRIPT"
+	}
+	lines = append(lines, payloadHeader+"):")
 	if strings.TrimSpace(e.RawContent) != "" {
 		wrappedPayload := wrapVisualLines(e.RawContent, maxWidth)
 		lines = append(lines, wrappedPayload...)

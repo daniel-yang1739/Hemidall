@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"reflect"
+	"sort"
+	"strconv"
 	"sync"
 
 	"heimdall/internal/agent_adapters"
@@ -15,7 +18,12 @@ import (
 	"heimdall/internal/core"
 )
 
-const initialTranscriptOffset int64 = 0
+const (
+	initialTranscriptOffset int64 = 0
+	stepOutputFileName            = "output.txt"
+	stepStatusRunning             = "RUNNING"
+	stepOutputEvidenceNote        = "persisted step output"
+)
 
 // SessionStore keeps the parsed facts for one Antigravity session in memory.
 // Original artifacts remain the source of truth; this store never writes them.
@@ -32,6 +40,12 @@ type SessionStore struct {
 	contextSnapshots        []agents.ContextSnapshot
 	conversationSource      *agents.SourceRef
 	conversationState       sourceState
+	stepOutputsSource       *agents.SourceRef
+	stepOutputsState        sourceState
+	stepOutputsScanned      bool
+	stepOutputStates        map[int]sourceState
+	pendingStepOutputs      map[int]struct{}
+	transcriptContent       map[int]string
 	revision                uint64
 	diagnostics             []error
 	conversationDiagnostics []error
@@ -58,16 +72,26 @@ func NewSessionStoreWithContext(ctx context.Context, ref agents.SessionRef, sour
 		return nil, fmt.Errorf("session %s has no transcript source", ref.SessionID)
 	}
 	conversationSource, conversationAvailable := findConversationSource(sources)
+	stepOutputsSource, stepOutputsAvailable := findStepOutputsSource(sources)
+	if !stepOutputsAvailable {
+		stepOutputsSource, stepOutputsAvailable = discoverStepOutputsFromTranscript(transcriptSource.Path)
+	}
 	store := &SessionStore{
 		ctx:                ctx,
 		ref:                ref,
 		transcriptSource:   transcriptSource,
 		transcriptOffset:   initialTranscriptOffset,
 		stepsByIndex:       make(map[int]agents.Step),
+		stepOutputStates:   make(map[int]sourceState),
+		pendingStepOutputs: make(map[int]struct{}),
+		transcriptContent:  make(map[int]string),
 		lastParsedGenIndex: -1,
 	}
 	if conversationAvailable {
 		store.conversationSource = &conversationSource
+	}
+	if stepOutputsAvailable {
+		store.stepOutputsSource = &stepOutputsSource
 	}
 	return store, nil
 }
@@ -103,6 +127,13 @@ func (store *SessionStore) Refresh() (agents.SessionDelta, error) {
 		unchanged = state == store.conversationState
 	}
 	if unchanged {
+		artifactsUnchanged, artifactsErr := store.stepOutputsUnchanged()
+		if artifactsErr != nil {
+			return agents.SessionDelta{}, artifactsErr
+		}
+		unchanged = artifactsUnchanged
+	}
+	if unchanged {
 		return store.currentDelta(nil), nil
 	}
 
@@ -114,7 +145,12 @@ func (store *SessionStore) Refresh() (agents.SessionDelta, error) {
 		stepsByIndex: make(map[int]agents.Step, len(store.stepsByIndex)),
 		generations:  store.generations, contextSnapshots: store.contextSnapshots,
 		conversationSource: store.conversationSource, conversationState: store.conversationState,
-		revision: store.revision, transcriptInfo: store.transcriptInfo,
+		stepOutputsSource: store.stepOutputsSource, stepOutputsState: store.stepOutputsState,
+		stepOutputsScanned: store.stepOutputsScanned,
+		stepOutputStates:   cloneSourceStates(store.stepOutputStates),
+		pendingStepOutputs: cloneIndexSet(store.pendingStepOutputs),
+		transcriptContent:  cloneTranscriptContent(store.transcriptContent),
+		revision:           store.revision, transcriptInfo: store.transcriptInfo,
 		diagnostics:             append([]error(nil), store.diagnostics...),
 		conversationDiagnostics: append([]error(nil), store.conversationDiagnostics...),
 	}
@@ -132,6 +168,9 @@ func (store *SessionStore) Refresh() (agents.SessionDelta, error) {
 	store.transcriptOffset, store.pendingTranscript = working.transcriptOffset, working.pendingTranscript
 	store.stepsByIndex, store.generations = working.stepsByIndex, working.generations
 	store.contextSnapshots, store.conversationState = working.contextSnapshots, working.conversationState
+	store.stepOutputsState, store.stepOutputsScanned = working.stepOutputsState, working.stepOutputsScanned
+	store.stepOutputStates, store.pendingStepOutputs = working.stepOutputStates, working.pendingStepOutputs
+	store.transcriptContent = working.transcriptContent
 	store.revision, store.transcriptInfo, store.diagnostics = working.revision, working.transcriptInfo, working.diagnostics
 	store.conversationDiagnostics = working.conversationDiagnostics
 	return delta, nil
@@ -153,10 +192,15 @@ func (store *SessionStore) refresh() (agents.SessionDelta, error) {
 		if conversationErr != nil {
 			return agents.SessionDelta{}, conversationErr
 		}
-		if len(genSteps) > 0 || transcriptReset {
+		artifactSteps, artifactsErr := store.refreshStepOutputs()
+		if artifactsErr != nil {
+			return agents.SessionDelta{}, artifactsErr
+		}
+		if len(genSteps) > 0 || len(artifactSteps) > 0 || transcriptReset {
 			store.revision++
 		}
 		changedIndexes := append(resetIndexes, genSteps...)
+		changedIndexes = append(changedIndexes, artifactSteps...)
 		delta := store.currentDelta(changedIndexes)
 		delta.Reset = transcriptReset
 		return delta, nil
@@ -173,6 +217,7 @@ func (store *SessionStore) refresh() (agents.SessionDelta, error) {
 	if err != nil {
 		return agents.SessionDelta{}, fmt.Errorf("read transcript: %w", err)
 	}
+	initialTranscriptRead := store.transcriptOffset == initialTranscriptOffset
 	store.transcriptOffset += int64(len(appendedBytes))
 	steps, diagnostics, trailingFragment := transcript.ParseTranscriptFragment(store.pendingTranscript+string(appendedBytes), store.transcriptSource)
 	store.pendingTranscript = trailingFragment
@@ -181,6 +226,10 @@ func (store *SessionStore) refresh() (agents.SessionDelta, error) {
 	changedIndexes = append(changedIndexes, resetIndexes...)
 	for _, step := range steps {
 		store.stepsByIndex[step.Index] = step
+		store.transcriptContent[step.Index] = step.Content
+		if isStepOutputCandidate(step) && (!initialTranscriptRead || step.Status == stepStatusRunning) {
+			store.pendingStepOutputs[step.Index] = struct{}{}
+		}
 		changedIndexes = append(changedIndexes, step.Index)
 	}
 	genSteps, conversationErr := store.refreshConversation()
@@ -188,6 +237,11 @@ func (store *SessionStore) refresh() (agents.SessionDelta, error) {
 		return agents.SessionDelta{}, conversationErr
 	}
 	changedIndexes = append(changedIndexes, genSteps...)
+	artifactSteps, artifactsErr := store.refreshStepOutputs()
+	if artifactsErr != nil {
+		return agents.SessionDelta{}, artifactsErr
+	}
+	changedIndexes = append(changedIndexes, artifactSteps...)
 	store.revision++
 	delta := store.currentDelta(changedIndexes)
 	delta.Reset = transcriptReset
@@ -213,6 +267,11 @@ func (store *SessionStore) resetTranscriptFacts() []int {
 	store.lastParsedGenIndex = -1
 	store.contextSnapshots = nil
 	store.conversationState = sourceState{}
+	store.stepOutputsState = sourceState{}
+	store.stepOutputsScanned = false
+	store.stepOutputStates = make(map[int]sourceState)
+	store.pendingStepOutputs = make(map[int]struct{})
+	store.transcriptContent = make(map[int]string)
 	store.diagnostics, store.conversationDiagnostics = nil, nil
 	return changedIndexes
 }
@@ -241,6 +300,241 @@ func findConversationSource(sources []agents.SourceRef) (agents.SourceRef, bool)
 		}
 	}
 	return agents.SourceRef{}, false
+}
+
+func findStepOutputsSource(sources []agents.SourceRef) (agents.SourceRef, bool) {
+	for _, source := range sources {
+		if source.Kind == agents.SourceKindArtifacts {
+			return source, true
+		}
+	}
+	return agents.SourceRef{}, false
+}
+
+func cloneSourceStates(states map[int]sourceState) map[int]sourceState {
+	cloned := make(map[int]sourceState, len(states))
+	for index, state := range states {
+		cloned[index] = state
+	}
+	return cloned
+}
+
+func cloneIndexSet(indexes map[int]struct{}) map[int]struct{} {
+	cloned := make(map[int]struct{}, len(indexes))
+	for index := range indexes {
+		cloned[index] = struct{}{}
+	}
+	return cloned
+}
+
+func cloneTranscriptContent(content map[int]string) map[int]string {
+	cloned := make(map[int]string, len(content))
+	for index, value := range content {
+		cloned[index] = value
+	}
+	return cloned
+}
+
+func (store *SessionStore) refreshStepOutputs() ([]int, error) {
+	if store.stepOutputsSource == nil {
+		return nil, nil
+	}
+	rootState, err := readSourceState(store.stepOutputsSource.Path)
+	if os.IsNotExist(err) {
+		return store.removeUnavailableStepOutputs(), nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("stat step outputs: %w", err)
+	}
+
+	targets := make(map[int]struct{}, len(store.stepOutputStates)+len(store.pendingStepOutputs))
+	for index := range store.stepOutputStates {
+		targets[index] = struct{}{}
+	}
+	for index := range store.pendingStepOutputs {
+		targets[index] = struct{}{}
+	}
+	if !store.stepOutputsScanned || rootState != store.stepOutputsState {
+		entries, readErr := os.ReadDir(store.stepOutputsSource.Path)
+		if readErr != nil {
+			return nil, fmt.Errorf("read step outputs: %w", readErr)
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			index, parseErr := strconv.Atoi(entry.Name())
+			if parseErr == nil {
+				targets[index] = struct{}{}
+			}
+		}
+		store.stepOutputsState = rootState
+		store.stepOutputsScanned = true
+	}
+
+	indexes := make([]int, 0, len(targets))
+	for index := range targets {
+		indexes = append(indexes, index)
+	}
+	sort.Ints(indexes)
+	changed := make([]int, 0)
+	for _, index := range indexes {
+		stepChanged, refreshErr := store.refreshStepOutput(index)
+		if refreshErr != nil {
+			return nil, refreshErr
+		}
+		if stepChanged {
+			changed = append(changed, index)
+		}
+	}
+	return changed, nil
+}
+
+func (store *SessionStore) stepOutputsUnchanged() (bool, error) {
+	if store.stepOutputsSource == nil {
+		return true, nil
+	}
+	rootState, err := readSourceState(store.stepOutputsSource.Path)
+	if os.IsNotExist(err) {
+		return !store.stepOutputsState.available && len(store.stepOutputStates) == 0, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("stat step outputs: %w", err)
+	}
+	if !store.stepOutputsScanned || rootState != store.stepOutputsState {
+		return false, nil
+	}
+	for index, knownState := range store.stepOutputStates {
+		path := filepath.Join(store.stepOutputsSource.Path, strconv.Itoa(index), stepOutputFileName)
+		currentState, stateErr := readSourceState(path)
+		if os.IsNotExist(stateErr) {
+			return false, nil
+		}
+		if stateErr != nil {
+			return false, fmt.Errorf("stat step output %d: %w", index, stateErr)
+		}
+		if currentState != knownState {
+			return false, nil
+		}
+	}
+	for index := range store.pendingStepOutputs {
+		path := filepath.Join(store.stepOutputsSource.Path, strconv.Itoa(index), stepOutputFileName)
+		_, stateErr := os.Stat(path)
+		if stateErr == nil {
+			return false, nil
+		}
+		if !os.IsNotExist(stateErr) {
+			return false, fmt.Errorf("stat pending step output %d: %w", index, stateErr)
+		}
+	}
+	return true, nil
+}
+
+func (store *SessionStore) refreshStepOutput(index int) (bool, error) {
+	path := filepath.Join(store.stepOutputsSource.Path, strconv.Itoa(index), stepOutputFileName)
+	state, err := readSourceState(path)
+	if os.IsNotExist(err) {
+		delete(store.stepOutputStates, index)
+		return store.restoreTranscriptContent(index), nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("stat step output %d: %w", index, err)
+	}
+	step, exists := store.stepsByIndex[index]
+	if !exists {
+		store.stepOutputStates[index] = state
+		return false, nil
+	}
+	knownState, stateKnown := store.stepOutputStates[index]
+	if stateKnown && knownState == state && step.ContentSource == agents.SourceKindArtifacts {
+		delete(store.pendingStepOutputs, index)
+		return false, nil
+	}
+	content, readErr := readFileContext(store.ctx, path)
+	if readErr != nil {
+		return false, fmt.Errorf("read step output %d: %w", index, readErr)
+	}
+	changed := step.Content != content || step.ContentSource != agents.SourceKindArtifacts
+	step.Content = content
+	step.ContentSource = agents.SourceKindArtifacts
+	step.Evidence = withoutStepOutputEvidence(step.Evidence)
+	step.Evidence = append(step.Evidence, agents.Evidence{
+		Level:   agents.EvidenceObservedOnly,
+		Source:  *store.stepOutputsSource,
+		Locator: filepath.Join(strconv.Itoa(index), stepOutputFileName),
+		Note:    stepOutputEvidenceNote,
+	})
+	store.stepsByIndex[index] = step
+	store.stepOutputStates[index] = state
+	delete(store.pendingStepOutputs, index)
+	return changed, nil
+}
+
+func (store *SessionStore) removeUnavailableStepOutputs() []int {
+	changed := make([]int, 0, len(store.stepOutputStates))
+	for index := range store.stepOutputStates {
+		if store.restoreTranscriptContent(index) {
+			changed = append(changed, index)
+		}
+	}
+	store.stepOutputsState = sourceState{}
+	store.stepOutputsScanned = false
+	store.stepOutputStates = make(map[int]sourceState)
+	sort.Ints(changed)
+	return changed
+}
+
+func (store *SessionStore) restoreTranscriptContent(index int) bool {
+	step, stepExists := store.stepsByIndex[index]
+	content, contentExists := store.transcriptContent[index]
+	if !stepExists || !contentExists || step.ContentSource != agents.SourceKindArtifacts {
+		return false
+	}
+	step.Content = content
+	step.ContentSource = agents.SourceKindTranscript
+	step.Evidence = withoutStepOutputEvidence(step.Evidence)
+	store.stepsByIndex[index] = step
+	if isStepOutputCandidate(step) {
+		store.pendingStepOutputs[index] = struct{}{}
+	}
+	return true
+}
+
+func withoutStepOutputEvidence(evidence []agents.Evidence) []agents.Evidence {
+	filtered := make([]agents.Evidence, 0, len(evidence))
+	for _, item := range evidence {
+		if item.Note != stepOutputEvidenceNote {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
+func isStepOutputCandidate(step agents.Step) bool {
+	switch core.StepType(step.Kind) {
+	case core.StepTypeToolResult,
+		core.StepTypeRunCommand,
+		core.StepTypeViewFile,
+		core.StepTypeCodeAction,
+		core.StepTypeListDirectory,
+		core.StepTypeAskQuestion,
+		core.StepTypeGeneric,
+		core.StepTypeError,
+		core.StepTypeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+func readFileContext(ctx context.Context, path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	content, err := io.ReadAll(sessionReader{ctx: ctx, reader: file})
+	return string(content), err
 }
 
 func (store *SessionStore) refreshConversation() ([]int, error) {
