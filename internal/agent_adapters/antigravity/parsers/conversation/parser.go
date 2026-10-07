@@ -327,6 +327,10 @@ func decodeUsage(meta schema.ChatModelMetadata) agents.UsageObservation {
 		usage.CachedInputTokens = int(u.CachedContentTokens)
 		usage.HasCachedInputTokens = true
 	}
+	if u.HasTotalOutputTokens || u.TotalOutputTokens > 0 {
+		usage.TotalOutputTokens = int(u.TotalOutputTokens)
+		usage.HasTotalOutputTokens = true
+	}
 	if u.HasThinkingOutputTokens || u.ThinkingOutputTokens > 0 {
 		usage.ThinkingOutputTokens = int(u.ThinkingOutputTokens)
 		usage.HasThinkingOutputTokens = true
@@ -348,8 +352,10 @@ func decodeUsage(meta schema.ChatModelMetadata) agents.UsageObservation {
 		usage.StreamingDurationMs = meta.StreamingDuration.Milliseconds()
 	}
 
-	// Calculate TotalTokens = ObservedContextTokens (Input) + OutputTokens
-	outputTokens := usage.ThinkingOutputTokens + usage.OutputContentTokens
+	outputTokens := usage.TotalOutputTokens
+	if !usage.HasTotalOutputTokens {
+		outputTokens = usage.ThinkingOutputTokens + usage.OutputContentTokens
+	}
 	usage.TotalTokens = usage.UncachedInputTokens + usage.CachedInputTokens + outputTokens
 	return usage
 }

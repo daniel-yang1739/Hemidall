@@ -53,9 +53,9 @@ type EmpiricalTurnTelemetry struct {
 	ObservedContextTokens int     `json:"observed_context_tokens"` // Input Context Tokens
 	CachedContentTokens   int     `json:"cached_content_tokens"`   // F4.5
 	UncachedPromptTokens  int     `json:"uncached_prompt_tokens"`  // F4.2
-	ThinkingOutputTokens  int     `json:"thinking_output_tokens"`  // F4.3
-	OutputContentTokens   int     `json:"output_content_tokens"`   // F4.9
-	OutputTokens          int     `json:"output_tokens"`           // Thinking + Content
+	ThinkingOutputTokens  int     `json:"thinking_output_tokens"`  // F4.9
+	OutputContentTokens   int     `json:"output_content_tokens"`   // F4.10
+	OutputTokens          int     `json:"output_tokens"`           // F4.3
 	TotalTokens           int     `json:"total_tokens"`            // ObservedContextTokens + OutputTokens
 	ContextWindowLimit    int     `json:"context_window_limit"`    // F9.10.4 or model default
 	UtilizationPercentage float64 `json:"utilization_percentage"`  // ObservedContextTokens / ContextWindowLimit * 100
@@ -145,6 +145,7 @@ func BuildDashboardReadModelFromEvents(sessionID string, events []UnifiedAgentEv
 			Provider:     event.Usage.Provider,
 			ModelID:      event.Usage.ModelName,
 			Usage: UsageObservation{
+				HasTotalOutputTokens:     event.Usage.HasTotalOutputTokens,
 				HasThinkingOutputTokens:  event.Usage.HasThinkingOutputTokens,
 				HasOutputContentTokens:   event.Usage.HasOutputContentTokens,
 				HasObservedContextTokens: event.Usage.HasObservedContextTokens,
@@ -155,6 +156,7 @@ func BuildDashboardReadModelFromEvents(sessionID string, events []UnifiedAgentEv
 				CachedInputTokens:        event.Usage.CachedInputTokens,
 				HasContextLimit:          event.Usage.HasContextLimit,
 				ContextLimit:             event.Usage.ContextLimit,
+				TotalOutputTokens:        event.Usage.TotalOutputTokens,
 				ThinkingOutputTokens:     event.Usage.ThinkingOutputTokens,
 				OutputContentTokens:      event.Usage.OutputContentTokens,
 				TotalTokens:              event.Usage.TotalTokens,
@@ -171,12 +173,16 @@ func BuildDashboardReadModelFromEvents(sessionID string, events []UnifiedAgentEv
 // Availability remains on Event.Usage; missing fields must not render as zero.
 func BuildEmpiricalTurnTelemetry(event UnifiedAgentEvent) EmpiricalTurnTelemetry {
 	u := event.Usage
+	outputTokens := u.TotalOutputTokens
+	if !u.HasTotalOutputTokens {
+		outputTokens = u.ThinkingOutputTokens + u.OutputContentTokens
+	}
 	result := EmpiricalTurnTelemetry{
 		ObservedContextTokens: u.ObservedContextTokens,
 		CachedContentTokens:   u.CachedInputTokens, UncachedPromptTokens: u.UncachedInputTokens,
 		ThinkingOutputTokens: u.ThinkingOutputTokens, OutputContentTokens: u.OutputContentTokens,
-		OutputTokens:       u.ThinkingOutputTokens + u.OutputContentTokens,
-		TotalTokens:        u.UncachedInputTokens + u.CachedInputTokens + u.ThinkingOutputTokens + u.OutputContentTokens,
+		OutputTokens:       outputTokens,
+		TotalTokens:        u.UncachedInputTokens + u.CachedInputTokens + outputTokens,
 		ContextWindowLimit: u.ContextLimit, TimeToFirstTokenMs: u.TimeToFirstTokenMs,
 		StreamingDurationMs: u.StreamingDurationMs, UpstreamRequestID: u.UpstreamRequestID,
 	}

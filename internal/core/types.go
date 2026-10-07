@@ -58,6 +58,7 @@ type TokenBreakdown struct {
 // the cache-adjusted input projection. ObservedContextTokens comes from a
 // separate context-state path and is kept separate from input usage.
 type PersistedUsageObservation struct {
+	HasTotalOutputTokens    bool         `json:"has_total_output_tokens"`
 	HasThinkingOutputTokens bool         `json:"has_thinking_output_tokens"`
 	HasOutputContentTokens  bool         `json:"has_output_content_tokens"`
 	Available               bool         `json:"available"`
@@ -77,6 +78,7 @@ type PersistedUsageObservation struct {
 	HasContextLimit          bool `json:"has_context_limit"`
 	ContextLimit             int  `json:"context_limit"`
 
+	TotalOutputTokens    int    `json:"total_output_tokens,omitempty"`
 	ThinkingOutputTokens int    `json:"thinking_output_tokens,omitempty"`
 	OutputContentTokens  int    `json:"output_content_tokens,omitempty"`
 	TotalTokens          int    `json:"total_tokens,omitempty"`

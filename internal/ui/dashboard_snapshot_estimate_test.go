@@ -22,6 +22,25 @@ const (
 	dashboardPlaybackRevision   = 1
 	dashboardPlaybackFirstStep  = 1
 	dashboardPlaybackSecondStep = 2
+	dashboardBelowMinimumRows   = 17
+	dashboardMinimumRows        = 18
+	dashboardUpperFilledRows    = 25
+	dashboardLaptopRows         = 28
+	dashboardNearPreferredRows  = 32
+	dashboardPreferredRows      = 33
+	dashboardAbovePreferredRows = 34
+	dashboardBelowMinimumUpper  = 8
+	dashboardBelowMinimumLower  = 9
+	dashboardMinimumUpper       = 8
+	dashboardMinimumLower       = 10
+	dashboardUpperFilledUpper   = 15
+	dashboardUpperFilledLower   = 10
+	dashboardLaptopUpper        = 15
+	dashboardLaptopLower        = 13
+	dashboardNearPreferredUpper = 15
+	dashboardNearPreferredLower = 17
+	dashboardPreferredUpper     = 15
+	dashboardPreferredLower     = 18
 )
 
 func TestDashboardCloudStepLabelsObservedAndMissingValues(t *testing.T) {
@@ -33,12 +52,15 @@ func TestDashboardCloudStepLabelsObservedAndMissingValues(t *testing.T) {
 		HasOutputContentTokens: true, OutputContentTokens: 162,
 	}
 	view := renderCloudStepInspection(core.StepInspectionReadModel{Event: core.UnifiedAgentEvent{StepIndex: dashboardSnapshotStep, Type: core.StepTypeModelResponse, Usage: usage}}, dashboardTestWidth)
-	expected := []string{"TURN TOKEN TELEMETRY", "Context Window Load    unavailable", "Context Tokens", "  - Cached Content", "  - Uncached Prompt", "Output Tokens", "  - Thinking Output", "  - Content Output", "171.1k"}
+	expected := []string{"TURN TOKEN TELEMETRY", "Context Tokens", "  - Cached Content", "  - Uncached Prompt", "Output Tokens", "  - Thinking Output", "  - Content Output", "171.1k"}
 	for _, text := range expected {
 		t.Run(text, func(t *testing.T) { requireViewContains(t, view, text) })
 	}
 	if strings.Contains(view, "[observed]") || strings.Contains(view, "100% EMPIRICAL") || strings.Contains(view, "90% OFF") || strings.Contains(view, "256k") {
 		t.Fatal("unjustified telemetry or limit claim")
+	}
+	if strings.Contains(view, "Context Window Load") {
+		t.Fatal("context window load must be merged into context tokens")
 	}
 }
 
@@ -137,6 +159,32 @@ func TestDashboardLayout_Pos_KeepsTwoFixedHeightPanels(t *testing.T) {
 
 	requireDashboardPanelCount(t, view, 2)
 	requireDashboardHeight(t, view, dashboardPanelOuterHeight+selectedStepPanelOuterHeight)
+}
+
+func TestDashboardPanelHeights_Boundary_PrioritizesSelectedStepAfterDashboardIsFilled(t *testing.T) {
+	tests := []struct {
+		name              string
+		availableRows     int
+		expectedDashboard int
+		expectedStep      int
+	}{
+		{name: "below minimum", availableRows: dashboardBelowMinimumRows, expectedDashboard: dashboardBelowMinimumUpper, expectedStep: dashboardBelowMinimumLower},
+		{name: "minimum", availableRows: dashboardMinimumRows, expectedDashboard: dashboardMinimumUpper, expectedStep: dashboardMinimumLower},
+		{name: "dashboard filled", availableRows: dashboardUpperFilledRows, expectedDashboard: dashboardUpperFilledUpper, expectedStep: dashboardUpperFilledLower},
+		{name: "laptop height", availableRows: dashboardLaptopRows, expectedDashboard: dashboardLaptopUpper, expectedStep: dashboardLaptopLower},
+		{name: "near preferred", availableRows: dashboardNearPreferredRows, expectedDashboard: dashboardNearPreferredUpper, expectedStep: dashboardNearPreferredLower},
+		{name: "preferred", availableRows: dashboardPreferredRows, expectedDashboard: dashboardPreferredUpper, expectedStep: dashboardPreferredLower},
+		{name: "above preferred", availableRows: dashboardAbovePreferredRows, expectedDashboard: dashboardPreferredUpper, expectedStep: dashboardPreferredLower},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dashboardRows, stepRows := dashboardPanelHeights(test.availableRows)
+			if dashboardRows != test.expectedDashboard || stepRows != test.expectedStep {
+				t.Fatalf("dashboard panel heights: got %d/%d, want %d/%d", dashboardRows, stepRows, test.expectedDashboard, test.expectedStep)
+			}
+		})
+	}
 }
 
 func TestDashboardAggregate_Neg_RendersUnavailableMetricsWithoutUsage(t *testing.T) {

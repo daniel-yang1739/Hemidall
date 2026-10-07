@@ -176,7 +176,7 @@ func decodeModelUsage(data []byte, indent string) {
 		case 2:
 			fmt.Printf("%s├── [2] uncached_prompt_tokens: %d\n", indent, f.Integer)
 		case 3:
-			fmt.Printf("%s├── [3] thinking_output_tokens: %d\n", indent, f.Integer)
+			fmt.Printf("%s├── [3] total_output_tokens: %d\n", indent, f.Integer)
 		case 5:
 			fmt.Printf("%s├── [5] cached_content_token_count: %d (CACHE HIT)\n", indent, f.Integer)
 		case 6:
@@ -187,9 +187,9 @@ func decodeModelUsage(data []byte, indent string) {
 			k, v := decodeMapEntry(f.Bytes)
 			fmt.Printf("%s├── [8] session_metadata: %q => %q\n", indent, k, v)
 		case 9:
-			fmt.Printf("%s├── [9] output_content_tokens: %d\n", indent, f.Integer)
+			fmt.Printf("%s├── [9] thinking_output_tokens: %d\n", indent, f.Integer)
 		case 10:
-			fmt.Printf("%s├── [10] reasoning_token_mirror: %d\n", indent, f.Integer)
+			fmt.Printf("%s├── [10] output_content_tokens: %d\n", indent, f.Integer)
 		case 11:
 			fmt.Printf("%s└── [11] upstream_request_id: %q\n", indent, string(f.Bytes))
 		}

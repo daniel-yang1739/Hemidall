@@ -5,7 +5,12 @@ import (
 	"time"
 )
 
-const projectionStepIndex = 42
+const (
+	projectionStepIndex           = 42
+	projectionTotalOutputTokens   = 30
+	projectionThinkingTokens      = 10
+	projectionContentOutputTokens = 20
+)
 
 func TestProjectSessionEvents_PreservesStepAndGenerationFacts(t *testing.T) {
 	session := Session{
@@ -18,6 +23,9 @@ func TestProjectSessionEvents_PreservesStepAndGenerationFacts(t *testing.T) {
 		Generations: []Generation{{ID: "11", StepIndex: projectionStepIndex, ModelID: "gemini-3.7-flash", Usage: UsageObservation{
 			HasUncachedInputTokens: true, UncachedInputTokens: 100,
 			HasCachedInputTokens: true, CachedInputTokens: 90,
+			HasTotalOutputTokens: true, TotalOutputTokens: projectionTotalOutputTokens,
+			HasThinkingOutputTokens: true, ThinkingOutputTokens: projectionThinkingTokens,
+			HasOutputContentTokens: true, OutputContentTokens: projectionContentOutputTokens,
 		}}},
 	}
 
@@ -30,6 +38,10 @@ func TestProjectSessionEvents_PreservesStepAndGenerationFacts(t *testing.T) {
 	requireProjectionEqual(t, events[0].ToolCalls[0].ToolName, "read_file")
 	requireProjectionEqual(t, events[0].Usage.UncachedInputTokens, 100)
 	requireProjectionEqual(t, events[0].Usage.CachedInputTokens, 90)
+	requireProjectionEqual(t, events[0].Usage.TotalOutputTokens, projectionTotalOutputTokens)
+	requireProjectionEqual(t, events[0].Usage.ThinkingOutputTokens, projectionThinkingTokens)
+	requireProjectionEqual(t, events[0].Usage.OutputContentTokens, projectionContentOutputTokens)
+	requireProjectionEqual(t, events[0].Usage.HasTotalOutputTokens, true)
 	requireProjectionEqual(t, events[0].Usage.ModelName, "gemini-3.7-flash")
 	requireProjectionEqual(t, events[0].Usage.GenerationIndex, 11)
 }

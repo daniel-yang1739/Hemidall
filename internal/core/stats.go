@@ -57,7 +57,10 @@ func ComputeSessionAggregateMetrics(history []UnifiedAgentEvent) SessionAggregat
 			stats.ObservedContextValueTurnCount++
 			stats.ObservedContextTokenSum += usage.ObservedContextTokens
 		}
-		turnOutput := usage.ThinkingOutputTokens + usage.OutputContentTokens
+		turnOutput := usage.TotalOutputTokens
+		if !usage.HasTotalOutputTokens {
+			turnOutput = usage.ThinkingOutputTokens + usage.OutputContentTokens
+		}
 		stats.ThinkingOutputTokenSum += usage.ThinkingOutputTokens
 		stats.ContentOutputTokenSum += usage.OutputContentTokens
 		stats.TotalOutputTokenSum += turnOutput

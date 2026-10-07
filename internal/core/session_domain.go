@@ -84,6 +84,7 @@ type Step struct {
 
 // UsageObservation is schema-inferred persisted usage evidence for one generation.
 type UsageObservation struct {
+	HasTotalOutputTokens     bool
 	HasThinkingOutputTokens  bool
 	HasOutputContentTokens   bool
 	HasObservedContextTokens bool
@@ -94,6 +95,7 @@ type UsageObservation struct {
 	CachedInputTokens        int
 	HasContextLimit          bool
 	ContextLimit             int
+	TotalOutputTokens        int
 	ThinkingOutputTokens     int
 	OutputContentTokens      int
 	TotalTokens              int

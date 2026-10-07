@@ -11,21 +11,27 @@ import (
 )
 
 const (
-	fixtureGenerationIndex = 7
-	fixtureInputBoundary   = 41
-	fixtureGeneratedStep   = fixtureInputBoundary + generatedStepOffset
-	fixtureObservedContext = 120_000
-	fixtureContextLimit    = 160_000
-	fixtureUncachedInput   = 10_000
-	fixtureCachedInput     = 110_000
-	fixtureModelCode       = 1_298
-	fixtureModelID         = "gemini-3.7-flash"
-	fixtureProtobufShift   = 3
-	fixtureLengthWireType  = 2
-	fixtureVarintWireType  = 0
-	fixtureVarintThreshold = 0x80
-	fixtureVarintShift     = 7
-	fixtureExecutionID     = "12345678-1234-1234-1234-123456789abc"
+	fixtureGenerationIndex  = 7
+	fixtureInputBoundary    = 41
+	fixtureGeneratedStep    = fixtureInputBoundary + generatedStepOffset
+	fixtureObservedContext  = 120_000
+	fixtureContextLimit     = 160_000
+	fixtureUncachedInput    = 10_000
+	fixtureCachedInput      = 110_000
+	fixtureTotalOutput      = 2_750
+	fixtureThinkingOutput   = 1_190
+	fixtureContentOutput    = 1_560
+	fixtureModelCode        = 1_298
+	fixtureModelID          = "gemini-3.7-flash"
+	fixtureProtobufShift    = 3
+	fixtureLengthWireType   = 2
+	fixtureVarintWireType   = 0
+	fixtureVarintThreshold  = 0x80
+	fixtureVarintShift      = 7
+	fixtureTotalOutputField = 3
+	fixtureThinkingField    = 9
+	fixtureContentField     = 10
+	fixtureExecutionID      = "12345678-1234-1234-1234-123456789abc"
 )
 
 func TestParser_ParseDatabase_DecodesGenerationUsageAndDirectModel(t *testing.T) {
@@ -49,6 +55,12 @@ func TestParser_ParseDatabase_DecodesGenerationUsageAndDirectModel(t *testing.T)
 	requireEqual(t, generations[0].Usage.CachedInputTokens, fixtureCachedInput)
 	requireEqual(t, generations[0].Usage.HasUncachedInputTokens, true)
 	requireEqual(t, generations[0].Usage.HasCachedInputTokens, true)
+	requireEqual(t, generations[0].Usage.TotalOutputTokens, fixtureTotalOutput)
+	requireEqual(t, generations[0].Usage.ThinkingOutputTokens, fixtureThinkingOutput)
+	requireEqual(t, generations[0].Usage.OutputContentTokens, fixtureContentOutput)
+	requireEqual(t, generations[0].Usage.HasTotalOutputTokens, true)
+	requireEqual(t, generations[0].Usage.HasThinkingOutputTokens, true)
+	requireEqual(t, generations[0].Usage.HasOutputContentTokens, true)
 }
 
 func TestParser_ParseDatabase_ResolvesModelFromExecutorMetadata(t *testing.T) {
@@ -112,7 +124,13 @@ func generationFixture() []byte {
 		bytesField(modelFieldNumber, []byte(fixtureModelID)),
 		bytesField(attributesFieldNumber, mapEntry(lastStepIndexKey, "41")),
 		bytesField(contextUsageFieldNumber, bytesField(contextUsageDetailFieldNumber, concatFields(varintField(contextTokenFieldNumber, fixtureObservedContext), varintField(contextLimitFieldNumber, fixtureContextLimit)))),
-		bytesField(inputUsageFieldNumber, concatFields(varintField(uncachedInputFieldNumber, fixtureUncachedInput), varintField(cachedInputFieldNumber, fixtureCachedInput))),
+		bytesField(inputUsageFieldNumber, concatFields(
+			varintField(uncachedInputFieldNumber, fixtureUncachedInput),
+			varintField(cachedInputFieldNumber, fixtureCachedInput),
+			varintField(fixtureTotalOutputField, fixtureTotalOutput),
+			varintField(fixtureThinkingField, fixtureThinkingOutput),
+			varintField(fixtureContentField, fixtureContentOutput),
+		)),
 	)
 	return bytesField(rootFieldNumber, metadata)
 }

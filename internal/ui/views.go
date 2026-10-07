@@ -382,7 +382,8 @@ func dashboardPanelHeights(availableRows int) (int, int) {
 		return dashboardPanelOuterHeight, selectedStepPanelOuterHeight
 	}
 	if availableRows >= minimumRows {
-		return availableRows - selectedStepMinimumOuterHeight, selectedStepMinimumOuterHeight
+		dashboardRows := min(dashboardPanelOuterHeight, availableRows-selectedStepMinimumOuterHeight)
+		return dashboardRows, availableRows - dashboardRows
 	}
 	dashboardRows := availableRows / 2
 	if dashboardRows < dashboardPanelBorderRows {
@@ -526,17 +527,27 @@ func renderCloudStepInspection(inspection core.StepInspectionReadModel, contentW
 	if usage.HasUncachedInputTokens && !usage.HasCachedInputTokens {
 		cached = "0 [inferred: omitted cache scalar]"
 	}
-	window := "unavailable"
-	if usage.HasContextLimit && usage.ContextLimit > 0 {
-		window = observedTokenLabel(usage.ContextLimit, true)
-		if usage.HasObservedContextTokens {
-			window = fmt.Sprintf("%.1f%% of %s", float64(usage.ObservedContextTokens)/float64(usage.ContextLimit)*telemetryPercentageScale, formatTokShort(usage.ContextLimit))
-		}
-	}
 	input := usage.UncachedInputTokens + usage.CachedInputTokens
-	output := usage.ThinkingOutputTokens + usage.OutputContentTokens
-	outputAvailable := (usage.HasThinkingOutputTokens || usage.ThinkingOutputTokens > 0) && (usage.HasOutputContentTokens || usage.OutputContentTokens > 0)
+	thinkingAvailable := usage.HasThinkingOutputTokens || usage.ThinkingOutputTokens > 0
+	contentOutputAvailable := usage.HasOutputContentTokens || usage.OutputContentTokens > 0
+	output := usage.TotalOutputTokens
+	outputAvailable := usage.HasTotalOutputTokens || usage.TotalOutputTokens > 0
+	if !outputAvailable && thinkingAvailable && contentOutputAvailable {
+		output = usage.ThinkingOutputTokens + usage.OutputContentTokens
+		outputAvailable = true
+	}
+	thinkingOutput := usage.ThinkingOutputTokens
+	thinkingValue := observedTokenLabel(thinkingOutput, thinkingAvailable)
+	if !thinkingAvailable && outputAvailable && contentOutputAvailable && output >= usage.OutputContentTokens {
+		thinkingOutput = output - usage.OutputContentTokens
+		thinkingValue = formatTokShort(thinkingOutput) + " [inferred]"
+		thinkingAvailable = true
+	}
 	contextAvailable := usage.HasObservedContextTokens && usage.HasContextLimit && usage.ContextLimit > 0
+	contextValue := observedTokenLabel(usage.ObservedContextTokens, usage.HasObservedContextTokens)
+	if contextAvailable {
+		contextValue = fmt.Sprintf("%s / %s", formatTokShort(usage.ObservedContextTokens), formatTokShort(usage.ContextLimit))
+	}
 	loadColor := ColorPrimary
 	if contextAvailable && float64(usage.ObservedContextTokens)/float64(usage.ContextLimit)*telemetryPercentageScale >= telemetryLoadDanger {
 		loadColor = ColorDanger
@@ -549,13 +560,12 @@ func renderCloudStepInspection(inspection core.StepInspectionReadModel, contentW
 		available     bool
 		color         lipgloss.TerminalColor
 	}{
-		{"Context Window Load", window, usage.ObservedContextTokens, usage.ContextLimit, contextAvailable, loadColor},
-		{"Context Tokens", observedTokenLabel(usage.ObservedContextTokens, usage.HasObservedContextTokens), usage.ObservedContextTokens, usage.ContextLimit, contextAvailable, ColorPrimary},
+		{"Context Tokens", contextValue, usage.ObservedContextTokens, usage.ContextLimit, contextAvailable, loadColor},
 		{"- Cached Content", cached, usage.CachedInputTokens, input, usage.HasUncachedInputTokens, ColorSuccess},
 		{"- Uncached Prompt", observedTokenLabel(usage.UncachedInputTokens, usage.HasUncachedInputTokens), usage.UncachedInputTokens, input, usage.HasUncachedInputTokens, ColorHighlight},
 		{"Output Tokens", observedTokenLabel(output, outputAvailable), output, input + output, outputAvailable && usage.HasUncachedInputTokens, ColorSecondary},
-		{"- Thinking Output", observedTokenLabel(usage.ThinkingOutputTokens, usage.HasThinkingOutputTokens || usage.ThinkingOutputTokens > 0), usage.ThinkingOutputTokens, output, outputAvailable, ColorSecondary},
-		{"- Content Output", observedTokenLabel(usage.OutputContentTokens, usage.HasOutputContentTokens || usage.OutputContentTokens > 0), usage.OutputContentTokens, output, outputAvailable, ColorLightText},
+		{"- Thinking Output", thinkingValue, thinkingOutput, output, outputAvailable && thinkingAvailable, ColorSecondary},
+		{"- Content Output", observedTokenLabel(usage.OutputContentTokens, contentOutputAvailable), usage.OutputContentTokens, output, outputAvailable && contentOutputAvailable, ColorLightText},
 	}
 	for _, row := range rows {
 		lines = append(lines, renderTelemetryBarRow(row.label, row.value, row.amount, row.total, row.available, row.color, contentWidth))

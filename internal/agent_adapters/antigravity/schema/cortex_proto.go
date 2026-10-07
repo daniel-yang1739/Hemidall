@@ -74,11 +74,13 @@ type ChatModelMetadata struct {
 // ModelUsage represents exa.cortex_pb.ModelUsage (Field 4).
 type ModelUsage struct {
 	HasUncachedPromptTokens bool
+	HasTotalOutputTokens    bool
 	HasThinkingOutputTokens bool
 	HasCachedContentTokens  bool
 	HasOutputContentTokens  bool
 	ModelCode               int64
 	UncachedPromptTokens    int64
+	TotalOutputTokens       int64
 	ThinkingOutputTokens    int64
 	CachedContentTokens     int64
 	ProviderTier            int64
@@ -232,8 +234,8 @@ func DecodeModelUsage(data []byte) (ModelUsage, error) {
 			usage.UncachedPromptTokens = int64(f.Integer)
 			usage.HasUncachedPromptTokens = true
 		case 3:
-			usage.ThinkingOutputTokens = int64(f.Integer)
-			usage.HasThinkingOutputTokens = true
+			usage.TotalOutputTokens = int64(f.Integer)
+			usage.HasTotalOutputTokens = true
 		case 5:
 			usage.CachedContentTokens = int64(f.Integer)
 			usage.HasCachedContentTokens = true
@@ -242,6 +244,9 @@ func DecodeModelUsage(data []byte) (ModelUsage, error) {
 		case 7:
 			usage.BotID = string(f.Bytes)
 		case 9:
+			usage.ThinkingOutputTokens = int64(f.Integer)
+			usage.HasThinkingOutputTokens = true
+		case 10:
 			usage.OutputContentTokens = int64(f.Integer)
 			usage.HasOutputContentTokens = true
 		case 11:

@@ -6,6 +6,13 @@ import (
 	"heimdall/internal/core"
 )
 
+const (
+	statsSplitTotalOutputTokens   = 2_750
+	statsSplitThinkingTokens      = 1_190
+	statsSplitContentOutputTokens = 1_560
+	statsSplitUncachedInputTokens = 1
+)
+
 func TestSessionMetricsAggregatePairedUncachedAndCachedInputObservations(t *testing.T) {
 	history := []core.UnifiedAgentEvent{
 		{Type: core.StepTypeModelResponse, Tokens: core.TokenBreakdown{TotalTokens: 9_999}},
@@ -69,14 +76,14 @@ func TestSessionMetricsAccumulatesOutputTokensAndCalculatesCost(t *testing.T) {
 		{
 			Type: core.StepTypeModelResponse,
 			Usage: core.PersistedUsageObservation{
-				Available:             true,
-				ModelName:             "gemini-3.7-flash",
+				Available:              true,
+				ModelName:              "gemini-3.7-flash",
 				HasUncachedInputTokens: true,
-				UncachedInputTokens:   1_000_000,
+				UncachedInputTokens:    1_000_000,
 				HasCachedInputTokens:   true,
-				CachedInputTokens:     1_000_000,
-				ThinkingOutputTokens:  500_000,
-				OutputContentTokens:   500_000,
+				CachedInputTokens:      1_000_000,
+				ThinkingOutputTokens:   500_000,
+				OutputContentTokens:    500_000,
 			},
 		},
 	}
@@ -95,3 +102,21 @@ func TestSessionMetricsAccumulatesOutputTokensAndCalculatesCost(t *testing.T) {
 	}
 }
 
+func TestSessionMetrics_Boundary_UsesPersistedTotalWithoutDoubleCountingThinking(t *testing.T) {
+	history := []core.UnifiedAgentEvent{{
+		Type: core.StepTypeModelResponse,
+		Usage: core.PersistedUsageObservation{
+			Available: true, ModelName: "gemini-3.7-flash",
+			HasUncachedInputTokens: true, UncachedInputTokens: statsSplitUncachedInputTokens,
+			HasTotalOutputTokens: true, TotalOutputTokens: statsSplitTotalOutputTokens,
+			HasThinkingOutputTokens: true, ThinkingOutputTokens: statsSplitThinkingTokens,
+			HasOutputContentTokens: true, OutputContentTokens: statsSplitContentOutputTokens,
+		},
+	}}
+
+	metrics := core.ComputeSessionAggregateMetrics(history)
+
+	requireEqual(t, statsSplitTotalOutputTokens, metrics.TotalStats.TotalOutputTokenSum)
+	requireEqual(t, statsSplitThinkingTokens, metrics.TotalStats.ThinkingOutputTokenSum)
+	requireEqual(t, statsSplitContentOutputTokens, metrics.TotalStats.ContentOutputTokenSum)
+}

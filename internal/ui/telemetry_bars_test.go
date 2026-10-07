@@ -8,6 +8,12 @@ import (
 	"heimdall/internal/core"
 )
 
+const (
+	telemetryContentOnlyTokens        = 133
+	telemetryContradictoryTotalTokens = telemetryContentOnlyTokens - 1
+	telemetryTestWidth                = 120
+)
+
 func TestTelemetryBarsRespectAvailabilityAndBounds(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -49,7 +55,7 @@ func TestCloudTelemetryBarsUseIndependentDenominators(t *testing.T) {
 	}
 	view := renderCloudStepInspection(core.StepInspectionReadModel{Event: core.UnifiedAgentEvent{Usage: usage}}, 120)
 	cases := []struct{ label, percentage string }{
-		{"Context Window Load", "60.0%"},
+		{"Context Tokens", "60.0%"},
 		{"Cached Content", "90.0%"},
 		{"Uncached Prompt", "10.0%"},
 		{"Output Tokens", "3.8%"},
@@ -83,6 +89,42 @@ func TestCloudTelemetryBarsUseIndependentDenominators(t *testing.T) {
 	}
 	if strings.Contains(view, "[observed]") || strings.Contains(view, "SOURCE-LABELED") {
 		t.Fatal("redundant source labels returned")
+	}
+	if !strings.Contains(telemetryLine(view, "Context Tokens"), "150.0k / 250.0k") || strings.Contains(view, "Context Window Load") {
+		t.Fatal("context usage must be combined into one row")
+	}
+}
+
+func TestCloudTelemetryBars_Boundary_RendersContentWhenThinkingIsAbsent(t *testing.T) {
+	usage := core.PersistedUsageObservation{
+		HasTotalOutputTokens: true, TotalOutputTokens: telemetryContentOnlyTokens,
+		HasOutputContentTokens: true, OutputContentTokens: telemetryContentOnlyTokens,
+	}
+
+	view := renderCloudStepInspection(core.StepInspectionReadModel{Event: core.UnifiedAgentEvent{Usage: usage}}, telemetryTestWidth)
+
+	expectedTokens := formatTokShort(telemetryContentOnlyTokens)
+	if !strings.Contains(telemetryLine(view, "Output Tokens"), expectedTokens) {
+		t.Fatal("total output tokens must remain available")
+	}
+	if !strings.Contains(telemetryLine(view, "Thinking Output"), "0 [inferred]") {
+		t.Fatal("missing thinking output must be inferred from total minus content")
+	}
+	if !strings.Contains(telemetryLine(view, "Content Output"), expectedTokens) {
+		t.Fatal("content output tokens must remain available")
+	}
+}
+
+func TestCloudTelemetryBars_Neg_DoesNotInferThinkingFromContradictoryCounters(t *testing.T) {
+	usage := core.PersistedUsageObservation{
+		HasTotalOutputTokens: true, TotalOutputTokens: telemetryContradictoryTotalTokens,
+		HasOutputContentTokens: true, OutputContentTokens: telemetryContentOnlyTokens,
+	}
+
+	view := renderCloudStepInspection(core.StepInspectionReadModel{Event: core.UnifiedAgentEvent{Usage: usage}}, telemetryTestWidth)
+
+	if !strings.Contains(telemetryLine(view, "Thinking Output"), "unavailable") {
+		t.Fatal("contradictory counters must not produce inferred thinking output")
 	}
 }
 

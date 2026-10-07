@@ -107,9 +107,10 @@ func projectToolCalls(calls []ToolCall) []ToolCallInfo {
 func projectUsageObservation(generation Generation) PersistedUsageObservation {
 	usage := generation.Usage
 	return PersistedUsageObservation{
+		HasTotalOutputTokens:     usage.HasTotalOutputTokens,
 		HasThinkingOutputTokens:  usage.HasThinkingOutputTokens,
 		HasOutputContentTokens:   usage.HasOutputContentTokens,
-		Available:                usage.HasObservedContextTokens || usage.HasUncachedInputTokens || usage.HasCachedInputTokens,
+		Available:                usage.HasObservedContextTokens || usage.HasUncachedInputTokens || usage.HasCachedInputTokens || usage.HasTotalOutputTokens,
 		HasObservedContextTokens: usage.HasObservedContextTokens,
 		ObservedContextTokens:    usage.ObservedContextTokens,
 		HasUncachedInputTokens:   usage.HasUncachedInputTokens,
@@ -118,6 +119,7 @@ func projectUsageObservation(generation Generation) PersistedUsageObservation {
 		CachedInputTokens:        usage.CachedInputTokens,
 		HasContextLimit:          usage.HasContextLimit,
 		ContextLimit:             usage.ContextLimit,
+		TotalOutputTokens:        usage.TotalOutputTokens,
 		ThinkingOutputTokens:     usage.ThinkingOutputTokens,
 		OutputContentTokens:      usage.OutputContentTokens,
 		TotalTokens:              usage.TotalTokens,
