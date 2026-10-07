@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
@@ -46,6 +47,9 @@ const (
 
 	// defaultHistoryCapacity defines the pre-allocation slice capacity for event history
 	defaultHistoryCapacity = 1000
+
+	toolInvocationOrdinalOffset = 1
+	toolPayloadIndent           = "  "
 )
 
 // AgentEventMsg wraps core.UnifiedAgentEvent as a bubbletea message
@@ -1122,7 +1126,42 @@ func (m Model) buildContentPayloadLines(e core.UnifiedAgentEvent, maxWidth int) 
 		wrappedPayload := wrapVisualLines(e.Summary, maxWidth)
 		lines = append(lines, wrappedPayload...)
 	}
+	if len(e.ToolCalls) > 0 {
+		lines = append(lines, strings.Repeat("─", sepWidth))
+		for index, toolCall := range e.ToolCalls {
+			lines = append(lines, formatToolInvocationLines(toolCall, index+toolInvocationOrdinalOffset, len(e.ToolCalls), maxWidth)...)
+		}
+	}
 
+	return lines
+}
+
+func formatToolInvocationLines(toolCall core.ToolCallInfo, position, total, maxWidth int) []string {
+	toolName := strings.TrimSpace(toolCall.ToolName)
+	if toolName == "" {
+		toolName = "(name unavailable)"
+	}
+	lines := []string{
+		fmt.Sprintf("Tool Invocation %d/%d:", position, total),
+		fmt.Sprintf("%sTool: %s", toolPayloadIndent, toolName),
+		toolPayloadIndent + "Arguments:",
+	}
+	arguments := strings.TrimSpace(toolCall.RawArgs)
+	if len(toolCall.Arguments) > 0 {
+		encodedArguments, err := json.MarshalIndent(toolCall.Arguments, "", "  ")
+		if err == nil {
+			arguments = string(encodedArguments)
+		} else if arguments == "" {
+			arguments = fmt.Sprintf("%v", toolCall.Arguments)
+		}
+	}
+	if arguments == "" {
+		arguments = "{}"
+	}
+	argumentWidth := maxWidth - runewidth.StringWidth(toolPayloadIndent)
+	for _, line := range wrapVisualLines(arguments, argumentWidth) {
+		lines = append(lines, toolPayloadIndent+line)
+	}
 	return lines
 }
 

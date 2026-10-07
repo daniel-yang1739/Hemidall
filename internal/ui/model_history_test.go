@@ -20,6 +20,59 @@ func TestHistoryContentPayload_Pos_ShowsStepOutputArtifactSource(t *testing.T) {
 	requireViewContains(t, rendered, "Source: STEP OUTPUT ARTIFACT")
 }
 
+func TestHistoryContentPayload_ToolInvocationEvidenceMatrix(t *testing.T) {
+	testCases := []struct {
+		name       string
+		event      core.UnifiedAgentEvent
+		contains   []string
+		notContain []string
+	}{
+		{
+			name: "tool call shows name and structured arguments",
+			event: core.UnifiedAgentEvent{Type: core.StepTypeToolCall, ToolCalls: []core.ToolCallInfo{{
+				ToolName: "run_command", Arguments: map[string]interface{}{"command": "git status", "timeout": 30},
+			}}},
+			contains: []string{"Tool Invocation 1/1:", "Tool: run_command", `"command": "git status"`, `"timeout": 30`},
+		},
+		{
+			name:       "ordinary content does not invent a tool invocation",
+			event:      core.UnifiedAgentEvent{Type: core.StepTypeModelResponse, RawContent: "final response"},
+			contains:   []string{"final response"},
+			notContain: []string{"Tool Invocation", "Arguments:"},
+		},
+		{
+			name:       "tool typed event without call evidence does not invent details",
+			event:      core.UnifiedAgentEvent{Type: core.StepTypeToolCall, Summary: "tool metadata unavailable"},
+			contains:   []string{"tool metadata unavailable"},
+			notContain: []string{"Tool Invocation", "name unavailable"},
+		},
+		{
+			name: "tool call preserves conversational text and invocation",
+			event: core.UnifiedAgentEvent{Type: core.StepTypeToolCall, RawContent: "I will inspect the repository.", ToolCalls: []core.ToolCallInfo{{
+				ToolName: "view_file", RawArgs: `{"path":"README.md"}`,
+			}}},
+			contains: []string{"I will inspect the repository.", "Tool: view_file", `{"path":"README.md"}`},
+		},
+	}
+
+	model := NewModel("session-a", false)
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			rendered := strings.Join(model.buildContentPayloadLines(testCase.event, 80), "\n")
+			for _, expected := range testCase.contains {
+				if !strings.Contains(rendered, expected) {
+					t.Errorf("expected payload to contain %q, got:\n%s", expected, rendered)
+				}
+			}
+			for _, unexpected := range testCase.notContain {
+				if strings.Contains(rendered, unexpected) {
+					t.Errorf("expected payload not to contain %q, got:\n%s", unexpected, rendered)
+				}
+			}
+		})
+	}
+}
+
 const (
 	historyBatchFirstStep       = 1
 	historyBatchPackagedStep    = 2
