@@ -119,6 +119,16 @@ func (m *Model) receiveSessionAnalysis(msg sessionAnalysisMsg) tea.Cmd {
 	}
 	m.contextRevision++
 	m.contextPayload, m.contextPayloadReady, m.contextPayloadRevision = msg.Payload, true, m.contextRevision
+	lastContextItemIndex := len(contextTreeItems(msg.Payload)) - 1
+	if changedSession {
+		m.contextSubItemIndex = 0
+		m.contextHistoryList = false
+		m.contextHistoryIndex = 0
+		m.contextHistoryItemCount = 0
+		m.contextHistoryScrollOffset = 0
+	} else if m.contextSubItemIndex > lastContextItemIndex {
+		m.contextSubItemIndex = lastContextItemIndex
+	}
 	m.contextEstimate, m.contextEstimateHistoryCount = msg.Estimate, len(msg.Events)
 	m.contextInspectorLines = nil
 	m.dashboardReadModel = msg.Dashboard

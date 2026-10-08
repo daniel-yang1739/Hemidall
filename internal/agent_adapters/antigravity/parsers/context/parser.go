@@ -84,7 +84,7 @@ func ParseSnapshot(generationIndex int, data []byte, source agents.SourceRef) (c
 		IdentityPrompt:  taggedSection(systemPrompt, "identity"),
 		ConstitutionDoc: taggedSection(systemPrompt, "user_rules"),
 		SkillsSection:   taggedSection(systemPrompt, "skills"),
-		MCPSection:      taggedSection(systemPrompt, "mcp"),
+		MCPSection:      firstTaggedSection(systemPrompt, "mcp", "mcp_servers"),
 		Evidence: []core.Evidence{{
 			Level: core.EvidenceWireStructure, Source: source, Locator: fmt.Sprintf("gen_metadata.idx=%d", generationIndex), Note: "context snapshot",
 		}},
@@ -148,4 +148,13 @@ func taggedSection(text, tag string) string {
 		return ""
 	}
 	return strings.TrimSpace(text[start : start+end])
+}
+
+func firstTaggedSection(text string, tags ...string) string {
+	for _, tag := range tags {
+		if section := taggedSection(text, tag); section != "" {
+			return section
+		}
+	}
+	return ""
 }

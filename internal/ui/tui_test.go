@@ -178,14 +178,12 @@ func requireViewContains(t *testing.T, view, expected string) {
 
 func TestView2ContextPageRenderingAndDualModeToggle(t *testing.T) {
 	m := NewModel("test-session", false)
-	m.history = []core.UnifiedAgentEvent{{
-		SessionID: "test-session",
-		Type:      core.StepTypeToolCall,
-		ToolCalls: []core.ToolCallInfo{{
-			ToolName:  "write_to_file",
-			Arguments: map[string]interface{}{"TargetFile": "main.go"},
-		}},
-	}}
+	m.contextPayload = core.AgentContextPayload{
+		SnapshotAvailable: true,
+		SystemPrompt:      "persisted system prompt",
+		NativeTools:       []core.ToolSignature{{Name: "write_to_file", Signature: "write_to_file(TargetFile)"}},
+	}
+	m.contextPayloadReady = true
 	m.width = 100
 	m.height = 30
 
@@ -197,14 +195,14 @@ func TestView2ContextPageRenderingAndDualModeToggle(t *testing.T) {
 	}
 
 	view := m.View()
-	if !strings.Contains(view, "CONTEXT EVIDENCE TREE") {
-		t.Fatalf("Expected 'CONTEXT EVIDENCE TREE' in context view, got: %s", view)
+	if !strings.Contains(view, "MODEL INPUT SNAPSHOT") {
+		t.Fatalf("Expected 'MODEL INPUT SNAPSHOT' in context view, got: %s", view)
 	}
 	if !strings.Contains(view, "[MODE: REFINED [r]]") {
 		t.Errorf("Expected default mode '[MODE: REFINED [r]]' in view, got: %s", view)
 	}
 
-	// 2. Press 'r' to toggle decoded evidence JSON mode
+	// 2. Press 'r' to toggle snapshot JSON mode
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
 	m = updated.(Model)
 	if !m.isContextRawMode {
@@ -212,15 +210,15 @@ func TestView2ContextPageRenderingAndDualModeToggle(t *testing.T) {
 	}
 
 	rawView := m.View()
-	if !strings.Contains(rawView, "[MODE: EVIDENCE JSON [r]]") {
-		t.Errorf("Expected evidence JSON mode after 'r' toggle, got: %s", rawView)
+	if !strings.Contains(rawView, "[MODE: SNAPSHOT JSON [r]]") {
+		t.Errorf("Expected snapshot JSON mode after 'r' toggle, got: %s", rawView)
 	}
-	if !strings.Contains(rawView, "evidence") && !strings.Contains(rawView, "transcript_observations") {
-		t.Errorf("Expected evidence representation in rawView, got: %s", rawView)
+	if !strings.Contains(rawView, "persisted system prompt") {
+		t.Errorf("Expected persisted system prompt in rawView, got: %s", rawView)
 	}
 
-	// 3. Navigate down to Native Tools (SubcatTools = 4) and check specific raw tools schema
-	m.contextSubItemIndex = SubcatTools
+	// 3. Navigate down to persisted tools and check the decoded schema.
+	m.contextSubItemIndex = contextTreeItemPosition(contextTreeItems(m.contextPayload), contextItemTools)
 	toolsRawView := m.View()
 	if !strings.Contains(toolsRawView, "decoded_tool_entries") || !strings.Contains(toolsRawView, "write_to_file") {
 		t.Errorf("Expected decoded tool entries in toolsRawView, got: %s", toolsRawView)
@@ -255,23 +253,22 @@ Project rule text
 	}
 }
 
-func TestCheckpointAnchorInspector_CombinesSummaryAndTranscriptLocation(t *testing.T) {
+func TestCheckpointInspector_UsesOnlyPersistedSnapshotRecord(t *testing.T) {
 	m := NewModel("test-session", false)
-	m.contextSubItemIndex = SubcatAnchor
 	payload := core.AgentContextPayload{
-		CheckpointStepIndex: 2255,
-		CheckpointSummary:   "<CONTEXT_SUMMARY>Saved conversation summary</CONTEXT_SUMMARY>",
+		SnapshotAvailable: true,
+		PersistedRecords: []core.PersistedContextRecord{{
+			Position: 1, IsCompactedCheckpoint: true, PrimaryText: "<CONTEXT_SUMMARY>Saved conversation summary</CONTEXT_SUMMARY>",
+		}},
 	}
+	m.contextSubItemIndex = contextTreeItemPosition(contextTreeItems(payload), contextItemCheckpoint)
 
 	inspector := strings.Join(m.buildRefinedInspectorLines(payload, 120), "\n")
-	if !strings.Contains(inspector, "Observed at transcript step #2255.") {
-		t.Errorf("expected transcript location in combined checkpoint inspector: %q", inspector)
-	}
 	if !strings.Contains(inspector, "Saved conversation summary") {
-		t.Errorf("expected checkpoint summary in combined checkpoint inspector: %q", inspector)
+		t.Errorf("expected persisted checkpoint summary in inspector: %q", inspector)
 	}
-	if strings.Contains(inspector, "SLICED & COMPACTED HISTORY WINDOW") {
-		t.Errorf("expected obsolete standalone compaction section to be absent: %q", inspector)
+	if strings.Contains(inspector, "Observed at transcript step") {
+		t.Errorf("expected transcript-derived checkpoint metadata to be absent: %q", inspector)
 	}
 }
 
@@ -285,7 +282,7 @@ func TestContextTree_SeparatesSectionTokensAndShowsTotal(t *testing.T) {
 	}
 
 	m := NewModel("test-session", false)
-	payload := core.AgentContextPayload{TotalTokens: 123456, CheckpointStepIndex: 2255}
+	payload := core.AgentContextPayload{SnapshotAvailable: true, TotalTokens: 123456}
 	tree := m.renderContextTree(payload, 38, 30)
 	if !strings.Contains(tree, "Total: 123,456 Tok") {
 		t.Errorf("expected latest total context tokens near the tree title: %q", tree)
@@ -298,8 +295,135 @@ func TestContextTree_SeparatesSectionTokensAndShowsTotal(t *testing.T) {
 	}
 }
 
+func TestContextTree_ShowsOnlyPersistedModelInputCategories(t *testing.T) {
+	m := NewModel("test-session", false)
+	payload := core.AgentContextPayload{
+		SnapshotAvailable: true,
+		SystemPrompt:      "system",
+		SystemPromptSections: []core.SystemPromptSection{
+			{Tag: "identity", Content: "identity"},
+			{Tag: "user_rules", Content: "rules"},
+			{Tag: "skills", Content: "skills"},
+			{Tag: "mcp", Content: "mcp"},
+			{Tag: "custom_config", Content: "custom"},
+		},
+		NativeTools:        []core.ToolSignature{{Name: "read_file"}},
+		PersistedRecords:   []core.PersistedContextRecord{{Position: 2, PrimaryText: "history"}},
+		ActiveHistoryTurns: []core.UnifiedAgentEvent{{RawContent: "transcript-only turn"}},
+		LatestPrompt:       "transcript-only prompt",
+		StagedBuffers:      "transcript-only tool output",
+	}
+
+	tree := m.renderContextTree(payload, 38, 30)
+	required := []string{"System Prompt", "Identity", "User Rules", "Skills", "MCP", "Custom Config", "Tools", "Checkpoint", "History Records"}
+	for _, label := range required {
+		if !strings.Contains(tree, label) {
+			t.Errorf("expected retained model-input category %q, got: %s", label, tree)
+		}
+	}
+	orderedLabels := []string{"Identity", "User Rules", "Skills", "MCP", "Custom Config"}
+	previousPosition := -1
+	for _, label := range orderedLabels {
+		position := strings.Index(tree, label)
+		if position <= previousPosition {
+			t.Errorf("expected prompt tags in persisted order at %q, got: %s", label, tree)
+		}
+		previousPosition = position
+	}
+	excluded := []string{"Heimdall Runtime", "MCP Attribution", "Active Turns", "Inbound Prompt", "Staged Tool Buffers", "Host Instructions", "Other Info"}
+	for _, label := range excluded {
+		if strings.Contains(tree, label) {
+			t.Errorf("expected non-snapshot category %q to be absent, got: %s", label, tree)
+		}
+	}
+}
+
+func TestContextTree_MarksMissingMCPSectionWithoutInventingContent(t *testing.T) {
+	m := NewModel("test-session", false)
+	payload := core.AgentContextPayload{
+		SnapshotAvailable:    true,
+		SystemPromptSections: []core.SystemPromptSection{{Tag: "identity"}, {Tag: "skills"}},
+	}
+
+	tree := m.renderContextTree(payload, 38, 30)
+	if !strings.Contains(tree, "MCP (Not Present)") {
+		t.Errorf("missing MCP section must be explicit in the tree: %s", tree)
+	}
+	m.contextSubItemIndex = contextTreeItemPosition(contextTreeItems(payload), contextItemMCPStatus)
+	inspector := strings.Join(m.buildRefinedInspectorLines(payload, 120), "\n")
+	if !strings.Contains(inspector, "No <mcp> section is present in the persisted system prompt") {
+		t.Errorf("missing MCP status must describe persisted evidence: %s", inspector)
+	}
+	raw, err := m.serializeContextRaw(payload)
+	if err != nil || !strings.Contains(raw, `"status": "NOT_PRESENT"`) {
+		t.Errorf("missing MCP raw status is invalid: %q, %v", raw, err)
+	}
+	if strings.Contains(raw, `"content"`) {
+		t.Errorf("missing MCP status must not fabricate prompt content: %s", raw)
+	}
+}
+
+func TestContextTree_UsesPersistedMCPSectionWithoutMissingPlaceholder(t *testing.T) {
+	testCases := []struct {
+		name          string
+		tag           string
+		expectedLabel string
+	}{
+		{name: "legacy tag", tag: "MCP", expectedLabel: "MCP"},
+		{name: "observed Antigravity tag", tag: "mcp_servers", expectedLabel: "MCP Servers"},
+	}
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			m := NewModel("test-session", false)
+			payload := core.AgentContextPayload{
+				SnapshotAvailable:    true,
+				SystemPromptSections: []core.SystemPromptSection{{Tag: "identity"}, {Tag: testCase.tag, Content: "Persisted MCP instructions"}, {Tag: "skills"}},
+			}
+
+			tree := m.renderContextTree(payload, 38, 30)
+			if strings.Contains(tree, "MCP (Not Present)") {
+				t.Errorf("persisted MCP section must suppress the missing placeholder: %s", tree)
+			}
+			if !strings.Contains(tree, testCase.expectedLabel) {
+				t.Errorf("persisted MCP section must use label %q: %s", testCase.expectedLabel, tree)
+			}
+			m.contextSubItemIndex = 2
+			inspector := strings.Join(m.buildRefinedInspectorLines(payload, 120), "\n")
+			if !strings.Contains(inspector, "Persisted MCP instructions") {
+				t.Errorf("persisted MCP instructions must remain inspectable: %s", inspector)
+			}
+		})
+	}
+}
+
+func TestContextInspector_DoesNotExposeTranscriptFallbackAsPersistedInput(t *testing.T) {
+	m := NewModel("test-session", false)
+	payload := core.AgentContextPayload{
+		SystemPromptSections: []core.SystemPromptSection{{Tag: "identity", Content: "transcript-derived identity"}},
+		NativeTools:          []core.ToolSignature{{Name: "transcript_tool"}},
+	}
+	m.contextSubItemIndex = 1
+
+	inspector := strings.Join(m.buildRefinedInspectorLines(payload, 120), "\n")
+	if !strings.Contains(inspector, "Persisted model-input snapshot unavailable") {
+		t.Fatalf("expected an unavailable marker without a persisted snapshot: %q", inspector)
+	}
+	if strings.Contains(inspector, "transcript-derived identity") {
+		t.Errorf("transcript fallback must not be presented as persisted model input: %q", inspector)
+	}
+}
+
 func TestContextTreeKeyboardNavigationJK(t *testing.T) {
 	m := NewModel("test-session", false)
+	m.contextPayload = core.AgentContextPayload{
+		SnapshotAvailable: true,
+		SystemPromptSections: []core.SystemPromptSection{
+			{Tag: "identity"},
+			{Tag: "user_rules"},
+			{Tag: "skills"},
+		},
+	}
+	m.contextPayloadReady = true
 	m.width = 100
 	m.height = 30
 	m.activeView = ViewContext
@@ -351,22 +475,24 @@ func TestContextTree_NavigationMatchesRenderedHistoryOrder(t *testing.T) {
 	m.height = 30
 	m.activeView = ViewContext
 	m.contextFocusPane = FocusList
-	m.contextSubItemIndex = SubcatAnchor
+	items := contextTreeItems(core.AgentContextPayload{})
+	m.contextSubItemIndex = contextTreeItemPosition(items, contextItemCheckpoint)
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 	m = updated.(Model)
-	if m.contextSubItemIndex != SubcatCurrentHistory {
+	historyPosition := contextTreeItemPosition(items, contextItemHistory)
+	if m.contextSubItemIndex != historyPosition {
 		t.Fatalf("expected Current History after Compacted Checkpoint, got subcategory %d", m.contextSubItemIndex)
 	}
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 	m = updated.(Model)
-	if m.contextSubItemIndex != SubcatTurns {
-		t.Fatalf("expected Active Turns after Current History, got subcategory %d", m.contextSubItemIndex)
+	if m.contextSubItemIndex != historyPosition {
+		t.Fatalf("expected navigation to stop at Active History Records, got subcategory %d", m.contextSubItemIndex)
 	}
 }
 
-func TestCurrentHistoryList_NavigationLeavesCompactedCheckpoint(t *testing.T) {
+func TestCurrentHistoryList_NavigationAcrossActiveRecords(t *testing.T) {
 	m := NewModel("test-session", false)
 	m.activeView = ViewContext
 	m.contextFocusPane = FocusList
@@ -387,7 +513,7 @@ func TestCurrentHistoryList_NavigationLeavesCompactedCheckpoint(t *testing.T) {
 	}
 }
 
-func TestCurrentHistoryList_CheckpointStaysOnOneMutedLine(t *testing.T) {
+func TestCurrentHistoryList_ExcludesCompactedCheckpoint(t *testing.T) {
 	m := NewModel("test-session", false)
 	payload := core.AgentContextPayload{PersistedRecords: []core.PersistedContextRecord{
 		{Position: 1, IsCompactedCheckpoint: true},
@@ -395,10 +521,10 @@ func TestCurrentHistoryList_CheckpointStaysOnOneMutedLine(t *testing.T) {
 		{Position: 3, ByteSize: 2048},
 	}}
 	m.contextHistoryList = true
-	m.contextHistoryIndex = 2
+	m.contextHistoryIndex = 1
 	rendered := m.renderCurrentHistoryList(payload, 38, 30)
-	if !strings.Contains(rendered, "CHECKPOINT") || strings.Contains(rendered, "CHECK\n") {
-		t.Fatalf("checkpoint must remain a single line: %q", rendered)
+	if strings.Contains(rendered, "CHECKPOINT") || !strings.Contains(rendered, "#2") || !strings.Contains(rendered, "#3") {
+		t.Fatalf("active history must exclude the separately rendered checkpoint: %q", rendered)
 	}
 }
 
@@ -1270,30 +1396,31 @@ func TestCommandModeColonQuitAndSave(t *testing.T) {
 	}
 }
 
-func TestContextSubcatAllAndNavigation(t *testing.T) {
+func TestContextSnapshotNavigation(t *testing.T) {
 	m := NewModel("test-session", false)
 	m.width = 120
 	m.height = 35
 	m.activeView = ViewContext
 
-	// Starts at SubcatAll (0)
+	// Starts at Complete System Prompt.
 	if m.contextSubItemIndex != 0 {
-		t.Errorf("Expected default subcat index 0 (SubcatAll), got %d", m.contextSubItemIndex)
+		t.Errorf("Expected default Complete System Prompt index, got %d", m.contextSubItemIndex)
 	}
 
 	viewStr := m.View()
-	if !strings.Contains(viewStr, "CONTEXT EVIDENCE") {
-		t.Errorf("Expected view to render evidence-oriented context root")
+	if !strings.Contains(viewStr, "MODEL INPUT SNAPSHOT") {
+		t.Errorf("Expected view to render the model-input snapshot tree")
 	}
 
-	// Navigate down to the last tree item (SubcatBuffers).
-	for i := SubcatAll; i < SubcatLast; i++ {
+	lastItemIndex := len(contextTreeItems(core.AgentContextPayload{})) - 1
+	// Navigate down to the last retained tree item.
+	for i := 0; i < lastItemIndex; i++ {
 		updatedModel, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
 		m = updatedModel.(Model)
 	}
 
-	if m.contextSubItemIndex != SubcatLast {
-		t.Errorf("Expected contextSubItemIndex %d after navigation, got %d", SubcatLast, m.contextSubItemIndex)
+	if m.contextSubItemIndex != lastItemIndex {
+		t.Errorf("Expected contextSubItemIndex %d after navigation, got %d", lastItemIndex, m.contextSubItemIndex)
 	}
 
 	// Navigate back up with 'g'
@@ -1319,22 +1446,18 @@ func TestContextClipboardCopyAction(t *testing.T) {
 	}
 }
 
-func TestInboundPromptAntiOverflowMultiLine(t *testing.T) {
+func TestCompleteSystemPromptAntiOverflowMultiLine(t *testing.T) {
 	for _, size := range []struct{ w, h int }{{80, 24}, {100, 30}, {120, 35}} {
 		m := NewModel("test-session", false)
 		m.width = size.w
 		m.height = size.h
 		m.activeView = ViewContext
-		m.contextSubItemIndex = SubcatPrompt
-
-		// Add an extremely long, unwrapped multi-line user input
-		m.history = []core.UnifiedAgentEvent{
-			{
-				StepIndex:  1,
-				Type:       core.StepTypeUserInput,
-				RawContent: "This is an extremely long user prompt that exceeds the terminal width by a huge margin and should be properly wrapped without causing any overflow or breaking of the surrounding borders in the terminal UI! " + strings.Repeat("VeryLongTokenSequenceWithoutSpaces", 5),
-			},
+		m.contextSubItemIndex = 0
+		m.contextPayload = core.AgentContextPayload{
+			SnapshotAvailable: true,
+			SystemPrompt:      "This is an extremely long system prompt that exceeds the terminal width by a huge margin and should be properly wrapped without causing any overflow or breaking of the surrounding borders in the terminal UI! " + strings.Repeat("VeryLongTokenSequenceWithoutSpaces", 5),
 		}
+		m.contextPayloadReady = true
 
 		v := m.View()
 		lines := strings.Split(v, "\n")

@@ -15,19 +15,19 @@ const (
 	fixtureVarintShift     = 7
 
 	// Proto field numbers according to cortex.proto
-	protoRootPayloadField      = 1
-	protoSystemPromptField     = 1
-	protoMessagePromptsField   = 2
-	protoMessageRoleField      = 2
-	protoMessageContentField   = 3
-	protoToolsField            = 8
-	protoToolNameField         = 1
-	protoToolDescriptionField  = 2
+	protoRootPayloadField     = 1
+	protoSystemPromptField    = 1
+	protoMessagePromptsField  = 2
+	protoMessageRoleField     = 2
+	protoMessageContentField  = 3
+	protoToolsField           = 8
+	protoToolNameField        = 1
+	protoToolDescriptionField = 2
 )
 
 func TestParseSnapshot_DecodesSystemRecordsAndTools(t *testing.T) {
 	data := bytesField(protoRootPayloadField, concatenateFields(
-		bytesField(protoSystemPromptField, []byte("<identity>agent</identity><user_rules>rules</user_rules>")),
+		bytesField(protoSystemPromptField, []byte("<identity>agent</identity><mcp_servers>chrome-devtools</mcp_servers><user_rules>rules</user_rules>")),
 		bytesField(protoMessagePromptsField, concatenateFields(varintField(protoMessageRoleField, 2), bytesField(protoMessageContentField, []byte("<CONTEXT_SUMMARY>summary")))),
 		bytesField(protoToolsField, concatenateFields(bytesField(protoToolNameField, []byte("read_file")), bytesField(protoToolDescriptionField, []byte("read a file")))),
 	))
@@ -37,6 +37,7 @@ func TestParseSnapshot_DecodesSystemRecordsAndTools(t *testing.T) {
 	requireContextNoError(t, parseErr)
 	requireContextEqual(t, snapshot.IdentityPrompt, "agent")
 	requireContextEqual(t, snapshot.ConstitutionDoc, "rules")
+	requireContextEqual(t, snapshot.MCPSection, "chrome-devtools")
 	requireContextEqual(t, len(snapshot.PersistedContextRecords), 1)
 	requireContextEqual(t, snapshot.PersistedContextRecords[0].IsCompactedCheckpoint, true)
 	requireContextEqual(t, snapshot.PersistedContextRecords[0].RoleName, "ASSISTANT")

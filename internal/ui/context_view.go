@@ -9,22 +9,21 @@ import (
 	"heimdall/internal/core"
 )
 
-// Subcategory identifiers in Context Tree (0..11)
+type contextTreeItemKind int
+
 const (
-	SubcatAll            = core.SubcatAll // 0
-	SubcatIdentity       = core.SubcatIdentity
-	SubcatAgentsMD       = core.SubcatAgentsMD
-	SubcatRuntime        = core.SubcatRuntime
-	SubcatTools          = core.SubcatTools
-	SubcatSkills         = core.SubcatSkills
-	SubcatMCP            = core.SubcatMCP
-	SubcatAnchor         = core.SubcatAnchor
-	SubcatTurns          = core.SubcatTurns
-	SubcatCurrentHistory = core.SubcatCurrentHistory
-	SubcatPrompt         = core.SubcatPrompt
-	SubcatBuffers        = core.SubcatBuffers
-	SubcatLast           = core.SubcatLast
+	contextItemSystemPrompt contextTreeItemKind = iota
+	contextItemPromptSection
+	contextItemMCPStatus
+	contextItemTools
+	contextItemCheckpoint
+	contextItemHistory
 )
+
+type contextTreeItem struct {
+	kind         contextTreeItemKind
+	sectionIndex int
+}
 
 const (
 	contextHistoryListHeaderLines = 4
@@ -86,49 +85,42 @@ func (m Model) renderContextTree(payload core.AgentContextPayload, width, height
 		boxStyle = boxStyle.BorderForeground(ColorSecondary)
 	}
 
-	title := lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary).Render(" CONTEXT EVIDENCE TREE ")
-	totalContext := lipgloss.NewStyle().Foreground(ColorHighlight).Render(fmt.Sprintf(" [Total: %s Tok]", formatNumber(payload.TotalTokens)))
+	title := lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary).Render(" MODEL INPUT SNAPSHOT ")
+	snapshotStatus := " [Snapshot unavailable]"
+	if payload.SnapshotAvailable {
+		snapshotStatus = fmt.Sprintf(" [Total: %s Tok]", formatNumber(payload.TotalTokens))
+	}
+	totalContext := lipgloss.NewStyle().Foreground(ColorHighlight).Render(snapshotStatus)
 
 	var treeLines []string
-	systemTokens, toolsTokens, historyTokens, inboundTokens := m.contextTreeTokenCounts(payload)
+	items := contextTreeItems(payload)
+	systemTokens, toolsTokens, historyTokens := m.contextTreeTokenCounts(payload)
+	toolCount := persistedToolCount(payload)
 	treeLines = append(treeLines, title)
 	treeLines = append(treeLines, totalContext)
 	treeLines = append(treeLines, "")
 
-	// Root Level: FULL OUTBOUND PAYLOAD (ALL)
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatAll, "• CONTEXT EVIDENCE"))
-	treeLines = append(treeLines, "")
-
-	// Section 1: SYSTEM & RULES
-	treeLines = append(treeLines, renderContextSectionHeader("SYSTEM & RULES", systemTokens, innerWidth)...)
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatIdentity, "  - Identity Subsection"))
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatAgentsMD, "  - Persisted User Rules"))
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatRuntime, "  - Heimdall Runtime Metadata"))
-	treeLines = append(treeLines, "")
-
-	// Section 2: TOOLS & SCHEMAS
-	treeLines = append(treeLines, renderContextSectionHeader("CAPABILITIES", toolsTokens, innerWidth)...)
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatTools, fmt.Sprintf("  - Tool Definitions (%d)", len(payload.NativeTools))))
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatSkills, "  - Skills Prompt Section"))
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatMCP, "  - MCP Attribution"))
-	treeLines = append(treeLines, "")
-
-	// Section 3: CONTEXT HIST
-	treeLines = append(treeLines, renderContextSectionHeader("TRANSCRIPT HISTORY", historyTokens, innerWidth)...)
-	if payload.SnapshotAvailable {
-		if compactedCheckpoint(payload) != nil {
-			treeLines = append(treeLines, m.renderTreeLeaf(SubcatAnchor, "  - Compacted Checkpoint"))
-		}
-		treeLines = append(treeLines, m.renderTreeLeaf(SubcatCurrentHistory, fmt.Sprintf("  - Active History (%d)", len(currentHistoryRecords(payload)))))
-		treeLines = append(treeLines, m.renderTreeLeaf(SubcatTurns, fmt.Sprintf("  - Active Turns (%d)", len(payload.ActiveHistoryTurns))))
-	} else {
-		treeLines = append(treeLines, m.renderTreeLeaf(SubcatAnchor, "  - Checkpoint Anchor"))
-		treeLines = append(treeLines, m.renderTreeLeaf(SubcatTurns, fmt.Sprintf("  - Active Turns (%d)", len(payload.ActiveHistoryTurns))))
+	treeLines = append(treeLines, renderContextSectionHeader("SYSTEM PROMPT", systemTokens, innerWidth)...)
+	treeLines = append(treeLines, m.renderTreeLeaf(0, "  - System Prompt"))
+	for sectionIndex, section := range payload.SystemPromptSections {
+		treeLines = append(treeLines, m.renderTreeLeaf(sectionIndex+1, "    - "+formatPromptSectionTag(section.Tag)))
+	}
+	if !hasMCPSystemPromptSection(payload) {
+		mcpStatusPosition := contextTreeItemPosition(items, contextItemMCPStatus)
+		treeLines = append(treeLines, m.renderTreeLeaf(mcpStatusPosition, "    - MCP (Not Present)"))
 	}
 	treeLines = append(treeLines, "")
-	treeLines = append(treeLines, renderContextSectionHeader("LATEST TRANSCRIPT INPUT", inboundTokens, innerWidth)...)
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatPrompt, "  - Inbound Prompt"))
-	treeLines = append(treeLines, m.renderTreeLeaf(SubcatBuffers, "  - Staged Tool Buffers"))
+
+	toolsPosition := contextTreeItemPosition(items, contextItemTools)
+	treeLines = append(treeLines, renderContextSectionHeader("TOOL DEFINITIONS", toolsTokens, innerWidth)...)
+	treeLines = append(treeLines, m.renderTreeLeaf(toolsPosition, fmt.Sprintf("  - Tools (%d)", toolCount)))
+	treeLines = append(treeLines, "")
+
+	checkpointPosition := contextTreeItemPosition(items, contextItemCheckpoint)
+	historyPosition := contextTreeItemPosition(items, contextItemHistory)
+	treeLines = append(treeLines, renderContextSectionHeader("CONVERSATION MESSAGES", historyTokens, innerWidth)...)
+	treeLines = append(treeLines, m.renderTreeLeaf(checkpointPosition, "  - Checkpoint"))
+	treeLines = append(treeLines, m.renderTreeLeaf(historyPosition, fmt.Sprintf("  - History Records (%d)", len(currentHistoryRecords(payload)))))
 
 	for i, tl := range treeLines {
 		if lipgloss.Width(tl) > innerWidth {
@@ -140,11 +132,75 @@ func (m Model) renderContextTree(payload core.AgentContextPayload, width, height
 	return boxStyle.Render(content)
 }
 
-func (m Model) contextTreeTokenCounts(payload core.AgentContextPayload) (int, int, int, int) {
-	if m.contextEstimateHistoryCount == len(m.history) && m.contextEstimate.Available {
-		return m.contextEstimate.SystemTokens, m.contextEstimate.ToolsTokens, m.contextEstimate.HistoryTokens, m.contextEstimate.InboundTokens + m.contextEstimate.ToolBufferTokens
+func contextTreeItems(payload core.AgentContextPayload) []contextTreeItem {
+	items := []contextTreeItem{{kind: contextItemSystemPrompt}}
+	for sectionIndex := range payload.SystemPromptSections {
+		items = append(items, contextTreeItem{kind: contextItemPromptSection, sectionIndex: sectionIndex})
 	}
-	return 0, 0, 0, 0
+	if !hasMCPSystemPromptSection(payload) {
+		items = append(items, contextTreeItem{kind: contextItemMCPStatus})
+	}
+	return append(items,
+		contextTreeItem{kind: contextItemTools},
+		contextTreeItem{kind: contextItemCheckpoint},
+		contextTreeItem{kind: contextItemHistory},
+	)
+}
+
+func hasSystemPromptSection(payload core.AgentContextPayload, tag string) bool {
+	for _, section := range payload.SystemPromptSections {
+		if strings.EqualFold(section.Tag, tag) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasMCPSystemPromptSection(payload core.AgentContextPayload) bool {
+	return hasSystemPromptSection(payload, "mcp") || hasSystemPromptSection(payload, "mcp_servers")
+}
+
+func contextTreeItemPosition(items []contextTreeItem, kind contextTreeItemKind) int {
+	for position, item := range items {
+		if item.kind == kind {
+			return position
+		}
+	}
+	return 0
+}
+
+func (m Model) selectedContextTreeItem(payload core.AgentContextPayload) contextTreeItem {
+	items := contextTreeItems(payload)
+	if m.contextSubItemIndex < 0 || m.contextSubItemIndex >= len(items) {
+		return items[0]
+	}
+	return items[m.contextSubItemIndex]
+}
+
+func formatPromptSectionTag(tag string) string {
+	if strings.EqualFold(tag, "mcp") {
+		return "MCP"
+	}
+	if strings.EqualFold(tag, "mcp_servers") {
+		return "MCP Servers"
+	}
+	words := strings.Fields(strings.NewReplacer("_", " ", "-", " ").Replace(tag))
+	for index, word := range words {
+		if word != "" {
+			words[index] = strings.ToUpper(word[:1]) + word[1:]
+		}
+	}
+	return strings.Join(words, " ")
+}
+
+func (m Model) contextTreeTokenCounts(payload core.AgentContextPayload) (int, int, int) {
+	if !payload.SnapshotAvailable {
+		return 0, 0, 0
+	}
+	if m.contextEstimateHistoryCount == len(m.history) && m.contextEstimate.Available {
+		return m.contextEstimate.SystemTokens, m.contextEstimate.ToolsTokens, m.contextEstimate.HistoryTokens
+	}
+	return 0, 0, 0
 }
 
 func currentHistoryRecords(payload core.AgentContextPayload) []core.PersistedContextRecord {
@@ -162,11 +218,7 @@ func compactedCheckpoint(payload core.AgentContextPayload) *core.PersistedContex
 }
 
 func historyListItemCount(payload core.AgentContextPayload) int {
-	count := len(currentHistoryRecords(payload))
-	if compactedCheckpoint(payload) != nil {
-		count++
-	}
-	return count
+	return len(currentHistoryRecords(payload))
 }
 
 func (m Model) renderCurrentHistoryList(payload core.AgentContextPayload, width, height int) string {
@@ -181,9 +233,6 @@ func (m Model) renderCurrentHistoryList(payload core.AgentContextPayload, width,
 		selectedOffset = itemCount - 1
 	}
 	maxRows := height - contextHistoryListBorderLines - contextHistoryListHeaderLines
-	if compactedCheckpoint(payload) != nil {
-		maxRows--
-	}
 	if maxRows < minimumContextHistoryRows {
 		maxRows = minimumContextHistoryRows
 	}
@@ -227,20 +276,11 @@ func (m Model) renderCurrentHistoryList(payload core.AgentContextPayload, width,
 		}
 	}
 	for offset := startOffset; offset < endOffset; offset++ {
-		line := ""
-		isCompactedCheckpoint := offset == len(records)
-		if offset == len(records) {
-			line = fmt.Sprintf("  #%-*d  %-*s  CHECKPOINT", positionWidth, 1, referenceWidth, "")
-		} else {
-			r := records[len(records)-1-offset]
-			sizeValue, sizeUnit := formatContextRecordSize(r.ByteSize)
-			line = fmt.Sprintf("  #%-*d  %-*s  %-*s %s", positionWidth, r.Position, referenceWidth, formatObservedEventReference(r.ObservedSequence), sizeWidth, sizeValue, sizeUnit)
-		}
+		r := records[len(records)-1-offset]
+		sizeValue, sizeUnit := formatContextRecordSize(r.ByteSize)
+		line := fmt.Sprintf("  #%-*d  %-*s  %-*s %s", positionWidth, r.Position, referenceWidth, formatObservedEventReference(r.ObservedSequence), sizeWidth, sizeValue, sizeUnit)
 		if offset == selectedOffset {
 			line = lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Background(ColorDarkBg).Render("> " + strings.TrimSpace(line))
-		}
-		if isCompactedCheckpoint {
-			line = lipgloss.NewStyle().Foreground(ColorMuted).Render(line)
 		}
 		lines = append(lines, line)
 	}
@@ -313,10 +353,7 @@ func (m Model) renderContextInspector(payload core.AgentContextPayload, width, h
 
 	modeBadge := "[MODE: REFINED [r]]"
 	if m.isContextRawMode {
-		modeBadge = "[MODE: EVIDENCE JSON [r]]"
-		if payload.SnapshotAvailable {
-			modeBadge = "[MODE: SNAPSHOT + TRANSCRIPT [r]]"
-		}
+		modeBadge = "[MODE: SNAPSHOT JSON [r]]"
 	}
 	modeStyled := lipgloss.NewStyle().Bold(true).Foreground(ColorHighlight).Render(modeBadge)
 
@@ -406,31 +443,21 @@ func (m Model) contextInspectorDimensions() (int, int) {
 }
 
 func (m Model) getInspectorHeaderTitle(payload core.AgentContextPayload) string {
-	switch m.contextSubItemIndex {
-	case SubcatAll:
-		return fmt.Sprintf("CONTEXT EVIDENCE: %s", payload.SourceKind)
-	case SubcatIdentity:
-		return fmt.Sprintf("IDENTITY SUBSECTION (%s Tok)", formatCompactNumber(core.CountTokens(payload.IdentityPrompt)))
-	case SubcatAgentsMD:
-		return fmt.Sprintf("PERSISTED USER RULES (%s Tok)", formatCompactNumber(core.CountTokens(payload.ConstitutionDoc)))
-	case SubcatRuntime:
-		return "RUNTIME ENVIRONMENT METADATA"
-	case SubcatTools:
-		return fmt.Sprintf("PERSISTED TOOL DEFINITIONS (%d Tools)", len(payload.NativeTools))
-	case SubcatSkills:
-		return "PERSISTED SKILLS PROMPT SECTION"
-	case SubcatMCP:
-		return "MCP ATTRIBUTION STATUS"
-	case SubcatAnchor:
-		if payload.SnapshotAvailable && compactedCheckpoint(payload) != nil {
-			return "COMPACTED CHECKPOINT · LATEST PERSISTED SNAPSHOT"
-		}
-		return fmt.Sprintf("TRANSCRIPT CHECKPOINT ANCHOR · STEP %s", formatNumber(payload.CheckpointStepIndex))
-	case SubcatCurrentHistory:
+	item := m.selectedContextTreeItem(payload)
+	switch item.kind {
+	case contextItemSystemPrompt:
+		return fmt.Sprintf("COMPLETE SYSTEM PROMPT (%s Tok)", formatCompactNumber(persistedSnapshotTokenCount(payload, payload.SystemPrompt)))
+	case contextItemPromptSection:
+		section := payload.SystemPromptSections[item.sectionIndex]
+		return fmt.Sprintf("%s (%s Tok)", strings.ToUpper(formatPromptSectionTag(section.Tag)), formatCompactNumber(persistedSnapshotTokenCount(payload, section.Content)))
+	case contextItemMCPStatus:
+		return "MCP (NOT PRESENT)"
+	case contextItemTools:
+		return fmt.Sprintf("TOOL DEFINITIONS (%d Tools)", persistedToolCount(payload))
+	case contextItemCheckpoint:
+		return "COMPACTED CHECKPOINT"
+	case contextItemHistory:
 		records := currentHistoryRecords(payload)
-		if m.contextHistoryList && compactedCheckpoint(payload) != nil && m.contextHistoryIndex >= len(records) {
-			return "COMPACTED CHECKPOINT · LATEST PERSISTED SNAPSHOT"
-		}
 		if m.contextHistoryList && len(records) > 0 {
 			index := len(records) - 1 - m.contextHistoryIndex
 			if index < 0 {
@@ -438,82 +465,71 @@ func (m Model) getInspectorHeaderTitle(payload core.AgentContextPayload) string 
 			}
 			return fmt.Sprintf("RECORD #%d · LATEST PERSISTED SNAPSHOT", records[index].Position)
 		}
-		return fmt.Sprintf("ACTIVE HISTORY (%d Records)", len(records))
-	case SubcatTurns:
-		return fmt.Sprintf("ACTIVE CONVERSATION TURNS (%d Turns)", len(payload.ActiveHistoryTurns))
-	case SubcatPrompt:
-		return fmt.Sprintf("LATEST INBOUND USER PROMPT (%s Tok)", formatCompactNumber(core.CountTokens(payload.LatestPrompt)))
-	case SubcatBuffers:
-		return fmt.Sprintf("STAGED LOCAL EXECUTION BUFFERS (%s Tok)", formatCompactNumber(core.CountTokens(payload.StagedBuffers)))
+		return fmt.Sprintf("ACTIVE HISTORY RECORDS (%d)", len(records))
 	default:
-		return "CONTEXT PAYLOAD INSPECTOR"
+		return "MODEL INPUT SNAPSHOT"
 	}
+}
+
+func persistedSnapshotTokenCount(payload core.AgentContextPayload, text string) int {
+	if !payload.SnapshotAvailable {
+		return 0
+	}
+	return core.CountTokens(text)
+}
+
+func persistedToolCount(payload core.AgentContextPayload) int {
+	if !payload.SnapshotAvailable {
+		return 0
+	}
+	return len(payload.NativeTools)
 }
 
 func (m Model) buildRefinedInspectorLines(payload core.AgentContextPayload, width int) []string {
 	var lines []string
+	item := m.selectedContextTreeItem(payload)
 
-	switch m.contextSubItemIndex {
-	case SubcatAll:
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("🌐 ANTIGRAVITY CONTEXT OBSERVATION:"))
-		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("  • Evidence class: %s", payload.SourceKind))
-		if payload.SnapshotAvailable {
-			lines = append(lines, fmt.Sprintf("  • Source database: %s", payload.SourcePath))
-			lines = append(lines, fmt.Sprintf("  • Snapshot record: gen_metadata.idx=%d (%s bytes)", payload.SnapshotGenIndex, formatNumber(payload.SnapshotBytes)))
-			lines = append(lines, "  • This page combines snapshot sections with transcript observations and Heimdall runtime metadata.")
-		} else {
-			lines = append(lines, "  • Persisted context snapshot: unavailable; using transcript observations.")
+	switch item.kind {
+	case contextItemSystemPrompt:
+		lines = appendPersistedSnapshotText(lines, payload, "COMPLETE SYSTEM PROMPT", payload.SystemPrompt, width)
+
+	case contextItemPromptSection:
+		if !payload.SnapshotAvailable {
+			lines = append(lines, "  Persisted model-input snapshot unavailable.")
+			break
 		}
-		lines = append(lines, fmt.Sprintf("  • Observed model: %s", targetModelLabel(payload.TargetModel)))
-		if payload.TotalTokens > 0 && payload.ContextLimit > 0 {
-			usagePercent := float64(payload.TotalTokens) / float64(payload.ContextLimit) * 100.0
-			lines = append(lines, fmt.Sprintf("  • Latest persisted context: %s Tok (%.1f%% of observed %s Tok limit)", formatNumber(payload.TotalTokens), usagePercent, formatNumber(payload.ContextLimit)))
-		} else if payload.TotalTokens > 0 {
-			lines = append(lines, fmt.Sprintf("  • Latest persisted context: %s Tok (limit unavailable)", formatNumber(payload.TotalTokens)))
-		} else {
-			lines = append(lines, "  • Latest persisted context: unavailable")
+		section := payload.SystemPromptSections[item.sectionIndex]
+		sectionTitle := strings.ToUpper(formatPromptSectionTag(section.Tag))
+		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(sectionTitle+":"), "")
+		if strings.TrimSpace(section.Content) == "" {
+			lines = append(lines, "  (Empty)")
+			break
 		}
-		lines = append(lines, "  • Cache and cost projection: unavailable without a captured provider response.")
-		lines = append(lines, "")
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorLightText).Render("📦 Persisted Snapshot Segments:"))
-		lines = append(lines, fmt.Sprintf("  1. SYSTEM PROMPT   : %s Tok [contains identity, rules, skills and host instructions]", formatNumber(core.CountTokens(payload.SystemPrompt))))
-		lines = append(lines, fmt.Sprintf("  2. TOOL DEFINITIONS: %d repeated protobuf entries", len(payload.NativeTools)))
-		lines = append(lines, fmt.Sprintf("  3. FIELD 2 COUNT  : %d repeated protobuf field-2 occurrences", payload.PersistedContextEntryCount))
-		lines = append(lines, "  4. MCP ATTRIBUTION  : unknown without the official protobuf schema")
-		lines = append(lines, "")
-		lines = append(lines, lipgloss.NewStyle().Foreground(ColorHighlight).Render("💡 Action Hints:"))
-		lines = append(lines, "  • Press [r] to view Heimdall's evidence JSON with per-field source labels.")
-		lines = append(lines, "  • This is not an HTTP body capture or an official GenerateContentRequest serialization.")
-		lines = append(lines, "  • Press [y] or [c] to copy the displayed payload directly to clipboard.")
-		lines = append(lines, "  • Use [j/k] to navigate to specific subcategories for isolated inspection.")
-
-	case SubcatIdentity:
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("🎭 AGENT IDENTITY & PAIR-PROGRAMMING DIRECTIVE:"))
-		lines = append(lines, "")
-		for _, rawL := range strings.Split(payload.IdentityPrompt, "\n") {
-			for _, wL := range wrapText("  "+rawL, width) {
-				lines = append(lines, wL)
-			}
+		if section.Tag == "user_rules" {
+			lines = append(lines, formatPersistedUserRuleLines(section.Content, width)...)
+			break
 		}
-		lines = append(lines, "")
-		lines = append(lines, lipgloss.NewStyle().Foreground(ColorLightText).Render("📌 Identity is one subsection of the persisted system prompt; cache reuse is not proven by this snapshot."))
-
-	case SubcatAgentsMD:
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("📜 PERSISTED USER RULES (Formatted for Reading):"))
-		lines = append(lines, "")
-		lines = append(lines, formatPersistedUserRuleLines(payload.ConstitutionDoc, width)...)
-
-	case SubcatRuntime:
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("⚙️ RUNTIME HOST & ENVIRONMENT METADATA:"))
-		lines = append(lines, "")
-		for _, key := range core.SortedRuntimeMetadataKeys(payload.RuntimeMetadata) {
-			for _, wL := range wrapText(fmt.Sprintf("  • %-12s: %s", key, payload.RuntimeMetadata[key]), width) {
-				lines = append(lines, wL)
-			}
+		for _, rawLine := range strings.Split(section.Content, "\n") {
+			lines = append(lines, wrapText("  "+rawLine, width)...)
 		}
 
-	case SubcatTools:
+	case contextItemMCPStatus:
+		if !payload.SnapshotAvailable {
+			lines = append(lines, "  Persisted model-input snapshot unavailable.")
+			break
+		}
+		lines = append(lines,
+			lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("MCP:"),
+			"",
+			"  No <mcp> section is present in the persisted system prompt.",
+			"  Local MCP configuration is not part of the model-input snapshot.",
+		)
+
+	case contextItemTools:
+		if !payload.SnapshotAvailable {
+			lines = append(lines, "  Persisted model-input snapshot unavailable.")
+			break
+		}
 		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(fmt.Sprintf("🛠️ TOOL SIGNATURES & DESCRIPTIONS (%d Registered Tools):", len(payload.NativeTools))))
 		lines = append(lines, "")
 		for _, tool := range payload.NativeTools {
@@ -524,22 +540,11 @@ func (m Model) buildRefinedInspectorLines(payload core.AgentContextPayload, widt
 			lines = append(lines, "")
 		}
 
-	case SubcatSkills:
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("🧠 SKILLS SECTION EMBEDDED IN THE SYSTEM PROMPT:"))
-		lines = append(lines, "")
-		for _, rawLine := range strings.Split(payload.SkillsSection, "\n") {
-			lines = append(lines, wrapText("  "+rawLine, width)...)
+	case contextItemCheckpoint:
+		if !payload.SnapshotAvailable {
+			lines = append(lines, "  Persisted model-input snapshot unavailable.")
+			break
 		}
-
-	case SubcatMCP:
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("🔌 MODEL CONTEXT PROTOCOL (MCP) INTEGRATIONS:"))
-		lines = append(lines, "")
-		lines = append(lines, "  The persisted snapshot contains tool definitions and MCP-related text,")
-		lines = append(lines, "  but the reverse-engineered wire paths cannot yet attribute each tool")
-		lines = append(lines, "  to native harness code or a specific MCP server.")
-		lines = append(lines, "  Status: UNKNOWN, not NONE.")
-
-	case SubcatAnchor:
 		if checkpoint := compactedCheckpoint(payload); checkpoint != nil {
 			lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("📦 COMPACTED CHECKPOINT:"), "")
 			for _, l := range strings.Split(checkpoint.PrimaryText, "\n") {
@@ -548,19 +553,13 @@ func (m Model) buildRefinedInspectorLines(payload core.AgentContextPayload, widt
 			lines = append(lines, "", "  • Record #1 is separated from Active History because it is a compacted summary.")
 			break
 		}
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("⚓ TRANSCRIPT CHECKPOINT ANCHOR:"))
-		lines = append(lines, "")
-		lines = append(lines, fmt.Sprintf("  • Observed at transcript step #%d.", payload.CheckpointStepIndex))
-		lines = append(lines, "  • The text below is the checkpoint event's captured summary.")
-		lines = append(lines, "  • This does not prove the remote context window's exact truncation or cache state.")
-		lines = append(lines, "")
-		for _, l := range strings.Split(payload.CheckpointSummary, "\n") {
-			for _, wL := range wrapText("  "+l, width) {
-				lines = append(lines, wL)
-			}
-		}
+		lines = append(lines, "  No compacted checkpoint is present in the persisted snapshot.")
 
-	case SubcatCurrentHistory:
+	case contextItemHistory:
+		if !payload.SnapshotAvailable {
+			lines = append(lines, "  Persisted model-input snapshot unavailable.")
+			break
+		}
 		records := currentHistoryRecords(payload)
 		if !m.contextHistoryList {
 			lines = append(lines, "  • Press [Enter] to browse active events from the latest persisted snapshot.")
@@ -568,14 +567,6 @@ func (m Model) buildRefinedInspectorLines(payload core.AgentContextPayload, widt
 		}
 		if len(records) == 0 {
 			lines = append(lines, "  • No decoded persisted records are available.")
-			break
-		}
-		if checkpoint := compactedCheckpoint(payload); checkpoint != nil && m.contextHistoryIndex >= len(records) {
-			lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("📦 COMPACTED CHECKPOINT:"), "")
-			for _, l := range strings.Split(checkpoint.PrimaryText, "\n") {
-				lines = append(lines, wrapText("  "+l, width)...)
-			}
-			lines = append(lines, "", "  • This is record #1 in the latest persisted snapshot.")
 			break
 		}
 		index := len(records) - 1 - m.contextHistoryIndex
@@ -603,49 +594,22 @@ func (m Model) buildRefinedInspectorLines(payload core.AgentContextPayload, widt
 			lines = append(lines, "", "  • Private content is present and intentionally not displayed.")
 		}
 
-	case SubcatTurns:
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("🔄 ACTIVE CONVERSATION TURNS (Sliding Window):"))
-		lines = append(lines, "")
-		for _, t := range payload.ActiveHistoryTurns {
-			role := "👤 USER"
-			if t.IsCloudStep() {
-				role = "🤖 ASSISTANT"
-			} else if t.IsLocalStep() {
-				role = "🛠️ TOOL_RESULT"
-			} else if t.IsCompactionStep() {
-				role = "⚙️ SYSTEM"
-			}
-			summary := t.Summary
-			if summary == "" {
-				summary = t.RawContent
-				if len(summary) > 60 {
-					summary = summary[:60] + "..."
-				}
-			}
-			for _, wL := range wrapText(fmt.Sprintf("  • [Step #%d] %s: %s", t.StepIndex, role, summary), width) {
-				lines = append(lines, wL)
-			}
-		}
-
-	case SubcatPrompt:
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("📥 LATEST INBOUND PROMPT PAYLOAD:"))
-		lines = append(lines, "")
-		for _, rawL := range strings.Split(payload.LatestPrompt, "\n") {
-			for _, wL := range wrapText("  "+rawL, width) {
-				lines = append(lines, wL)
-			}
-		}
-
-	case SubcatBuffers:
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render("⚡ STAGED LOCAL TOOL EXECUTION BUFFERS:"))
-		lines = append(lines, "")
-		for _, rawL := range strings.Split(payload.StagedBuffers, "\n") {
-			for _, wL := range wrapText("  "+rawL, width) {
-				lines = append(lines, wL)
-			}
-		}
 	}
 
+	return lines
+}
+
+func appendPersistedSnapshotText(lines []string, payload core.AgentContextPayload, title, content string, width int) []string {
+	lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(ColorSecondary).Render(title+":"), "")
+	if !payload.SnapshotAvailable {
+		return append(lines, "  Persisted model-input snapshot unavailable.")
+	}
+	if strings.TrimSpace(content) == "" {
+		return append(lines, "  (Empty)")
+	}
+	for _, rawLine := range strings.Split(content, "\n") {
+		lines = append(lines, wrapText("  "+rawLine, width)...)
+	}
 	return lines
 }
 
@@ -655,9 +619,9 @@ func (m Model) buildRawWireLines(payload core.AgentContextPayload, width int) []
 		return []string{"Error serializing wire payload: " + err.Error()}
 	}
 
-	subcatName := m.getSubcategoryName(m.contextSubItemIndex)
+	subcatName := m.getSelectedContextItemName(payload)
 	var formattedLines []string
-	formattedLines = append(formattedLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(fmt.Sprintf("// Heimdall evidence view [%s]: %s", payload.SourceKind, subcatName)))
+	formattedLines = append(formattedLines, lipgloss.NewStyle().Foreground(ColorLightText).Render(fmt.Sprintf("// Persisted model-input snapshot: %s", subcatName)))
 	formattedLines = append(formattedLines, "")
 
 	for _, line := range strings.Split(wireJSON, "\n") {
@@ -685,15 +649,28 @@ func (m Model) buildRawWireLines(payload core.AgentContextPayload, width int) []
 }
 
 func (m Model) serializeContextRaw(payload core.AgentContextPayload) (string, error) {
-	if m.contextSubItemIndex != SubcatCurrentHistory {
-		return core.SerializeSubcategoryRaw(payload, m.contextSubItemIndex)
+	if !payload.SnapshotAvailable {
+		return "{\n  \"status\": \"PERSISTED_MODEL_INPUT_SNAPSHOT_UNAVAILABLE\"\n}", nil
+	}
+	item := m.selectedContextTreeItem(payload)
+	switch item.kind {
+	case contextItemSystemPrompt:
+		return core.SerializeSubcategoryRaw(payload, core.SubcatSystemPrompt)
+	case contextItemPromptSection:
+		return core.SerializeSystemPromptSectionRaw(payload, item.sectionIndex)
+	case contextItemMCPStatus:
+		return "{\n  \"tag\": \"mcp\",\n  \"status\": \"NOT_PRESENT\",\n  \"reason\": \"No <mcp> section is present in the persisted system prompt.\"\n}", nil
+	case contextItemTools:
+		return core.SerializeSubcategoryRaw(payload, core.SubcatTools)
+	case contextItemCheckpoint:
+		return core.SerializeSubcategoryRaw(payload, core.SubcatAnchor)
 	}
 	if !m.contextHistoryList {
 		return core.SerializePersistedActiveEventRaw(payload, 0)
 	}
 	records := currentHistoryRecords(payload)
-	if m.contextHistoryIndex >= len(records) {
-		return core.SerializePersistedActiveEventRaw(payload, 1)
+	if len(records) == 0 {
+		return core.SerializePersistedActiveEventRaw(payload, 0)
 	}
 	index := len(records) - 1 - m.contextHistoryIndex
 	if index < 0 {
@@ -702,32 +679,23 @@ func (m Model) serializeContextRaw(payload core.AgentContextPayload) (string, er
 	return core.SerializePersistedActiveEventRaw(payload, records[index].Position)
 }
 
-func (m Model) getSubcategoryName(subcat int) string {
-	switch subcat {
-	case SubcatAll:
-		return "Context Evidence"
-	case SubcatIdentity:
-		return "Identity Subsection"
-	case SubcatAgentsMD:
-		return "Persisted User Rules"
-	case SubcatRuntime:
-		return "Runtime Metadata"
-	case SubcatTools:
-		return "Persisted Tool Definitions"
-	case SubcatSkills:
-		return "Persisted Skills Section"
-	case SubcatMCP:
-		return "MCP Attribution"
-	case SubcatAnchor:
-		return "Checkpoint Anchor"
-	case SubcatTurns:
-		return "Active Turns"
-	case SubcatPrompt:
-		return "Inbound Prompt"
-	case SubcatBuffers:
-		return "Staged Tool Buffers"
+func (m Model) getSelectedContextItemName(payload core.AgentContextPayload) string {
+	item := m.selectedContextTreeItem(payload)
+	switch item.kind {
+	case contextItemSystemPrompt:
+		return "Complete System Prompt"
+	case contextItemPromptSection:
+		return formatPromptSectionTag(payload.SystemPromptSections[item.sectionIndex].Tag)
+	case contextItemMCPStatus:
+		return "MCP (Not Present)"
+	case contextItemTools:
+		return "Tool Definitions"
+	case contextItemCheckpoint:
+		return "Compacted Checkpoint"
+	case contextItemHistory:
+		return "Active History Records"
 	default:
-		return "Context Payload"
+		return "Model Input Snapshot"
 	}
 }
 

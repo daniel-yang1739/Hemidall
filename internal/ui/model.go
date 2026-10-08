@@ -1619,7 +1619,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				payload := m.cachedContextPayload()
 				text := m.GetContextInspectorContent(payload)
 				_ = CopyToClipboard(text)
-				subcatName := m.getSubcategoryName(m.contextSubItemIndex)
+				subcatName := m.getSelectedContextItemName(payload)
 				msg := fmt.Sprintf("📋 Copied [%s] to clipboard!", subcatName)
 				m.clipboardStatus = msg
 				m.clipboardStatusTime = time.Now()
@@ -1689,7 +1689,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				if m.contextFocusPane == FocusList {
-					if m.contextSubItemIndex < SubcatLast {
+					payload := m.cachedContextPayload()
+					lastItemIndex := len(contextTreeItems(payload)) - 1
+					if m.contextSubItemIndex < lastItemIndex {
 						m.contextSubItemIndex++
 						m.contextDetailScroll = 0
 					}
@@ -1728,11 +1730,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			case "enter":
-				if m.contextFocusPane == FocusList && !m.contextHistoryList && m.contextSubItemIndex == SubcatCurrentHistory {
-					payload := m.cachedContextPayload()
+				payload := m.cachedContextPayload()
+				if m.contextFocusPane == FocusList && !m.contextHistoryList && m.selectedContextTreeItem(payload).kind == contextItemHistory {
+					itemCount := historyListItemCount(payload)
+					if !payload.SnapshotAvailable || itemCount == 0 {
+						m.contextFocusPane = FocusDetail
+						return m, nil
+					}
 					m.contextHistoryList = true
 					m.contextHistoryIndex = 0
-					m.contextHistoryItemCount = historyListItemCount(payload)
+					m.contextHistoryItemCount = itemCount
 					m.contextHistoryScrollOffset = 0
 					m.contextDetailScroll = 0
 					m.refreshContextInspectorCache()
@@ -1804,7 +1811,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				if m.contextFocusPane == FocusList {
-					m.contextSubItemIndex = SubcatLast
+					payload := m.cachedContextPayload()
+					m.contextSubItemIndex = len(contextTreeItems(payload)) - 1
 					m.contextDetailScroll = 0
 					m.refreshContextInspectorCache()
 				} else {

@@ -98,20 +98,22 @@ func TestContext_Pos_EvidenceJsonSerialization(t *testing.T) {
 	if _, ok := parsed["context_snapshot"]; !ok {
 		t.Errorf("Expected context snapshot field in evidence JSON")
 	}
-	if _, ok := parsed["heimdall_runtime_metadata"]; !ok {
-		t.Errorf("Expected Heimdall runtime metadata in evidence JSON")
-	}
 }
 
-func TestContext_Pos_PersistedRecordRawUsesExplicitProvenance(t *testing.T) {
+func TestContext_Pos_PersistedActiveRecordRawExcludesCheckpoint(t *testing.T) {
 	payload := AgentContextPayload{
-		Provenance:       map[string]string{"persisted_records": "persisted_gen_metadata_field_1.2_repeated"},
-		PersistedRecords: []PersistedContextRecord{{Position: 2, PrimaryText: "event text"}},
+		PersistedRecords: []PersistedContextRecord{
+			{Position: 1, PrimaryText: "checkpoint text", IsCompactedCheckpoint: true},
+			{Position: 2, PrimaryText: "event text"},
+		},
 	}
 
-	raw, err := SerializePersistedActiveEventRaw(payload, 2)
+	raw, err := SerializePersistedActiveEventRaw(payload, 0)
 	requireContextNoError(t, err)
-	requireContextContains(t, raw, `"source": "persisted_gen_metadata_field_1.2_repeated"`)
+	requireContextContains(t, raw, "event text")
+	if strings.Contains(raw, "checkpoint text") {
+		t.Errorf("active history raw output duplicated the compacted checkpoint: %s", raw)
+	}
 }
 
 func TestContext_Neg_NilHistoryDoesNotFabricateSessionData(t *testing.T) {
@@ -167,7 +169,7 @@ func TestContext_Neg_UnrecognizedSkillFormatFallback(t *testing.T) {
 func TestContext_Pos_SerializeSubcategoryRawAllParts(t *testing.T) {
 	payload := buildContextPayloadForTest(nil, "sess-test", "Gemini 3.7 Flash")
 
-	for subcat := 0; subcat <= SubcatBuffers; subcat++ {
+	for subcat := SubcatSystemPrompt; subcat <= SubcatLast; subcat++ {
 		raw, err := SerializeSubcategoryRaw(payload, subcat)
 		if err != nil {
 			t.Fatalf("SerializeSubcategoryRaw failed on subcat %d: %v", subcat, err)
@@ -186,12 +188,9 @@ func TestContext_Pos_SerializeSubcategoryRawAllParts(t *testing.T) {
 func TestContext_Neg_InvalidSubcategoryIndexFallback(t *testing.T) {
 	payload := buildContextPayloadForTest(nil, "sess-test", "Gemini 3.7 Flash")
 
-	raw, err := SerializeSubcategoryRaw(payload, 999)
-	if err != nil {
-		t.Fatalf("Expected graceful fallback on invalid subcategory index, got error: %v", err)
-	}
-	if !strings.Contains(raw, "evidence") {
-		t.Errorf("Expected fallback to full evidence payload, got:\n%s", raw)
+	_, err := SerializeSubcategoryRaw(payload, 999)
+	if err == nil {
+		t.Fatal("Expected invalid model-input subcategory to return an error")
 	}
 }
 
@@ -212,25 +211,65 @@ func TestSerializePersistedActiveEventRaw_ScopesAllAndSelectedEvents(t *testing.
 	}
 }
 
-func TestSerializeSubcategoryRaw_RuntimeMetadataUsesStableKeyOrder(t *testing.T) {
-	payload := AgentContextPayload{RuntimeMetadata: map[string]string{
-		"Shell": "zsh",
-		"Arch":  "arm64",
-		"OS":    "darwin",
-	}}
+func TestContextSnapshot_Pos_PreservesTopLevelTagOrder(t *testing.T) {
+	systemPrompt := `Host prefix
+<identity>Pair programmer</identity>
+<user_rules><RULE[user]>Repository rules</RULE[user]></user_rules>
+<skills>Skill catalog</skills>
+<mcp>MCP instructions</mcp>
+Host suffix`
+	payload := BuildContextPayloadFromSession(Session{ContextSnapshots: []ContextSnapshot{{
+		SystemPrompt:   systemPrompt,
+		IdentityPrompt: "Pair programmer", ConstitutionDoc: "Repository rules", SkillsSection: "Skill catalog", MCPSection: "MCP instructions",
+	}}}, ContextBuildInput{})
 
-	raw, err := SerializeSubcategoryRaw(payload, SubcatRuntime)
+	wantTags := []string{"identity", "user_rules", "skills", "mcp"}
+	if len(payload.SystemPromptSections) != len(wantTags) {
+		t.Fatalf("system-prompt section count: got %d, want %d", len(payload.SystemPromptSections), len(wantTags))
+	}
+	for index, wantTag := range wantTags {
+		if payload.SystemPromptSections[index].Tag != wantTag {
+			t.Errorf("system-prompt section %d: got %q, want %q", index, payload.SystemPromptSections[index].Tag, wantTag)
+		}
+	}
+	if !strings.Contains(payload.SystemPromptSections[1].Content, "<RULE[user]>") {
+		t.Errorf("nested rule markup must remain inside user_rules: %q", payload.SystemPromptSections[1].Content)
+	}
+
+	mcpRaw, err := SerializeSystemPromptSectionRaw(payload, 3)
 	if err != nil {
-		t.Fatalf("SerializeSubcategoryRaw returned an error: %v", err)
+		t.Fatalf("SerializeSystemPromptSectionRaw returned an error: %v", err)
 	}
-	archPosition := strings.Index(raw, "Arch: arm64")
-	osPosition := strings.Index(raw, "OS: darwin")
-	shellPosition := strings.Index(raw, "Shell: zsh")
-	if archPosition < 0 || osPosition < 0 || shellPosition < 0 {
-		t.Fatalf("runtime metadata was missing from raw output: %s", raw)
+	if !strings.Contains(mcpRaw, "MCP instructions") {
+		t.Fatalf("MCP section omitted persisted MCP instructions: %s", mcpRaw)
 	}
-	if archPosition > osPosition || osPosition > shellPosition {
-		t.Errorf("runtime metadata order was unstable: %s", raw)
+	if strings.Contains(mcpRaw, "Host prefix") || strings.Contains(mcpRaw, "Host suffix") {
+		t.Errorf("tag section must not absorb untagged system-prompt text: %s", mcpRaw)
+	}
+}
+
+func TestContextSnapshot_Boundary_PreservesMalformedTaggedHostText(t *testing.T) {
+	systemPrompt := "Host prefix\n<identity>unterminated identity text\nHost suffix"
+	payload := BuildContextPayloadFromSession(Session{ContextSnapshots: []ContextSnapshot{{
+		SystemPrompt: systemPrompt,
+	}}}, ContextBuildInput{})
+
+	if payload.SystemPrompt != systemPrompt {
+		t.Errorf("malformed tagged text must remain in the complete system prompt: %q", payload.SystemPrompt)
+	}
+	if len(payload.SystemPromptSections) != 0 {
+		t.Errorf("unbalanced tags must not fabricate prompt sections: %#v", payload.SystemPromptSections)
+	}
+}
+
+func TestContextSnapshot_Boundary_UnclosedPlaceholderDoesNotHideLaterTags(t *testing.T) {
+	systemPrompt := "Use <path> as a placeholder.\n<identity>Pair programmer</identity>"
+	payload := BuildContextPayloadFromSession(Session{ContextSnapshots: []ContextSnapshot{{
+		SystemPrompt: systemPrompt,
+	}}}, ContextBuildInput{})
+
+	if len(payload.SystemPromptSections) != 1 || payload.SystemPromptSections[0].Tag != "identity" {
+		t.Errorf("unclosed placeholder hid a later balanced tag: %#v", payload.SystemPromptSections)
 	}
 }
 

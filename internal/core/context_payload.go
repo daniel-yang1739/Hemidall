@@ -27,6 +27,12 @@ type SkillInfo struct {
 	RawMarkdown string `json:"raw_markdown"`
 }
 
+// SystemPromptSection is one top-level tagged section in persisted prompt order.
+type SystemPromptSection struct {
+	Tag     string `json:"tag"`
+	Content string `json:"content"`
+}
+
 // ContextEvidenceKind identifies what Heimdall actually observed. It deliberately does
 // not claim that a reconstructed value is a network request.
 type ContextEvidenceKind string
@@ -51,6 +57,7 @@ type AgentContextPayload struct {
 	SnapshotInputBoundaryStep  int
 	SnapshotHasInputBoundary   bool
 	SystemPrompt               string
+	SystemPromptSections       []SystemPromptSection
 	SkillsSection              string
 	MCPSection                 string
 	PersistedContextEntryCount int
@@ -59,7 +66,6 @@ type AgentContextPayload struct {
 	// 1. SYSTEM & RULES
 	IdentityPrompt  string
 	ConstitutionDoc string
-	RuntimeMetadata map[string]string
 
 	// 2. TOOLS & SCHEMAS
 	NativeTools  []ToolSignature
@@ -91,14 +97,13 @@ type PersistedContextRecord struct {
 
 // ContextBuildInput contains adapter-observed facts used to build a universal context payload.
 type ContextBuildInput struct {
-	History         []UnifiedAgentEvent
-	SessionID       string
-	TargetModel     string
-	NativeTools     []ToolSignature
-	ActiveSkills    []SkillInfo
-	MCPServers      []string
-	RuntimeMetadata map[string]string
-	Provenance      map[string]string
+	History      []UnifiedAgentEvent
+	SessionID    string
+	TargetModel  string
+	NativeTools  []ToolSignature
+	ActiveSkills []SkillInfo
+	MCPServers   []string
+	Provenance   map[string]string
 }
 
 // GetNativeToolsDefinitions derives tool names and argument keys observed in session history.
@@ -159,26 +164,15 @@ func toolSignaturesFromObservedArguments(observed map[string]map[string]struct{}
 	return tools
 }
 
-// SortedRuntimeMetadataKeys provides a stable order for runtime metadata rendering.
-func SortedRuntimeMetadataKeys(metadata map[string]string) []string {
-	keys := make([]string, 0, len(metadata))
-	for key := range metadata {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
 // BuildContextPayloadFromHistory assembles adapter-observed facts into the universal context model.
 func BuildContextPayloadFromHistory(input ContextBuildInput) AgentContextPayload {
 	history := input.History
 	payload := AgentContextPayload{
-		TargetModel:     input.TargetModel,
-		Provenance:      input.Provenance,
-		RuntimeMetadata: input.RuntimeMetadata,
-		NativeTools:     input.NativeTools,
-		ActiveSkills:    input.ActiveSkills,
-		MCPServers:      input.MCPServers,
+		TargetModel:  input.TargetModel,
+		Provenance:   input.Provenance,
+		NativeTools:  input.NativeTools,
+		ActiveSkills: input.ActiveSkills,
+		MCPServers:   input.MCPServers,
 	}
 
 	checkpointHistoryIndex := -1
@@ -236,6 +230,7 @@ func BuildContextPayloadFromSession(session Session, input ContextBuildInput) Ag
 	payload.SnapshotInputBoundaryStep = snapshot.InputBoundaryStepIndex
 	payload.SnapshotHasInputBoundary = snapshot.HasInputBoundary
 	payload.SystemPrompt = snapshot.SystemPrompt
+	payload.SystemPromptSections = ParseTopLevelSystemPromptSections(snapshot.SystemPrompt)
 	payload.IdentityPrompt = snapshot.IdentityPrompt
 	payload.ConstitutionDoc = snapshot.ConstitutionDoc
 	payload.SkillsSection = snapshot.SkillsSection
@@ -246,6 +241,83 @@ func BuildContextPayloadFromSession(session Session, input ContextBuildInput) Ag
 	payload.ActiveSkills = nil
 	payload.MCPServers = nil
 	return payload
+}
+
+// ParseTopLevelSystemPromptSections extracts balanced outer tags without
+// flattening nested markup inside each section.
+func ParseTopLevelSystemPromptSections(text string) []SystemPromptSection {
+	type openTag struct {
+		name         string
+		contentStart int
+	}
+	sections := make([]SystemPromptSection, 0)
+	stack := make([]openTag, 0)
+	for cursor := 0; cursor < len(text); {
+		relativeStart := strings.IndexByte(text[cursor:], '<')
+		if relativeStart < 0 {
+			break
+		}
+		start := cursor + relativeStart
+		relativeEnd := strings.IndexByte(text[start:], '>')
+		if relativeEnd < 0 {
+			break
+		}
+		end := start + relativeEnd
+		name, closing, selfClosing := parsePromptTagToken(text[start+1 : end])
+		cursor = end + 1
+		if name == "" {
+			continue
+		}
+		if closing {
+			if len(stack) == 0 || stack[len(stack)-1].name != name {
+				continue
+			}
+			opened := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if len(stack) == 0 {
+				sections = append(sections, SystemPromptSection{Tag: name, Content: strings.TrimSpace(text[opened.contentStart:start])})
+			}
+			continue
+		}
+		if selfClosing {
+			if len(stack) == 0 {
+				sections = append(sections, SystemPromptSection{Tag: name})
+			}
+			continue
+		}
+		if !strings.Contains(text[cursor:], "</"+name+">") {
+			continue
+		}
+		stack = append(stack, openTag{name: name, contentStart: end + 1})
+	}
+	return sections
+}
+
+func parsePromptTagToken(token string) (string, bool, bool) {
+	token = strings.TrimSpace(token)
+	if token == "" || strings.HasPrefix(token, "!") || strings.HasPrefix(token, "?") {
+		return "", false, false
+	}
+	closing := strings.HasPrefix(token, "/")
+	if closing {
+		token = strings.TrimSpace(strings.TrimPrefix(token, "/"))
+	}
+	selfClosing := strings.HasSuffix(token, "/")
+	if selfClosing {
+		token = strings.TrimSpace(strings.TrimSuffix(token, "/"))
+	}
+	nameEnd := 0
+	for nameEnd < len(token) && isPromptTagNameByte(token[nameEnd]) {
+		nameEnd++
+	}
+	if nameEnd == 0 {
+		return "", false, false
+	}
+	return token[:nameEnd], closing, selfClosing
+}
+
+func isPromptTagNameByte(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' || value >= '0' && value <= '9' || value == '_' || value == '-'
 }
 
 func extractTranscriptTaggedSection(text, tag string) string {
@@ -312,7 +384,6 @@ func SerializeContextEvidence(payload AgentContextPayload) (string, error) {
 			"field_2_occurrence_count":  payload.PersistedContextEntryCount,
 			"persisted_context_records": payload.PersistedRecords,
 		},
-		"heimdall_runtime_metadata": payload.RuntimeMetadata,
 		"latest_persisted_usage_observation": map[string]interface{}{
 			"context_tokens": payload.TotalTokens,
 			"context_limit":  payload.ContextLimit,
@@ -327,138 +398,87 @@ func SerializeContextEvidence(payload AgentContextPayload) (string, error) {
 	})
 }
 
-// Subcategory identifiers in Context Tree
+// Subcategory identifiers in the persisted model-input tree.
 const (
-	SubcatAll = iota // 🌐 FULL OUTBOUND PAYLOAD (ALL)
-	SubcatIdentity
-	SubcatAgentsMD
-	SubcatRuntime
+	SubcatSystemPrompt = iota
 	SubcatTools
-	SubcatSkills
-	SubcatMCP
 	SubcatAnchor
 	SubcatCurrentHistory
-	SubcatTurns
-	SubcatPrompt
-	SubcatBuffers
 )
 
-const SubcatLast = SubcatBuffers
+const SubcatLast = SubcatCurrentHistory
 
-// SerializeSubcategoryRaw serializes ONLY the selected subcategory part into its raw JSON wire representation
+// SerializeSubcategoryRaw serializes only the selected persisted model-input content.
 func SerializeSubcategoryRaw(payload AgentContextPayload, subcatIndex int) (string, error) {
 	var rawObj interface{}
 
 	switch subcatIndex {
-	case SubcatAll:
-		return SerializeContextEvidence(payload)
-
-	case SubcatIdentity:
+	case SubcatSystemPrompt:
 		rawObj = map[string]interface{}{
-			"source":     payload.Provenance["identity"],
-			"parsed_tag": "identity",
-			"text":       payload.IdentityPrompt,
-		}
-
-	case SubcatAgentsMD:
-		rawObj = map[string]interface{}{
-			"source":     payload.Provenance["user_rules"],
-			"parsed_tag": "user_rules",
-			"text":       payload.ConstitutionDoc,
-		}
-
-	case SubcatRuntime:
-		metaLines := make([]string, 0, len(payload.RuntimeMetadata))
-		for _, key := range SortedRuntimeMetadataKeys(payload.RuntimeMetadata) {
-			metaLines = append(metaLines, fmt.Sprintf("%s: %s", key, payload.RuntimeMetadata[key]))
-		}
-		rawObj = map[string]interface{}{
-			"source":                    payload.Provenance["runtime"],
-			"heimdall_process_metadata": metaLines,
+			"text": payload.SystemPrompt,
 		}
 
 	case SubcatTools:
 		rawObj = map[string]interface{}{
-			"source":               payload.Provenance["tools"],
 			"decoded_tool_entries": payload.NativeTools,
 		}
 
-	case SubcatSkills:
-		var skillLines []string
-		for _, s := range payload.ActiveSkills {
-			skillLines = append(skillLines, fmt.Sprintf("- %s (%s): %s", s.Name, s.Path, s.Description))
-		}
-		rawObj = map[string]interface{}{
-			"source":                 payload.Provenance["skills"],
-			"parsed_tag":             "skills",
-			"text":                   payload.SkillsSection,
-			"filesystem_discoveries": skillLines,
-		}
-
-	case SubcatMCP:
-		rawObj = map[string]interface{}{
-			"status":                  "UNKNOWN",
-			"reason":                  "The reverse-engineered persisted schema does not attribute tools to MCP servers.",
-			"mcp_related_system_text": payload.MCPSection,
-		}
-
 	case SubcatAnchor:
-		rawObj = map[string]interface{}{
-			"source":                payload.Provenance["checkpoint"],
-			"checkpoint_step_index": payload.CheckpointStepIndex,
-			"checkpoint_summary":    payload.CheckpointSummary,
+		var checkpoint *PersistedContextRecord
+		for index := range payload.PersistedRecords {
+			if payload.PersistedRecords[index].IsCompactedCheckpoint {
+				checkpoint = &payload.PersistedRecords[index]
+				break
+			}
 		}
-
-	case SubcatTurns:
 		rawObj = map[string]interface{}{
-			"source": payload.Provenance["active_turns"],
-			"events": payload.ActiveHistoryTurns,
+			"checkpoint": checkpoint,
 		}
 
 	case SubcatCurrentHistory:
 		rawObj = map[string]interface{}{
-			"source":        payload.Provenance["persisted_records"],
-			"active_events": payload.PersistedRecords,
-		}
-
-	case SubcatPrompt:
-		rawObj = map[string]interface{}{
-			"source":        payload.Provenance["latest_prompt"],
-			"latest_prompt": payload.LatestPrompt,
-		}
-
-	case SubcatBuffers:
-		rawObj = map[string]interface{}{
-			"source":                payload.Provenance["staged_buffers"],
-			"observedStagedContent": payload.StagedBuffers,
+			"active_events": persistedActiveRecords(payload.PersistedRecords),
 		}
 
 	default:
-		return SerializeContextEvidence(payload)
+		return "", fmt.Errorf("unknown model-input subcategory: %d", subcatIndex)
 	}
 
 	return marshalJSONNoEscape(rawObj)
 }
 
+// SerializeSystemPromptSectionRaw serializes one top-level prompt section.
+func SerializeSystemPromptSectionRaw(payload AgentContextPayload, index int) (string, error) {
+	if index < 0 || index >= len(payload.SystemPromptSections) {
+		return "", fmt.Errorf("unknown system-prompt section: %d", index)
+	}
+	return marshalJSONNoEscape(payload.SystemPromptSections[index])
+}
+
 // SerializePersistedActiveEventRaw serializes either all persisted active events
 // or one selected event without falling back to the full context payload.
 func SerializePersistedActiveEventRaw(payload AgentContextPayload, position int) (string, error) {
+	activeRecords := persistedActiveRecords(payload.PersistedRecords)
 	if position == 0 {
 		return marshalJSONNoEscape(map[string]interface{}{
-			"source":        payload.Provenance["persisted_records"],
-			"active_events": payload.PersistedRecords,
+			"active_events": activeRecords,
 		})
 	}
-	for _, record := range payload.PersistedRecords {
+	for _, record := range activeRecords {
 		if record.Position == position {
 			return marshalJSONNoEscape(map[string]interface{}{
-				"source":       payload.Provenance["persisted_records"],
 				"active_event": record,
 			})
 		}
 	}
 	return marshalJSONNoEscape(map[string]interface{}{
-		"source":       payload.Provenance["persisted_records"],
 		"active_event": nil,
 	})
+}
+
+func persistedActiveRecords(records []PersistedContextRecord) []PersistedContextRecord {
+	if len(records) > 0 && records[0].IsCompactedCheckpoint {
+		return records[1:]
+	}
+	return records
 }
