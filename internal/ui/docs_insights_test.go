@@ -17,9 +17,9 @@ func TestInsightsGuideIsEmbeddedAndSearchableInBothLocales(t *testing.T) {
 				t.Fatal("Insights guide is not available at the start of Docs")
 			}
 			guide := parsedGuideText(items, language)
-			expectations := []string{"Outputs", "Context growth", "Tokens", "Cost", "RELATIVE", "5,000", "2,500", "Usage x/y turns", "Priced x/y", "Partial estimate", ":report", "Privacy"}
+			expectations := []string{"Task usage", "Task output", "Task thinking", "Tool outputs", "STEPS", "Compaction", "RELATIVE", "5,000", "2,500", "Partial task", ":report", "Privacy"}
 			if language == "zh" {
-				expectations = []string{"Insights 使用指南", "本機 Token 估算", "生成序號有間隔", "目前分類裡最大的數值", "5,000", "2,500", "窄版畫面的排名表下方", "生成輪數", "缺少用量資料或價格", ":report", "分享之前請先檢查報告內容"}
+				expectations = []string{"Insights 使用指南", "Task usage", "Task output", "Task thinking", "Tool outputs", "STEPS", "Compaction", "5,000", "2,500", "Partial task", ":report", "分享前請先檢查"}
 			}
 			for _, expected := range expectations {
 				t.Run(expected, func(t *testing.T) {

@@ -4,29 +4,29 @@
   * **Open and navigate** : Press 5 for Insights. Use h/l or Left/Right to change category, j/k or Up/Down to select a row, and Enter to inspect its linked step in History.
   * **Find this guide** : Press 4 for Docs, then / and type Insights. Enter finishes the search; j/k scrolls the guide.
 
-* **Choose the question** : Each category answers a different question. Rows are individual outputs or generations, not totals grouped by tool or model.
-  * **Outputs** : Which local tool results contain the most text? TOKENS is a local token estimate using cl100k_base, with a byte-length fallback if unavailable. A large result is not proof that all of it was sent to the model or billed.
-  * **Context growth** : Between comparable generations, where did recorded context increase most? GROWTH is a positive difference, not context-window utilization. Model or source changes, missing measurements, numeric generation gaps and checkpoints prevent comparisons.
-  * **Tokens** : Which generations have the largest recorded input plus available output? Input usage must be available; missing output components are excluded. This is not a ranking of visible response length.
-  * **Cost** : Which generations have the highest reference cost in USD? Calculations use model catalog rates and the pricing-provider assumption. This is not an invoice, subscription charge or guaranteed saving.
+* **Choose the question** : Task rows span one user step through the step before the next user step. A task may contain several model calls, tool calls and compactions.
+  * **Task usage** : Which user tasks made the model process the most tokens? Every observed model call contributes cached input, uncached input, thinking and content output. Repeated context is counted on every call because this is processing volume, not unique context size.
+  * **Task output** : Which user tasks accumulated the most visible model-output tokens across all observed model calls?
+  * **Task thinking** : Which user tasks accumulated the most observed thinking-output tokens? More thinking can indicate difficulty, exploration, confusion or retries; it does not establish quality.
+  * **Tool outputs** : Which local tool results contain the most text? TOKENS is a local estimate using cl100k_base, with a byte-length fallback if unavailable. It excludes model thinking and visible model output.
+  * **Compaction** : A checkpoint does not start a new user task. Task details show its count and the starting, peak and ending observed context states. Those states are not subtracted into a net-growth claim.
 
 * **Read the chart** : RELATIVE compares each value with the largest value in the current category. A full bar means largest here, not 100% of the session, context capacity or budget.
-  * **Example** : If outputs contain 5,000 and 2,500 estimated tokens, the first bar is full and the second is half-length. It does not mean the first output wasted 5,000 tokens.
-  * **Changing categories** : Each category has its own scale; equal bar lengths in Outputs and Cost do not represent equal quantities. New data can rescale the bars.
+  * **Example** : If values are 5,000 and 2,500 tokens, the first bar is full and the second is half-length. It does not mean the first item wasted 5,000 tokens.
+  * **Changing categories** : Each category has its own scale; equal bar lengths in different categories do not represent equal quantities. New data can rescale the bars.
   * **Small values and zeros** : Partial blocks keep small positive values visible. Read the number for precision; zero is different from unavailable.
 
-* **Read the row and evidence** : STEP is the transcript step to inspect. The highlighted row drives SELECTED EVIDENCE on the right in wide windows or below the ranking in narrow windows.
-  * **Source** : The filename and locator identify the supporting transcript step or database record. Context growth evidence also identifies the generation pair in the wide layout.
+* **Read the row and evidence** : USER STEP identifies a task's opening prompt; STEPS counts persisted history records in the task. A Tool output is one step. The highlighted row drives SELECTED EVIDENCE on the right in wide windows or below the ranking in narrow windows.
+  * **Source** : The filename and locator identify the supporting user step, tool result or generation record. Task details show the full step span, call coverage, compactions and token breakdown.
   * **Enter** : Opens the linked History step and clears History filters so the evidence is visible. An unlinked or missing step produces a message instead of jumping to an unrelated event.
   * **Top N / total** : Insights exposes up to ten ranked items. A short terminal shows fewer rows at once; j/k scrolls that list. JSON export includes the full rankings.
 
-* **Check coverage before conclusions** : The top strip summarizes the session, not just the selected row or the visible top ten. Input totals accumulate generation usage; they are not the current context-window size.
-  * **Usage x/y turns** : x generations have input usage available out of y analyzed generations. This does not promise that all output fields are present.
-  * **Priced x/y** : x generations have enough input usage and recognized reference pricing to estimate a cost. Missing output can still make that estimate partial.
-  * **Asterisk and Partial estimate** : Some generation pricing or usage is missing. Treat the displayed cost as incomplete; do not compare it as though coverage were complete.
-  * **Ready and last-read time** : These describe source monitoring, not whether the agent is thinking. Read interrupted retains the last successful data while retrying. No comparable observations means insufficient eligible data, not proof of no growth or cost.
+* **Check coverage before conclusions** : Task totals contain available observations, not invented values. Repeated model-call input is counted repeatedly because it represents processing work.
+  * **Partial task** : At least one model call lacks a required usage component. Treat the displayed amount as a lower bound over available fields.
+  * **Context start / peak / end** : These are recorded context states within the task. They do not attribute growth to one prompt or tool result, and a compaction can make the ending state smaller than the starting state.
+  * **Usage x/y turns** : The session summary still reports generation-level input coverage. It does not promise that all split output fields are present.
+  * **Ready and last-read time** : These describe source monitoring, not whether the agent is thinking. Read interrupted retains the last successful data while retrying.
 
-* **A practical inspection loop** : Start with Outputs, select a large result, and press Enter. Decide whether its content was useful before changing the tool or prompt.
-  * **Cross-check** : Inspect nearby Context growth, Tokens and Cost entries. Temporal proximity suggests where to investigate; it does not prove that one tool result caused the increase.
-  * **Save the evidence** : In Insights, type :report and press Enter. A new JSON file in the current directory preserves the displayed revision, full rankings, measurement methods and pricing assumptions.
-  * **Privacy** : The report omits raw prompts and tool output text, but includes session identifiers, model/tool names and evidence locations. Review it before sharing.
+* **A practical inspection loop** : Start with Task usage, open a large task, and inspect its step and model-call counts. Compare Task output with Task thinking, then inspect large Tool outputs inside the same step span.
+  * **Save the evidence** : In Insights, type :report and press Enter. A new JSON file in the current directory preserves the displayed revision, full rankings and measurement methods.
+  * **Privacy** : The report omits raw prompts and tool output text, but includes session identifiers, task step numbers, model/tool names and evidence locations. Review it before sharing.

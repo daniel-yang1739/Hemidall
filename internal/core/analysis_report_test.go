@@ -15,7 +15,6 @@ const (
 	reportTestThirdStep  = 3
 	reportTestInput      = 100
 	reportTestContext    = 200
-	reportTestGrowth     = 100
 	reportTestRevision   = 7
 	reportTestModel      = "gemini-3.7-flash"
 )
@@ -31,6 +30,7 @@ func TestReportPreservesMissingZeroAndDerivedMeasurements(t *testing.T) {
 	}{
 		{"missing", UsageObservation{}, MeasurementUnavailable, false, false, true},
 		{"observed-zero", UsageObservation{HasUncachedInputTokens: true, HasCachedInputTokens: true, HasThinkingOutputTokens: true, HasOutputContentTokens: true}, MeasurementObserved, true, true, false},
+		{"aggregate-output", UsageObservation{HasUncachedInputTokens: true, HasTotalOutputTokens: true, TotalOutputTokens: reportTestInput}, MeasurementDerived, false, true, false},
 		{"inferred-cache", UsageObservation{HasUncachedInputTokens: true, UncachedInputTokens: reportTestInput}, MeasurementDerived, false, true, true},
 		{"cache-only", UsageObservation{HasCachedInputTokens: true, CachedInputTokens: reportTestInput}, MeasurementObserved, false, false, true},
 	}
@@ -49,7 +49,7 @@ func TestReportCountsGenerationsNotStepsAndReplacesDuplicateIDs(t *testing.T) {
 		{ID: "1", StepIndex: reportTestFirstStep, ModelID: reportTestModel, Usage: UsageObservation{HasUncachedInputTokens: true, UncachedInputTokens: 10}},
 		{ID: "2", StepIndex: reportTestFirstStep, ModelID: reportTestModel, Usage: UsageObservation{HasUncachedInputTokens: true, UncachedInputTokens: 20}},
 		{ID: "1", StepIndex: reportTestFirstStep, ModelID: reportTestModel, Usage: UsageObservation{HasUncachedInputTokens: true, UncachedInputTokens: 30}},
-	}, Steps: []Step{{Index: reportTestFirstStep, Kind: string(StepTypeModelResponse)}}}
+	}, Steps: []Step{{Index: reportTestFirstStep, Kind: string(StepTypeUserInput), Content: "private prompt"}}}
 	report := BuildSessionAnalysisReport(session)
 	dashboard := BuildDashboardReadModel(session)
 	if report.Metrics.TotalStats.TurnCount != 2 || report.Metrics.TotalStats.UncachedInputTokenSum != 50 {
@@ -58,36 +58,69 @@ func TestReportCountsGenerationsNotStepsAndReplacesDuplicateIDs(t *testing.T) {
 	if !reflect.DeepEqual(report.Metrics, dashboard.Metrics) {
 		t.Fatal("report and dashboard disagree")
 	}
-	if report.TokenConsumers[0].GenerationID != "1" {
-		t.Fatal("incorrect consumption ranking")
+	if len(report.TaskUsage) != 1 || report.TaskUsage[0].Amount.Value != 50 || report.TaskUsage[0].Task.ModelCalls != 2 {
+		t.Fatalf("generation usage was not aggregated into one task: %+v", report.TaskUsage)
 	}
 }
 
-func TestContextGrowthDoesNotCrossEvidenceBoundaries(t *testing.T) {
-	cases := []struct {
-		name        string
-		nextID      string
-		nextModel   string
-		hasContext  bool
-		checkpoints []Step
-		expected    int
-	}{
-		{"comparable", "2", reportTestModel, true, nil, 1},
-		{"missing-field", "2", reportTestModel, false, nil, 0},
-		{"model-switch", "2", "other-model", true, nil, 0},
-		{"generation-gap", "3", reportTestModel, true, nil, 0},
-		{"checkpoint", "2", reportTestModel, true, []Step{{Index: reportTestSecondStep, Kind: string(StepTypeCheckpoint)}}, 0},
+func TestTaskRankingsAggregateUserSpanAcrossCompaction(t *testing.T) {
+	report := BuildSessionAnalysisReport(Session{Steps: []Step{
+		{Index: 1, Kind: string(StepTypeUserInput), Content: "first private prompt"},
+		{Index: 2, Kind: string(StepTypeModelResponse)},
+		{Index: 3, Kind: string(StepTypeCheckpoint)},
+		{Index: 4, Kind: string(StepTypeModelResponse)},
+		{Index: 5, Kind: string(StepTypeUserInput), Content: "second private prompt"},
+		{Index: 6, Kind: string(StepTypeModelResponse)},
+	}, Generations: []Generation{
+		{ID: "1", StepIndex: 2, HasStepIndex: true, ModelID: reportTestModel, Usage: completeTaskUsage(10, 3, 2, 100)},
+		{ID: "2", StepIndex: 4, HasStepIndex: true, ModelID: reportTestModel, Usage: completeTaskUsage(20, 4, 5, 50)},
+		{ID: "3", StepIndex: 6, HasStepIndex: true, ModelID: reportTestModel, Usage: completeTaskUsage(7, 1, 1, 60)},
+	}})
+
+	if len(report.TaskUsage) != 2 || len(report.TaskThinking) != 2 || len(report.TaskOutputs) != 2 {
+		t.Fatalf("task rankings did not preserve user boundaries: %+v", report)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			report := BuildSessionAnalysisReport(Session{Steps: tc.checkpoints, Generations: []Generation{
-				{ID: "1", StepIndex: reportTestFirstStep, ModelID: reportTestModel, Usage: UsageObservation{HasObservedContextTokens: true, ObservedContextTokens: reportTestInput}},
-				{ID: tc.nextID, StepIndex: reportTestThirdStep, ModelID: tc.nextModel, Usage: UsageObservation{HasObservedContextTokens: tc.hasContext, ObservedContextTokens: reportTestContext}},
-			}})
-			if len(report.ContextGrowth) != tc.expected {
-				t.Fatalf("growth crossed boundary: %+v", report.ContextGrowth)
-			}
-		})
+	first := report.TaskUsage[0]
+	if first.StepIndex != 1 || first.Amount.Value != 44 || first.Task.StepCount != 4 || first.Task.ModelCalls != 2 || first.Task.Compactions != 1 {
+		t.Fatalf("first task did not aggregate both sides of compaction: %+v", first)
+	}
+	if first.Task.StartingContextTokens.Value != 100 || first.Task.PeakContextTokens.Value != 100 || first.Task.EndingContextTokens.Value != 50 {
+		t.Fatalf("context trajectory was converted incorrectly: %+v", first.Task)
+	}
+	if report.TaskThinking[0].Amount.Value != 7 || report.TaskOutputs[0].Amount.Value != 7 {
+		t.Fatalf("split output rankings are incorrect: thinking=%+v content=%+v", report.TaskThinking, report.TaskOutputs)
+	}
+}
+
+func TestTaskRankingsExcludeUnassignedAndEmptyUserSpans(t *testing.T) {
+	report := BuildSessionAnalysisReport(Session{
+		Steps:       []Step{{Index: 2, Kind: string(StepTypeModelResponse)}, {Index: 3, Kind: string(StepTypeUserInput)}},
+		Generations: []Generation{{ID: "1", StepIndex: 2, HasStepIndex: true, ModelID: reportTestModel, Usage: completeTaskUsage(10, 1, 1, 20)}},
+	})
+	if len(report.TaskUsage) != 0 || len(report.TaskThinking) != 0 || len(report.TaskOutputs) != 0 {
+		t.Fatalf("generation before the first user step was assigned to an empty task: %+v", report)
+	}
+}
+
+func TestTaskUsageMarksMissingGenerationFieldsPartial(t *testing.T) {
+	report := BuildSessionAnalysisReport(Session{
+		Steps: []Step{{Index: 1, Kind: string(StepTypeUserInput)}, {Index: 2, Kind: string(StepTypeModelResponse)}, {Index: 3, Kind: string(StepTypeModelResponse)}},
+		Generations: []Generation{
+			{ID: "1", StepIndex: 2, HasStepIndex: true, ModelID: reportTestModel, Usage: UsageObservation{}},
+			{ID: "2", StepIndex: 3, HasStepIndex: true, ModelID: reportTestModel, Usage: completeTaskUsage(10, 1, 1, 20)},
+		},
+	})
+	if len(report.TaskUsage) != 1 || !report.TaskUsage[0].Task.PartialUsage || report.TaskUsage[0].Task.UsageCalls != 1 || report.TaskUsage[0].Task.ModelCalls != 2 {
+		t.Fatalf("missing generation usage was not marked partial: %+v", report.TaskUsage)
+	}
+}
+
+func completeTaskUsage(input, thinking, content, context int) UsageObservation {
+	return UsageObservation{
+		HasUncachedInputTokens: true, UncachedInputTokens: input,
+		HasCachedInputTokens: true, HasThinkingOutputTokens: true, ThinkingOutputTokens: thinking,
+		HasOutputContentTokens: true, OutputContentTokens: content,
+		HasObservedContextTokens: true, ObservedContextTokens: context,
 	}
 }
 
@@ -104,7 +137,7 @@ func TestReportExcludesPayloadAndMarksUnknownPrices(t *testing.T) {
 	if strings.Contains(output.String(), "PRIVATE_TOOL_OUTPUT") || decoded.SchemaVersion != ReportSchemaVersion {
 		t.Fatal("export leaked content or lost schema version")
 	}
-	if len(decoded.CostConsumers) != 0 || !decoded.Coverage.CostPartial || decoded.Metrics.TotalStats.HasEstimatedCost {
+	if !decoded.Coverage.CostPartial || decoded.Metrics.TotalStats.HasEstimatedCost {
 		t.Fatal("unknown price must remain unavailable")
 	}
 	if len(decoded.ToolOutputs) != 1 || decoded.ToolOutputs[0].Amount.Kind != MeasurementEstimated {

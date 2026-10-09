@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	ReportSchemaVersion    = 1
+	ReportSchemaVersion    = 2
 	InsightsRankingLimit   = 10
 	MeasurementObserved    = "observed"
 	MeasurementDerived     = "derived"
@@ -34,6 +34,14 @@ func observed(value int, available bool, method string) Measurement {
 	return Measurement{Value: float64(value), Available: true, Kind: MeasurementObserved, Method: method}
 }
 
+func estimatedTextTokens(content string) Measurement {
+	method := defaultEncoding
+	if _, err := GetTokenizer(); err != nil {
+		method = "byte-length / 4 fallback"
+	}
+	return Measurement{Value: float64(CountTokens(content)), Available: true, Kind: MeasurementEstimated, Method: method}
+}
+
 // GenerationAnalysis keeps billing evidence separate from readable content.
 type GenerationAnalysis struct {
 	ID             string       `json:"id"`
@@ -46,6 +54,7 @@ type GenerationAnalysis struct {
 	CachedInput    Measurement  `json:"cached_input"`
 	ThinkingOutput Measurement  `json:"thinking_output"`
 	ContentOutput  Measurement  `json:"content_output"`
+	TotalOutput    Measurement  `json:"total_output"`
 	TotalTokens    Measurement  `json:"total_tokens"`
 	EstimatedCost  Measurement  `json:"estimated_cost_usd"`
 	CostPartial    bool         `json:"cost_partial"`
@@ -54,13 +63,34 @@ type GenerationAnalysis struct {
 }
 
 type RankedObservation struct {
-	StepIndex            int         `json:"step_index"`
-	HasStepIndex         bool        `json:"has_step_index"`
-	GenerationID         string      `json:"generation_id,omitempty"`
-	PreviousGenerationID string      `json:"previous_generation_id,omitempty"`
-	Label                string      `json:"label"`
-	Amount               Measurement `json:"amount"`
-	Evidence             []Evidence  `json:"evidence"`
+	StepIndex            int                     `json:"step_index"`
+	HasStepIndex         bool                    `json:"has_step_index"`
+	GenerationID         string                  `json:"generation_id,omitempty"`
+	PreviousGenerationID string                  `json:"previous_generation_id,omitempty"`
+	Label                string                  `json:"label"`
+	Amount               Measurement             `json:"amount"`
+	Task                 *TaskObservationDetails `json:"task,omitempty"`
+	Evidence             []Evidence              `json:"evidence"`
+}
+
+// TaskObservationDetails describes one user-request span without treating a
+// compaction boundary as a new user task.
+type TaskObservationDetails struct {
+	EndStepIndex          int         `json:"end_step_index"`
+	StepCount             int         `json:"step_count"`
+	ModelCalls            int         `json:"model_calls"`
+	UsageCalls            int         `json:"usage_calls"`
+	ThinkingCalls         int         `json:"thinking_calls"`
+	ContentOutputCalls    int         `json:"content_output_calls"`
+	Compactions           int         `json:"compactions"`
+	PartialUsage          bool        `json:"partial_usage"`
+	InputTokens           Measurement `json:"input_tokens"`
+	ThinkingTokens        Measurement `json:"thinking_tokens"`
+	ContentOutputTokens   Measurement `json:"content_output_tokens"`
+	ToolOutputTokens      Measurement `json:"tool_output_tokens"`
+	StartingContextTokens Measurement `json:"starting_context_tokens"`
+	PeakContextTokens     Measurement `json:"peak_context_tokens"`
+	EndingContextTokens   Measurement `json:"ending_context_tokens"`
 }
 
 type ReportCoverage struct {
@@ -73,18 +103,18 @@ type ReportCoverage struct {
 
 // SessionAnalysisReport deliberately contains no prompts or tool output text.
 type SessionAnalysisReport struct {
-	SchemaVersion  int                     `json:"schema_version"`
-	Session        SessionRef              `json:"session"`
-	Revision       uint64                  `json:"revision"`
-	Health         MonitorHealth           `json:"health"`
-	Coverage       ReportCoverage          `json:"coverage"`
-	Metrics        SessionAggregateMetrics `json:"metrics"`
-	Generations    []GenerationAnalysis    `json:"generations"`
-	ToolOutputs    []RankedObservation     `json:"tool_outputs"`
-	ContextGrowth  []RankedObservation     `json:"context_growth"`
-	TokenConsumers []RankedObservation     `json:"token_consumers"`
-	CostConsumers  []RankedObservation     `json:"cost_consumers"`
-	Notes          []string                `json:"notes"`
+	SchemaVersion int                     `json:"schema_version"`
+	Session       SessionRef              `json:"session"`
+	Revision      uint64                  `json:"revision"`
+	Health        MonitorHealth           `json:"health"`
+	Coverage      ReportCoverage          `json:"coverage"`
+	Metrics       SessionAggregateMetrics `json:"metrics"`
+	Generations   []GenerationAnalysis    `json:"generations"`
+	TaskUsage     []RankedObservation     `json:"task_usage"`
+	TaskThinking  []RankedObservation     `json:"task_thinking"`
+	ToolOutputs   []RankedObservation     `json:"tool_outputs"`
+	TaskOutputs   []RankedObservation     `json:"task_outputs"`
+	Notes         []string                `json:"notes"`
 }
 
 func canonicalGenerations(generations []Generation) []Generation {
@@ -128,23 +158,20 @@ func BuildSessionAnalysisReport(session Session) SessionAnalysisReport {
 	report := SessionAnalysisReport{
 		SchemaVersion: ReportSchemaVersion, Session: session.Ref, Revision: session.Revision,
 		Health: MonitorHealth{State: MonitorSnapshot}, Metrics: generationMetrics(session.Generations),
-		Generations: []GenerationAnalysis{}, ToolOutputs: []RankedObservation{}, ContextGrowth: []RankedObservation{},
-		TokenConsumers: []RankedObservation{}, CostConsumers: []RankedObservation{},
+		Generations: []GenerationAnalysis{}, TaskUsage: []RankedObservation{}, TaskThinking: []RankedObservation{},
+		TaskOutputs: []RankedObservation{}, ToolOutputs: []RankedObservation{},
 		Notes: []string{
 			"Tool output sizes are local text estimates, not per-tool invoices or proof of repeated transmission.",
-			"Costs use the recorded catalog rates and pricing-provider assumption; they are not an invoice.",
+			"Task rankings span one user step through the step before the next user step.",
+			"Task usage sums repeated model-call input processing; it is not unique context size.",
 			"Missing cache scalars in complete input usage are inferred zero; other missing fields remain unavailable.",
-			"Context growth compares adjacent linked generations of the same model and source, without crossing checkpoints.",
-			"Compaction changes do not establish compressor savings or task quality.",
+			"Compaction stays inside its user task and is counted, but unpersisted compactor usage remains unavailable.",
+			"Starting, peak and ending context are observed states, not attribution of context to one message.",
 		},
 	}
 	steps := make(map[int]Step, len(session.Steps))
-	checkpoints := []int{}
 	for _, step := range session.Steps {
 		steps[step.Index] = step
-		if StepType(step.Kind) == StepTypeCheckpoint || step.Scope == ScopeSystemCompaction {
-			checkpoints = append(checkpoints, step.Index)
-		}
 	}
 	for _, step := range session.Steps {
 		event := UnifiedAgentEvent{Type: StepType(step.Kind), Scope: step.Scope}
@@ -157,14 +184,9 @@ func BuildSessionAnalysisReport(session Session) SessionAnalysisReport {
 		} else if parent, ok := steps[step.ParentStepIndex]; ok && len(parent.ToolCalls) == 1 {
 			label = parent.ToolCalls[0].Name
 		}
-		method := defaultEncoding
-		if _, err := GetTokenizer(); err != nil {
-			method = "byte-length / 4 fallback"
-		}
 		report.ToolOutputs = append(report.ToolOutputs, RankedObservation{StepIndex: step.Index, HasStepIndex: true, Label: label,
-			Amount: Measurement{Value: float64(CountTokens(step.Content)), Available: true, Kind: MeasurementEstimated, Method: method}, Evidence: append([]Evidence(nil), step.Evidence...)})
+			Amount: estimatedTextTokens(step.Content), Evidence: append([]Evidence(nil), step.Evidence...)})
 	}
-	var previous *GenerationAnalysis
 	for _, generation := range canonicalGenerations(session.Generations) {
 		item := analyzeGeneration(generation)
 		report.Coverage.Generations++
@@ -177,24 +199,10 @@ func BuildSessionAnalysisReport(session Session) SessionAnalysisReport {
 		if item.CostPartial || !item.EstimatedCost.Available {
 			report.Coverage.CostPartial = true
 		}
-		if previous != nil && comparableContext(*previous, item, checkpoints) {
-			growth := item.Context.Value - previous.Context.Value
-			if growth > 0 {
-				report.ContextGrowth = append(report.ContextGrowth, RankedObservation{StepIndex: item.StepIndex, HasStepIndex: item.HasStepIndex,
-					GenerationID: item.ID, PreviousGenerationID: previous.ID, Label: item.Model,
-					Amount: Measurement{Value: growth, Available: true, Kind: MeasurementDerived, Method: "difference of observed context-state values"}, Evidence: item.Evidence})
-			}
-		}
 		report.Generations = append(report.Generations, item)
-		previous = &report.Generations[len(report.Generations)-1]
-		if item.TotalTokens.Available {
-			report.TokenConsumers = append(report.TokenConsumers, generationRanking(item, item.TotalTokens))
-		}
-		if item.EstimatedCost.Available {
-			report.CostConsumers = append(report.CostConsumers, generationRanking(item, item.EstimatedCost))
-		}
 	}
-	for _, ranking := range [][]RankedObservation{report.ToolOutputs, report.ContextGrowth, report.TokenConsumers, report.CostConsumers} {
+	report.TaskUsage, report.TaskThinking, report.TaskOutputs = buildTaskRankings(session.Steps, report.Generations)
+	for _, ranking := range [][]RankedObservation{report.TaskUsage, report.TaskOutputs, report.TaskThinking, report.ToolOutputs} {
 		sortRanking(ranking)
 	}
 	report.Coverage.ParserDiagnostics = session.DiagnosticCount
@@ -209,6 +217,7 @@ func analyzeGeneration(g Generation) GenerationAnalysis {
 		CachedInput:    observed(u.CachedInputTokens, u.HasCachedInputTokens, "persisted usage field"),
 		ThinkingOutput: observed(u.ThinkingOutputTokens, u.HasThinkingOutputTokens || u.ThinkingOutputTokens > 0, "persisted usage field"),
 		ContentOutput:  observed(u.OutputContentTokens, u.HasOutputContentTokens || u.OutputContentTokens > 0, "persisted usage field"),
+		TotalOutput:    observed(u.TotalOutputTokens, u.HasTotalOutputTokens, "persisted aggregate usage field"),
 		TotalTokens:    Measurement{Kind: MeasurementUnavailable, Method: "sum of available usage components"},
 		EstimatedCost:  Measurement{Kind: MeasurementUnavailable, Method: "catalog reference estimate"}, Evidence: append([]Evidence(nil), g.Evidence...),
 	}
@@ -218,39 +227,173 @@ func analyzeGeneration(g Generation) GenerationAnalysis {
 	if r.Provider == "" {
 		r.Provider = ProviderVertexAI
 	}
-	r.CostPartial = !r.UncachedInput.Available || !r.ThinkingOutput.Available || !r.ContentOutput.Available
+	output := r.TotalOutput
+	if !output.Available && r.ThinkingOutput.Available && r.ContentOutput.Available {
+		output = Measurement{Value: r.ThinkingOutput.Value + r.ContentOutput.Value, Available: true, Kind: MeasurementDerived, Method: "sum of observed output components"}
+	}
+	r.CostPartial = !r.UncachedInput.Available || !output.Available
 	if r.UncachedInput.Available {
-		r.TotalTokens = Measurement{Value: r.UncachedInput.Value + r.CachedInput.Value + r.ThinkingOutput.Value + r.ContentOutput.Value, Available: true, Kind: MeasurementDerived, Method: "sum of available usage components; see field availability"}
+		r.TotalTokens = Measurement{Value: r.UncachedInput.Value + r.CachedInput.Value + output.Value, Available: true, Kind: MeasurementDerived, Method: "sum of complete input and available aggregate output"}
 		if price, ok := ResolveModelInfoByString(r.Provider, r.Model); ok {
 			r.Pricing = &price
-			r.EstimatedCost = Measurement{Value: price.CalculateCost(int(r.UncachedInput.Value), int(r.CachedInput.Value), int(r.ThinkingOutput.Value+r.ContentOutput.Value)), Available: true, Kind: MeasurementDerived, Method: "catalog reference rates; omitted output is excluded"}
+			r.EstimatedCost = Measurement{Value: price.CalculateCost(int(r.UncachedInput.Value), int(r.CachedInput.Value), int(output.Value)), Available: true, Kind: MeasurementDerived, Method: "catalog reference rates; omitted output is excluded"}
 		}
 	}
 	return r
 }
 
-func comparableContext(previous, current GenerationAnalysis, checkpoints []int) bool {
-	if !previous.Context.Available || !current.Context.Available || !previous.HasStepIndex || !current.HasStepIndex || previous.Model == "" || current.Model != previous.Model || current.Provider != previous.Provider || current.StepIndex < previous.StepIndex {
-		return false
-	}
-	previousID, previousErr := strconv.ParseUint(previous.ID, generationNumberBase, generationNumberBits)
-	currentID, currentErr := strconv.ParseUint(current.ID, generationNumberBase, generationNumberBits)
-	if previousErr == nil && currentErr == nil && currentID-previousID != 1 {
-		return false
-	}
-	if len(previous.Evidence) > 0 && len(current.Evidence) > 0 && previous.Evidence[0].Source != current.Evidence[0].Source {
-		return false
-	}
-	for _, index := range checkpoints {
-		if index > previous.StepIndex && index <= current.StepIndex {
-			return false
-		}
-	}
-	return true
+type taskRankingAccumulator struct {
+	startStep      Step
+	endStepIndex   int
+	nextStartIndex int
+	details        TaskObservationDetails
+	processed      float64
+	input          float64
+	thinking       float64
+	contentOutput  float64
+	evidence       []Evidence
+	firstGenID     string
+	lastGenID      string
+	contextSeen    bool
 }
 
-func generationRanking(g GenerationAnalysis, amount Measurement) RankedObservation {
-	return RankedObservation{StepIndex: g.StepIndex, HasStepIndex: g.HasStepIndex, GenerationID: g.ID, Label: g.Model, Amount: amount, Evidence: g.Evidence}
+func buildTaskRankings(steps []Step, generations []GenerationAnalysis) ([]RankedObservation, []RankedObservation, []RankedObservation) {
+	tasks := taskAccumulators(steps)
+	if len(tasks) == 0 {
+		return []RankedObservation{}, []RankedObservation{}, []RankedObservation{}
+	}
+	taskIndex := 0
+	for _, generation := range generations {
+		if !generation.HasStepIndex {
+			continue
+		}
+		for taskIndex+1 < len(tasks) && generation.StepIndex >= tasks[taskIndex+1].startStep.Index {
+			taskIndex++
+		}
+		task := &tasks[taskIndex]
+		if generation.StepIndex < task.startStep.Index || task.nextStartIndex > 0 && generation.StepIndex >= task.nextStartIndex {
+			continue
+		}
+		accumulateTaskGeneration(task, generation)
+	}
+
+	usage := make([]RankedObservation, 0, len(tasks))
+	thinking := make([]RankedObservation, 0, len(tasks))
+	content := make([]RankedObservation, 0, len(tasks))
+	for index := range tasks {
+		task := &tasks[index]
+		finalizeTaskDetails(task)
+		if task.details.UsageCalls > 0 {
+			usage = append(usage, taskRanking(*task, Measurement{Value: task.processed, Available: true, Kind: MeasurementDerived, Method: "sum of available generation usage within user-step span"}))
+		}
+		if task.details.ThinkingCalls > 0 {
+			thinking = append(thinking, taskRanking(*task, task.details.ThinkingTokens))
+		}
+		if task.details.ContentOutputCalls > 0 {
+			content = append(content, taskRanking(*task, task.details.ContentOutputTokens))
+		}
+	}
+	return usage, thinking, content
+}
+
+func taskAccumulators(steps []Step) []taskRankingAccumulator {
+	ordered := append([]Step(nil), steps...)
+	sort.SliceStable(ordered, func(left, right int) bool { return ordered[left].Index < ordered[right].Index })
+	tasks := make([]taskRankingAccumulator, 0)
+	for _, step := range ordered {
+		isUser := StepType(step.Kind) == StepTypeUserInput || step.Scope == ScopeUserInteraction
+		if isUser {
+			if len(tasks) > 0 {
+				tasks[len(tasks)-1].nextStartIndex = step.Index
+			}
+			tasks = append(tasks, taskRankingAccumulator{startStep: step, endStepIndex: step.Index, details: TaskObservationDetails{StepCount: 1}, evidence: append([]Evidence(nil), step.Evidence...)})
+			continue
+		}
+		if len(tasks) == 0 {
+			continue
+		}
+		task := &tasks[len(tasks)-1]
+		task.endStepIndex = step.Index
+		task.details.StepCount++
+		if StepType(step.Kind) == StepTypeCheckpoint || step.Scope == ScopeSystemCompaction {
+			task.details.Compactions++
+		}
+		event := UnifiedAgentEvent{Type: StepType(step.Kind), Scope: step.Scope}
+		if event.IsLocalStep() && step.Content != "" {
+			measurement := estimatedTextTokens(step.Content)
+			task.details.ToolOutputTokens.Value += measurement.Value
+			task.details.ToolOutputTokens.Available = true
+			task.details.ToolOutputTokens.Kind = MeasurementEstimated
+			task.details.ToolOutputTokens.Method = measurement.Method
+		}
+	}
+	return tasks
+}
+
+func accumulateTaskGeneration(task *taskRankingAccumulator, generation GenerationAnalysis) {
+	task.details.ModelCalls++
+	if task.firstGenID == "" {
+		task.firstGenID = generation.ID
+	}
+	task.lastGenID = generation.ID
+	if len(task.evidence) == 0 {
+		task.evidence = append([]Evidence(nil), generation.Evidence...)
+	}
+	if generation.TotalTokens.Available {
+		task.processed += generation.TotalTokens.Value
+		task.details.UsageCalls++
+	}
+	if generation.UncachedInput.Available {
+		task.input += generation.UncachedInput.Value + generation.CachedInput.Value
+	}
+	if generation.ThinkingOutput.Available {
+		task.thinking += generation.ThinkingOutput.Value
+		task.details.ThinkingCalls++
+	}
+	if generation.ContentOutput.Available {
+		task.contentOutput += generation.ContentOutput.Value
+		task.details.ContentOutputCalls++
+	}
+	if generation.CostPartial {
+		task.details.PartialUsage = true
+	}
+	if generation.Context.Available {
+		if !task.contextSeen {
+			task.details.StartingContextTokens = generation.Context
+			task.details.PeakContextTokens = generation.Context
+			task.contextSeen = true
+		}
+		if generation.Context.Value > task.details.PeakContextTokens.Value {
+			task.details.PeakContextTokens = generation.Context
+		}
+		task.details.EndingContextTokens = generation.Context
+	}
+}
+
+func finalizeTaskDetails(task *taskRankingAccumulator) {
+	task.details.EndStepIndex = task.endStepIndex
+	task.details.PartialUsage = task.details.PartialUsage || task.details.UsageCalls < task.details.ModelCalls
+	if task.details.UsageCalls > 0 {
+		task.details.InputTokens = Measurement{Value: task.input, Available: true, Kind: MeasurementDerived, Method: "sum of available cached and uncached input usage"}
+	}
+	if task.details.ThinkingCalls > 0 {
+		task.details.ThinkingTokens = Measurement{Value: task.thinking, Available: true, Kind: MeasurementDerived, Method: "sum of observed thinking output within user-step span"}
+	}
+	if task.details.ContentOutputCalls > 0 {
+		task.details.ContentOutputTokens = Measurement{Value: task.contentOutput, Available: true, Kind: MeasurementDerived, Method: "sum of observed content output within user-step span"}
+	}
+}
+
+func taskRanking(task taskRankingAccumulator, amount Measurement) RankedObservation {
+	details := task.details
+	return RankedObservation{
+		StepIndex: task.startStep.Index, HasStepIndex: true, GenerationID: task.lastGenID, PreviousGenerationID: task.firstGenID,
+		Label: taskLabel(task.startStep), Amount: amount, Task: &details, Evidence: append([]Evidence(nil), task.evidence...),
+	}
+}
+
+func taskLabel(step Step) string {
+	return fmt.Sprintf("User task #%d", step.Index)
 }
 
 func sortRanking(items []RankedObservation) {
@@ -283,7 +426,7 @@ func WriteAnalysisReport(writer io.Writer, report SessionAnalysisReport, format 
 		groups := []struct {
 			name  string
 			items []RankedObservation
-		}{{"TOOL OUTPUTS (LOCAL TOKEN ESTIMATES)", report.ToolOutputs}, {"CONTEXT GROWTH (OBSERVED DIFFERENCES)", report.ContextGrowth}, {"TOKEN CONSUMERS (AVAILABLE USAGE)", report.TokenConsumers}, {"COST CONSUMERS (REFERENCE USD)", report.CostConsumers}}
+		}{{"TASK USAGE (OBSERVED TOKEN PROCESSING)", report.TaskUsage}, {"TASK OUTPUT (OBSERVED OUTPUT)", report.TaskOutputs}, {"TASK THINKING (OBSERVED OUTPUT)", report.TaskThinking}, {"TOOL OUTPUTS (LOCAL TOKEN ESTIMATES)", report.ToolOutputs}}
 		for _, group := range groups {
 			if _, err := fmt.Fprintln(writer, "\n"+group.name); err != nil {
 				return err

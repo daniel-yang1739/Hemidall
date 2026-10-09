@@ -26,6 +26,7 @@ const (
 	insightsDetailWidth        = 32
 	insightsColumnGap          = 3
 	insightsValueWidth         = 12
+	insightsCountWidth         = 7
 	insightsStepWidth          = 10
 	insightsRankWidth          = 4
 	insightsSmallestCost       = 0.0001
@@ -67,13 +68,13 @@ func (m Model) exportAnalysisReportCmd() tea.Cmd {
 func (m Model) insightItems() (string, []core.RankedObservation) {
 	switch m.insightsGroup {
 	case 1:
-		return "Context growth · observed differences", m.analysisReport.ContextGrowth
+		return "Task output · observed tokens", m.analysisReport.TaskOutputs
 	case 2:
-		return "Token consumers · available usage", m.analysisReport.TokenConsumers
+		return "Task thinking · observed tokens", m.analysisReport.TaskThinking
 	case 3:
-		return "Cost consumers · reference USD", m.analysisReport.CostConsumers
+		return "Tool outputs · local estimates", m.analysisReport.ToolOutputs
 	default:
-		return "Tool outputs · local token estimates", m.analysisReport.ToolOutputs
+		return "Task usage · observed processing", m.analysisReport.TaskUsage
 	}
 }
 
@@ -93,7 +94,7 @@ func (m Model) renderInsightsView() string {
 	title, items := m.insightItems()
 	limit := min(len(items), core.InsightsRankingLimit)
 	selected := max(0, min(m.insightsIndex, limit-1))
-	tabs := []string{"Outputs", "Context growth", "Tokens", "Cost"}
+	tabs := []string{"Task usage", "Task output", "Task thinking", "Tool outputs"}
 	for i, tab := range tabs {
 		style := lipgloss.NewStyle().Foreground(ColorLightText)
 		if i == m.insightsGroup {
@@ -189,27 +190,23 @@ func (m Model) insightTable(items []core.RankedObservation, selected, width, hei
 	count := min(limit, max(1, height-insightsTableHeadingRows))
 	start := max(0, min(selected-count+1, limit-count))
 	valueWidth := insightsValueWidth
-	labelWidth := max(1, width-insightsRankWidth-insightsStepWidth-valueWidth)
+	labelWidth := max(1, width-insightsRankWidth-insightsStepWidth-insightsCountWidth-valueWidth)
 	chartWidth := 0
 	if width >= insightsChartMinimumWidth {
 		chartWidth = insightsBarWidth + insightsBarGap
 		labelWidth -= chartWidth
 	}
-	label := "TOOL / ACTION"
+	label := "USER TASK"
 	value := "TOKENS"
-	if m.insightsGroup != 0 {
-		label = "MODEL"
-	}
-	if m.insightsGroup == 1 {
-		value = "GROWTH"
-	}
+	stepLabel := "USER STEP"
 	if m.insightsGroup == 3 {
-		value = "USD"
+		label = "TOOL / ACTION"
+		stepLabel = "STEP"
 	}
-	row := func(rank, step, name, chart, value string) string {
-		return insightCell(rank, insightsRankWidth, false) + insightCell(step, insightsStepWidth, false) + insightCell(name, labelWidth, false) + insightCell(chart, chartWidth, false) + insightCell(value, valueWidth, true)
+	row := func(rank, step, name, chart, count, value string) string {
+		return insightCell(rank, insightsRankWidth, false) + insightCell(step, insightsStepWidth, false) + insightCell(name, labelWidth, false) + insightCell(chart, chartWidth, false) + insightCell(count, insightsCountWidth, true) + insightCell(value, valueWidth, true)
 	}
-	lines := []string{lipgloss.NewStyle().Foreground(insightsCaptionColor).Render(row("", "STEP", label, "RELATIVE", value)), lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", width))}
+	lines := []string{lipgloss.NewStyle().Foreground(insightsCaptionColor).Render(row("", stepLabel, label, "RELATIVE", "STEPS", value)), lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", width))}
 	for i := start; i < start+count; i++ {
 		item := items[i]
 		step := "—"
@@ -217,24 +214,28 @@ func (m Model) insightTable(items []core.RankedObservation, selected, width, hei
 			step = fmt.Sprintf("#%d", item.StepIndex)
 		}
 		amount := formatCommas(int(item.Amount.Value))
-		if m.insightsGroup == 1 {
-			amount = "+" + amount
-		}
-		if m.insightsGroup == 3 {
-			amount = insightCost(item.Amount.Value)
+		stepCount := "1"
+		if item.Task != nil {
+			stepCount = formatCommas(item.Task.StepCount)
 		}
 		name := item.Label
 		rank := fmt.Sprintf("%d", i+1)
 		style := lipgloss.NewStyle().Foreground(ColorLightText)
 		if i == selected {
 			rank = "›" + rank
-			style = style.Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorPrimary)
 		}
 		chart := ""
 		if chartWidth > 0 && items[0].Amount.Available && items[0].Amount.Value > 0 && item.Amount.Available {
 			chart = renderProportionBar(item.Amount.Value/items[0].Amount.Value, insightsBarWidth, ColorSecondary)
 		}
-		lines = append(lines, style.Render(row(rank, step, name, chart, amount)))
+		identity := insightCell(rank, insightsRankWidth, false) + insightCell(step, insightsStepWidth, false) + insightCell(name, labelWidth, false)
+		comparison := insightCell(chart, chartWidth, false) + insightCell(stepCount, insightsCountWidth, true) + insightCell(amount, valueWidth, true)
+		if i == selected {
+			selectedStyle := style.Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorPrimary)
+			lines = append(lines, selectedStyle.Render(identity)+style.Render(comparison))
+			continue
+		}
+		lines = append(lines, style.Render(row(rank, step, name, chart, stepCount, amount)))
 	}
 	for len(lines) < height {
 		lines = append(lines, "")
@@ -249,8 +250,9 @@ func (m Model) insightDetails(item core.RankedObservation, width int) []string {
 	lines = append(lines, "", lipgloss.NewStyle().Foreground(insightsCaptionColor).Render("SOURCE"))
 	lines = append(lines, wrapVisualLines(source, width)...)
 	lines = append(lines, wrapVisualLines(locator, width)...)
-	if item.PreviousGenerationID != "" {
-		lines = append(lines, "", fmt.Sprintf("Turns %s → %s", item.PreviousGenerationID, item.GenerationID))
+	if item.Task != nil {
+		lines = append(lines, "")
+		lines = append(lines, taskInsightDetailLines(*item.Task, item.StepIndex, width)...)
 	}
 	lines = append(lines, "")
 	lines = append(lines, wrapText(insightDescription(m.insightsGroup), width)...)
@@ -261,30 +263,32 @@ func (m Model) insightDetails(item core.RankedObservation, width int) []string {
 
 func (m Model) insightCompactDetails(item core.RankedObservation, width int) []string {
 	source, locator := insightSource(item)
-	measurement := "Recorded usage"
+	measurement := insightMeasurementLabel(item)
 	if item.Amount.Kind == core.MeasurementEstimated {
 		measurement = "Local estimate"
-	} else if item.PreviousGenerationID != "" {
-		measurement = "Observed difference"
 	}
-	return []string{
+	lines := []string{
 		lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", width)),
 		insightPair(TitleStyle.Render("SELECTED EVIDENCE"), measurement, width),
 		insightCell(source+" · "+locator, width, false),
 		lipgloss.NewStyle().Foreground(insightsCaptionColor).Render(insightCell(insightCompactDescription(m.insightsGroup), width, false)),
 	}
+	if item.Task != nil {
+		lines = append(lines, insightCell(compactTaskInsight(*item.Task, item.StepIndex), width, false))
+	}
+	return lines
 }
 
 func insightCompactDescription(group int) string {
 	switch group {
 	case 1:
-		return "Observed context only; gaps and resets are excluded."
+		return "Visible output is summed across model calls in one user task."
 	case 2:
-		return "Available usage only; missing fields are excluded."
+		return "Thinking is summed across model calls in one user task."
 	case 3:
-		return "Reference estimate, not an invoice; may be partial."
+		return "Local tool-result size; not model output or billing."
 	default:
-		return "Size alone does not establish waste or billing."
+		return "Repeated input processing is counted for every model call."
 	}
 }
 
@@ -300,8 +304,8 @@ func insightMeasurementLabel(item core.RankedObservation) string {
 	if item.Amount.Kind == core.MeasurementEstimated {
 		return "Local estimate · " + item.Amount.Method
 	}
-	if item.PreviousGenerationID != "" {
-		return "Difference of observed context"
+	if item.Task != nil && item.Task.PartialUsage {
+		return "Partial task total · " + item.Amount.Method
 	}
 	return "Calculated from recorded usage"
 }
@@ -309,14 +313,53 @@ func insightMeasurementLabel(item core.RankedObservation) string {
 func insightDescription(group int) string {
 	switch group {
 	case 1:
-		return "Comparable turns only. Gaps, model changes and checkpoints start a new comparison."
+		return "Visible content output is summed across every observed model call in one user task."
 	case 2:
-		return "Input plus available output. Missing fields are excluded, not estimated."
+		return "Thinking output is summed across every observed model call in one user task."
 	case 3:
-		return "Catalog reference rates, not an invoice. Missing usage makes an estimate partial."
+		return "Local tool-result text estimate. It excludes model thinking and visible model output."
 	default:
-		return "Large outputs are worth inspecting. Size alone does not establish waste or billing."
+		return "All observed model-call input and output usage in one user task. Repeated context is counted again."
 	}
+}
+
+func taskInsightDetailLines(task core.TaskObservationDetails, startStep, width int) []string {
+	partial := "complete"
+	if task.PartialUsage {
+		partial = "partial"
+	}
+	lines := []string{
+		fmt.Sprintf("Task steps #%d–#%d", startStep, task.EndStepIndex),
+		fmt.Sprintf("History steps %d", task.StepCount),
+		fmt.Sprintf("Model calls %d · usage %d (%s)", task.ModelCalls, task.UsageCalls, partial),
+		fmt.Sprintf("Compactions %d", task.Compactions),
+		fmt.Sprintf("Input %s", insightMeasurementValue(task.InputTokens)),
+		fmt.Sprintf("Thinking %s", insightMeasurementValue(task.ThinkingTokens)),
+		fmt.Sprintf("Content %s", insightMeasurementValue(task.ContentOutputTokens)),
+		fmt.Sprintf("Tool output %s", insightMeasurementValue(task.ToolOutputTokens)),
+		"Context start / peak / end",
+		fmt.Sprintf("%s / %s / %s", insightMeasurementValue(task.StartingContextTokens), insightMeasurementValue(task.PeakContextTokens), insightMeasurementValue(task.EndingContextTokens)),
+	}
+	wrapped := make([]string, 0, len(lines))
+	for _, line := range lines {
+		wrapped = append(wrapped, wrapText(line, width)...)
+	}
+	return wrapped
+}
+
+func compactTaskInsight(task core.TaskObservationDetails, startStep int) string {
+	partial := ""
+	if task.PartialUsage {
+		partial = " · partial"
+	}
+	return fmt.Sprintf("Task #%d–#%d · %d steps · %d calls · %d compact%s", startStep, task.EndStepIndex, task.StepCount, task.ModelCalls, task.Compactions, partial)
+}
+
+func insightMeasurementValue(measurement core.Measurement) string {
+	if !measurement.Available {
+		return "—"
+	}
+	return formatCommas(int(measurement.Value))
 }
 
 func insightCost(value float64) string {

@@ -4,29 +4,29 @@
   * **開啟與操作** : 按 5 開啟 Insights。按 h/l 或 Left/Right 切換分類，按 j/k 或 Up/Down 選擇項目，按 Enter 到 History 查看對應步驟。
   * **尋找本指南** : 按 4 開啟 Docs，再按 / 並輸入 Insights。按 Enter 完成搜尋，按 j/k 捲動內容。
 
-* **先選擇想回答的問題** : 每個分類回答不同問題。每一列代表一筆工具輸出或模型生成，不是依工具或模型加總後的統計。
-  * **Outputs** : 哪些本機工具輸出文字最多？TOKENS 是使用 cl100k_base 計算的本機 Token 估算；若分詞器無法使用，會改採位元組長度估算。數字大不表示全部內容都送進模型或列入帳單。
-  * **Context growth** : 哪些可比較的生成輪次之間，Context 增加最多？GROWTH 是正向差值，不是 Context Window 使用率。模型或來源改變、測量值缺失、生成序號有間隔或跨過 checkpoint 時，不會進行比較。
-  * **Tokens** : 哪幾輪的已記錄輸入加可用輸出 Token 最多？必須有輸入用量；缺少的輸出欄位不會補猜，因此排名可能不完整，也不等於畫面上可見回答的字數。
-  * **Cost** : 哪幾輪的參考費用最高？金額使用模型目錄價格及定價 Provider 假設計算，不是帳單、訂閱費用或保證可省下的金額。
+* **先選擇想回答的問題** : Task 從一個 User Step 開始，到下一個 User Step 前結束；中間可以包含多次 Model、Tool 與 Compaction。
+  * **Task usage** : 哪些使用者任務讓模型處理最多 Token？每個可觀測 Model Call 都會累加 cached input、uncached input、thinking 與 content output。重複 Context 會在每次呼叫重新計入，因為這是處理量，不是 unique context 大小。
+  * **Task output** : 哪些使用者任務在所有可觀測 Model Call 中累積最多可見回答 Token？
+  * **Task thinking** : 哪些使用者任務累積最多 Thinking Output Token？較多 Thinking 可能代表困難、探索、困惑或重試，不直接代表品質。
+  * **Tool outputs** : 哪些本機工具結果文字最多？TOKENS 是 cl100k_base 本機估算，必要時使用位元組長度 fallback；不包含模型 Thinking 或可見回答。
+  * **Compaction** : Checkpoint 不會開始新任務。Task 詳情會顯示次數，以及起始、峰值、結束 Context；不會把它們相減成容易誤解的淨成長。
 
 * **讀懂長條圖** : RELATIVE 以目前分類裡最大的數值為滿格基準。滿格只表示該分類中最大，不代表整個 Session、Context 容量或預算已達 100%。
-  * **舉例** : 如果兩筆工具輸出估算為 5,000 與 2,500 Tokens，前者滿格，後者半格；這不代表前者浪費了 5,000 Tokens。
-  * **切換分類** : 各分類有各自的比例尺。Outputs 與 Cost 中相同長度的圖條，不代表數量相同。新資料也可能改變比例尺。
+  * **舉例** : 如果兩筆數值為 5,000 與 2,500 Tokens，前者滿格、後者半格；這不代表前者浪費了 5,000 Tokens。
+  * **切換分類** : 各分類有各自的比例尺。不同分類中相同長度的圖條不代表數量相同，新資料也可能改變比例尺。
   * **小數值與零** : 部分色塊讓很小但大於零的數值仍可見。精確數值請以旁邊的數字為準；零與資料不可用是不同狀態。
 
-* **讀排名與證據** : STEP 是要查看的 Transcript 步驟。反白列所對應的 SELECTED EVIDENCE，會顯示在寬版畫面的右側，或窄版畫面的排名表下方。
-  * **來源** : 檔名及定位資訊指出 Transcript 步驟或資料庫紀錄的位置。寬版的 Context growth 證據也會標示前後生成輪次。
-  * **Enter** : 開啟對應的 History 步驟，並清除 History 篩選條件，讓證據能顯示出來。若步驟沒有明確連結或已不存在，系統會提示，不會跳到不相關的步驟。
-  * **Top N / total** : Insights 最多列出前十筆。窄終端一次顯示的列數較少，可用 j/k 捲動。JSON 匯出會保留完整排名。
+* **讀排名與證據** : USER STEP 是 Task 的起始提示；STEPS 是該 Task 實際保存的 History Step 數量。Tool output 本身算一個 Step。反白列的 SELECTED EVIDENCE 會顯示在寬版右側或窄版排名下方。
+  * **來源** : 檔名及定位資訊指出 User Step、Tool Result 或 Generation 的來源。Task 詳情會顯示完整 Step 範圍、呼叫涵蓋率、Compaction 與 Token 拆解。
+  * **Enter** : 開啟對應的 History 步驟，並清除篩選條件。若步驟沒有明確連結或已不存在，系統會提示，不會跳到不相關步驟。
+  * **Top N / total** : Insights 最多列出前十筆。窄終端一次顯示的列數較少，可用 j/k 捲動；JSON 匯出保留完整排名。
 
-* **下結論前先檢查資料涵蓋度** : 頂端摘要是整個 Session 的統計，不只計算目前選取的項目或畫面上看得到的前十筆。輸入總量來自各生成輪次的用量累計，不是目前 Context Window 的大小。
-  * **Usage x/y turns** : y 是分析到的生成輪數；其中 x 輪有輸入用量。這不代表所有輸出欄位都齊全。
-  * **Priced x/y** : x 輪具備足夠的輸入用量及可辨識的參考價格，可以估算費用。輸出欄位缺失時，費用仍可能不完整。
-  * **星號與 Partial estimate** : 有些生成輪次缺少用量資料或價格。請將顯示金額視為不完整估算，不要當作完整涵蓋後的費用比較。
-  * **Ready 與最後讀取時間** : 這些資訊描述來源監控狀態，不代表 Agent 正在思考。Read interrupted 表示程式保留最近一次成功讀取的資料，並會繼續重試。沒有可比較項目表示目前缺少符合條件的資料，不能據此認定沒有 Context 成長或費用。
+* **下結論前先檢查資料涵蓋度** : Task 總量只累加可用觀測值，不會虛構缺少資料。重複 Model Call 的 Input 會重複計入，因為它代表實際處理工作量。
+  * **Partial task** : 至少一個 Model Call 缺少必要 usage component；顯示數值是可用欄位形成的下限。
+  * **Context start / peak / end** : 這些是 Task 內記錄到的 Context 狀態，不能把增長歸因給單一 Prompt 或 Tool Result；Compaction 也可能讓結束值小於起始值。
+  * **Usage x/y turns** : Session 摘要仍顯示 generation-level input 覆蓋率，不保證所有 split output 欄位都有資料。
+  * **Ready 與最後讀取時間** : 這些資訊描述來源監控狀態，不代表 Agent 正在思考。Read interrupted 會保留最近成功資料並持續重試。
 
-* **建議的檢視流程** : 從 Outputs 開始，選擇較大的輸出並按 Enter。先看內容是否有用，再決定是否需要調整工具或提示詞。
-  * **交叉檢查** : 查看時間相近的 Context growth、Tokens 與 Cost 項目。時間接近能提供調查線索，但不能證明某筆工具輸出造成了 Context 增加。
-  * **保存分析** : 在 Insights 輸入 :report 並按 Enter。程式會在目前目錄建立新的 JSON 檔案，保存目前顯示的資料版本、完整排名、測量方法及定價假設。
-  * **隱私** : 報告不包含原始提示詞或工具輸出文字，但會包含 Session ID、模型及工具名稱、證據位置。分享之前請先檢查報告內容。
+* **建議的檢視流程** : 從 Task usage 開始，打開較大的任務並檢查 Step 數與 Model Call 數。接著比較 Task output 與 Task thinking，再查看同一 Step 範圍內的大型 Tool outputs。
+  * **保存分析** : 在 Insights 輸入 :report 並按 Enter。程式會建立 JSON 檔案，保存目前 revision、完整排名與測量方法。
+  * **隱私** : 報告不包含原始提示詞或工具輸出文字，但會包含 Session ID、Task Step 編號、模型／工具名稱與證據位置；分享前請先檢查。

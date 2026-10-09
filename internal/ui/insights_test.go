@@ -13,10 +13,33 @@ import (
 )
 
 const (
-	insightsTestEpoch    = 1
-	insightsTestRevision = 1
-	insightsTestStep     = 1
+	insightsTestEpoch          = 1
+	insightsTestRevision       = 1
+	insightsTestStep           = 1
+	insightsHighlightTestWidth = 80
+	insightsHighlightTestRows  = 4
+	insightsHighlightTokens    = 200
+	insightsFullBarRatio       = 1
 )
+
+func TestInsightsSelectionHighlightStopsBeforeRelativeColumn(t *testing.T) {
+	model := Model{}
+	items := []core.RankedObservation{{
+		StepIndex: insightsTestStep, HasStepIndex: true, Label: "User task #1",
+		Amount: core.Measurement{Value: insightsHighlightTokens, Available: true, Kind: core.MeasurementDerived},
+	}}
+	line := model.insightTable(items, 0, insightsHighlightTestWidth, insightsHighlightTestRows)[2]
+	chartWidth := insightsBarWidth + insightsBarGap
+	labelWidth := insightsHighlightTestWidth - insightsRankWidth - insightsStepWidth - insightsCountWidth - insightsValueWidth - chartWidth
+	identity := insightCell("›1", insightsRankWidth, false) + insightCell("#1", insightsStepWidth, false) + insightCell("User task #1", labelWidth, false)
+	chart := renderProportionBar(insightsFullBarRatio, insightsBarWidth, ColorSecondary)
+	comparison := insightCell(chart, chartWidth, false) + insightCell("1", insightsCountWidth, true) + insightCell("200", insightsValueWidth, true)
+	baseStyle := lipgloss.NewStyle().Foreground(ColorLightText)
+	selectedStyle := baseStyle.Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(ColorPrimary)
+	if line != selectedStyle.Render(identity)+baseStyle.Render(comparison) {
+		t.Fatal("selection highlight extended into relative or token-value columns")
+	}
+}
 
 func TestSessionSnapshotRebuildRemovesOldHistoryAndUpdatesReport(t *testing.T) {
 	model := attachTestSnapshot(t, NewModel("session", false), insightsSnapshot(insightsTestEpoch, insightsTestRevision, "first"))
@@ -143,7 +166,17 @@ func TestReportExportIsExclusiveAndPreservesRevision(t *testing.T) {
 }
 
 func insightsSnapshot(epoch, revision uint64, content string) core.SessionUpdate {
-	return core.SessionUpdate{Epoch: epoch, Ready: true, Health: core.MonitorHealth{State: core.MonitorHealthy}, Session: core.Session{Ref: core.SessionRef{SessionID: "session"}, Revision: revision, Steps: []core.Step{{Index: insightsTestStep, Kind: string(core.StepTypeRunCommand), Content: content}}}}
+	return core.SessionUpdate{Epoch: epoch, Ready: true, Health: core.MonitorHealth{State: core.MonitorHealthy}, Session: core.Session{
+		Ref: core.SessionRef{SessionID: "session"}, Revision: revision,
+		Steps: []core.Step{{Index: insightsTestStep, Kind: string(core.StepTypeUserInput), Content: content}},
+		Generations: []core.Generation{{ID: "1", StepIndex: insightsTestStep, HasStepIndex: true, ModelID: "gemini-3.8-flash", Usage: core.UsageObservation{
+			HasUncachedInputTokens: true, UncachedInputTokens: 100,
+			HasCachedInputTokens: true, CachedInputTokens: 50,
+			HasThinkingOutputTokens: true, ThinkingOutputTokens: 20,
+			HasOutputContentTokens: true, OutputContentTokens: 30,
+			HasObservedContextTokens: true, ObservedContextTokens: 200,
+		}}},
+	}}
 }
 
 func attachTestSnapshot(t *testing.T, model Model, update core.SessionUpdate) Model {

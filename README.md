@@ -54,7 +54,7 @@ Heimdall directly decodes **Google Cloud gRPC Protobufs** from local SQLite WAL 
 
 ### 4. Session Insights and Reproducible Reports
 
-Press `5` for Insights. Use `h`/`l` to switch between large tool outputs, context growth, token consumers, and reference-cost consumers. Use `j`/`k` to select a ranked item and `Enter` to inspect its transcript evidence. The TUI shows the first ten entries; exported reports retain the full rankings.
+Press `5` for Insights. Use `h`/`l` to switch between task usage, task output, task thinking, and tool outputs. Task rankings span one user step through the step before the next user step, including every observed model/tool loop. The `STEPS` column counts persisted history records in that span. Use `j`/`k` to select a ranked item and `Enter` to inspect its transcript evidence. The TUI shows the first ten entries; exported reports retain the full rankings.
 
 Use `:report` to export the displayed analysis revision to a new `heimdall-report-<timestamp>-<suffix>.json` file in the current directory. Files are created exclusively with owner-only permissions. Reports contain measurements, pricing assumptions, and evidence locations, but omit raw prompts and tool outputs.
 
@@ -66,9 +66,9 @@ For a one-shot report without starting the TUI or a monitor:
 ./bin/heimdall -report -session example -file /path/transcript_full.jsonl -db /path/conversation.db -format json
 ```
 
-JSON reports use `schema_version: 1`. Measurements distinguish observed, derived, locally estimated, and unavailable values. Missing model prices remain unavailable; incomplete cost totals are labelled partial. Rates are captured with each priced generation so a saved estimate can be reproduced.
+JSON reports use `schema_version: 2`. Measurements distinguish observed, derived, locally estimated, and unavailable values. Task details retain model-call coverage, compaction counts, input/thinking/content breakdowns, and starting/peak/ending observed context states.
 
-Context growth compares adjacent, linked generations of the same model and source, without crossing checkpoints or known generation gaps. Tool output sizes are local text estimates: they do not prove repeated transmission, precise per-tool billing, or compressor savings. Historical reconstruction never borrows a future context snapshot. The current milestone provides observation and analysis; it does not run a compressor or call an LLM.
+Task usage sums repeated input processing across every observed model call in the user-request span; it is not a unique-context measurement. Compaction remains inside the task and is reported as a boundary count rather than converted into a misleading net-growth ranking. Tool output sizes are local text estimates: they do not prove repeated transmission or billing. Historical reconstruction never borrows a future context snapshot. The current milestone provides observation and analysis; it does not run a compressor or call an LLM.
 
 Source health is separate from agent activity. Idle sources remain healthy. Read failures retain the last successful snapshot and retry with bounded backoff; failed session switches retain the active session. Insights displays the last successful read, and source failures remain visible in the footer.
 
